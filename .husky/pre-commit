@@ -13,6 +13,13 @@ fi
 echo "[pre-commit] TypeScript..."
 npx tsc --noEmit -p tsconfig.app.json || exit 1
 
+# Regenerate plugin types if API changed
+cd ..
+echo "[pre-commit] Plugin types..."
+node plugins/types/generate.js
+git add plugins/types/mma.d.ts
+cd app
+
 # Clippy
 echo "[pre-commit] Clippy..."
 cargo clippy --manifest-path src-tauri/Cargo.toml || exit 1

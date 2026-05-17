@@ -26,7 +26,10 @@ interface Plugin$1 {
 	}>;
 	locationPanel?: ComponentType;
 }
-declare function registerPlugin(plugin: Plugin$1): void;
+export type PluginBehavior = Partial<Plugin$1> & {
+	activate(): void | (() => void);
+};
+declare function registerPlugin(plugin: Plugin$1 | PluginBehavior): void;
 interface Location$1 {
 	id: number;
 	lat: number;
@@ -595,3 +598,7 @@ export {
 };
 
 export {};
+
+declare global {
+	const MMA: typeof mmaApi;
+}
