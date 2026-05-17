@@ -7,14 +7,29 @@ Plugins extend MMA with custom functionality: new tools, integrations with exter
 User plugins live in your app data folder:
 
 ```
-Windows:  %LOCALAPPDATA%/app.map-making.local/plugins/<plugin-id>/
+Windows:  %APPDATA%/app.map-making.local/plugins/<plugin-id>/
 Linux:    ~/.local/share/app.map-making.local/plugins/<plugin-id>/
 macOS:    ~/Library/Application Support/app.map-making.local/plugins/<plugin-id>/
 ```
 
+## Creating a plugin
+
+Grab the plugin scaffold directly into your plugins directory:
+
+```bash
+mkdir %APPDATA%/app.map-making.local/plugins
+cd %APPDATA%/app.map-making.local/plugins
+npx degit ccmdi/mma/plugins
+cd sample
+npm install
+npm run build
+```
+
+Reopen a map in MMA and enable it in the marketplace. Edit `src/index.ts` and rebuild to iterate.
+
 Each plugin is a folder containing at minimum:
-- `manifest.json` — metadata and entry point
-- `index.js` (or whatever `main` points to) — the plugin code
+- `manifest.json` — plugin identity
+- `index.js` (or whatever `main` points to) — plugin behavior
 
 ## manifest.json
 
@@ -65,9 +80,7 @@ The global `MMA` object is the single API surface. It provides:
 - File dialogs
 - Raw Tauri IPC for advanced use
 
-**The definitive API reference is the typed source at `app/src/plugins/index.ts`.** Every method on `MMA` is defined there with full TypeScript types. When in doubt, read that file — it's always up to date.
-
-### Quick reference (categories)
+### Quick reference
 
 **Locations:** `getMap()`, `getActiveLocation()`, `addLocations(locs)`, `removeLocations(ids)`, `updateLocation(id, patch)`, `setActiveLocation(id)`, `getLocationsByIds(ids)`, `createLocation(partial)`
 
@@ -92,9 +105,9 @@ Plugins can provide React components for richer UI:
 ```js
 MMA.registerPlugin({
   activate() {},
-  sidebar: MySidebarComponent,    // shown in sidebar when user clicks plugin icon
-  modal: MyModalComponent,        // shown as a dialog
-  locationPanel: MyPanelComponent, // shown below location preview
+  sidebar: MySidebarComponent,
+  modal: MyModalComponent,
+  locationPanel: MyPanelComponent,
 });
 ```
 
@@ -103,46 +116,27 @@ Component props:
 - `modal` receives `{ onClose: () => void }`
 - `locationPanel` receives no props
 
-Since external plugins are plain JS (not compiled with the app), UI plugins need to **bundle React** into their output. Use esbuild, rollup, or Vite in library mode. Your bundler config should mark nothing as external — bundle everything.
-
-Example esbuild config:
+Since external plugins are plain JS (not compiled with the app), UI plugins need to **bundle React** into their output. Use esbuild, rollup, or Vite in library mode:
 
 ```js
 require("esbuild").build({
   entryPoints: ["src/index.tsx"],
   bundle: true,
   format: "esm",
-  outfile: "dist/index.js",
-  // Bundle React into the plugin — the app doesn't expose it globally
+  outfile: "index.js",
   external: [],
 });
 ```
 
 ## Distribution
 
-Plugins are distributed as folders. To install a plugin:
+To install a plugin:
 
 1. Copy the plugin folder into your plugins directory
-2. Restart MMA (or close/reopen a map)
-3. Enable the plugin in the plugin marketplace (sidebar gear icon)
+2. Reopen a map in MMA
+3. Enable the plugin in the marketplace (gear icon)
 
-To share a plugin: zip the folder and distribute it however you like (GitHub releases, Discord, etc.).
-
-## TypeScript support
-
-Install the MMA type declarations for autocomplete and type checking:
-
-```
-npm install -D github:ccmdi/map-making-app#main&path=plugins/types
-```
-
-Then add to your `tsconfig.json`:
-
-```json
-{
-  "include": ["src", "node_modules/mma-plugin-types/mma.d.ts"]
-}
-```
+To share: zip the folder and distribute however you like (GitHub, Discord, etc.).
 
 ### Optional type dependencies
 
@@ -153,15 +147,4 @@ Depending on what your plugin uses, you may need additional type packages:
 | `icon` field (MDI icons) | `npm install -D @mdi/js` — or just copy the SVG path string from [pictogrammers.com/library/mdi](https://pictogrammers.com/library/mdi/) |
 | `MMA.getGoogleMap()` | `npm install -D @types/google.maps` |
 | UI components (`sidebar`, `modal`, `locationPanel`) | `npm install -D react @types/react` |
-| `MMA.shell.Command` / `MMA.dialog.*` | Types are included in `mma-plugin-types` — no extra install needed |
-
-## Development tips
-
-- Use `console.log` in your plugin — output appears in browser devtools (F12 in the Tauri window)
-- The plugin reloads when you close and reopen a map
-- For rapid iteration, symlink your dev folder into the plugins directory
-- The source of truth for the MMA API is `app/src/plugins/index.ts` — the type declarations are generated from it
-
-## Sample plugin
-
-See the `sample/` folder in this directory for a working example demonstrating all the patterns above.
+| `MMA.shell.Command` / `MMA.dialog.*` | Types are included — no extra install needed |

@@ -80,10 +80,14 @@ async function loadUserPlugins() {
 	} catch {
 		return;
 	}
+	const appDataDir = await invoke<string>("get_app_data_dir");
 	for (const m of manifests) {
 		try {
 			setPendingManifest(m);
-			await import(/* @vite-ignore */ `mma-plugin://localhost/${m.id}/${m.main}`);
+			const filePath = `${appDataDir}\\plugins\\${m.id}\\${m.main}`;
+			const code = await invoke<string>("read_file", { path: filePath });
+			const blob = new Blob([code], { type: "application/javascript" });
+			await import(/* @vite-ignore */ URL.createObjectURL(blob));
 			setPendingManifest(null);
 		} catch (e) {
 			setPendingManifest(null);

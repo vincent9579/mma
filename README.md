@@ -2,6 +2,8 @@
 
 Local-first desktop clone of [map-making.app](https://map-making.app).
 
+![preview](preview.png)
+
 ## Features
 
 - Offline/local-first
