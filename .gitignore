@@ -6,8 +6,6 @@ editor.html
 editor_files/
 mma_files/
 mma.html
-package.json
-package-lock.json
 
 # IDE / editor
 .idea/

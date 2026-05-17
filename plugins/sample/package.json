@@ -1,0 +1,11 @@
+{
+  "name": "mma-sample-plugin",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --outfile=index.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "mma-plugin-types": "file:../types"
+  }
+}

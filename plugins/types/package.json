@@ -1,0 +1,7 @@
+{
+  "name": "mma-plugin-types",
+  "version": "0.1.0",
+  "description": "Type declarations for MMA plugin development",
+  "types": "mma.d.ts",
+  "files": ["mma.d.ts"]
+}
