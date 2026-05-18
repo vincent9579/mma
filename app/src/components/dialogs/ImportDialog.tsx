@@ -7,6 +7,7 @@ import {
 	scheduleSave,
 	getCurrentMap,
 	addLocationCount,
+	setTagCounts,
 } from "@/store/useMapStore";
 import { fmt } from "@/lib/util/format";
 import { invoke } from "@tauri-apps/api/core";
@@ -42,6 +43,7 @@ interface ImportResult {
 	tags: ImportTag[];
 	delta: CellDelta;
 	warnings: string[];
+	tagCounts: Record<number, number>;
 }
 
 const FIELD_PREFS_KEY = "import-field-prefs";
@@ -123,6 +125,7 @@ export function ImportDialog({ onClose }: Props) {
 			}
 
 			addLocationCount(r.locationCount);
+			setTagCounts(r.tagCounts);
 			emitRenderDelta(r.delta);
 			refreshAfterMutation();
 			scheduleSave();

@@ -16,6 +16,7 @@ import {
 	getCurrentMap,
 	addTag,
 	addLocationCount,
+	setTagCounts,
 	refreshAfterMutation,
 	scheduleSave,
 	emitRenderDelta,
@@ -83,6 +84,7 @@ function usePasteHandler() {
 						}
 					}
 					addLocationCount(r.locationCount);
+					setTagCounts(r.tagCounts);
 					emitRenderDelta(r.delta);
 					refreshAfterMutation();
 					scheduleSave();

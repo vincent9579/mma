@@ -120,6 +120,7 @@ export interface ImportResult {
 	tags: { id: number; name: string; color: string }[];
 	delta: import("@/lib/render/CellManager").CellDelta;
 	warnings: string[];
+	tagCounts: Record<number, number>;
 }
 
 export type SortMode = "name" | "created" | "opened" | "amount";

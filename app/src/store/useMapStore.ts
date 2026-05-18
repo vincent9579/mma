@@ -506,6 +506,10 @@ export function addLocationCount(delta: number) {
 	};
 }
 
+export function setTagCounts(counts: Record<number, number>) {
+	tagCounts = counts;
+}
+
 interface StoreStatus {
 	version: number;
 	locationCount: number;

@@ -808,6 +808,7 @@ pub struct EditorImportResult {
     pub tags: Vec<EditorImportTag>,
     pub delta: crate::location_store::RenderDelta,
     pub warnings: Vec<String>,
+    pub tag_counts: std::collections::HashMap<u32, usize>,
 }
 
 fn add_parsed_to_store(
@@ -926,6 +927,7 @@ pub fn store_import_file(
         // TODO: compute targeted delta from imported locations instead of full_reset
         delta: crate::location_store::RenderDelta { full_reset: true, ..Default::default() },
         warnings: parsed.warnings,
+        tag_counts: store.tag_counts.clone(),
     })
 }
 
@@ -959,5 +961,6 @@ pub fn store_import_paste(
         // TODO: compute targeted delta from imported locations instead of full_reset
         delta: crate::location_store::RenderDelta { full_reset: true, ..Default::default() },
         warnings: parsed.warnings,
+        tag_counts: store.tag_counts.clone(),
     })
 }
