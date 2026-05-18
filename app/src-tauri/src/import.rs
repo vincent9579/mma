@@ -8,7 +8,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use tauri::Emitter;
-use crate::fast_io::{self, LocationData};
+use crate::types::{Tag, Location};
+use crate::fast_io;
 
 static CACHED_PARSE: Mutex<Option<CachedImport>> = Mutex::new(None);
 
@@ -46,17 +47,12 @@ pub struct ImportedMapInfo {
 // Internal parsed structures
 // ---------------------------------------------------------------------------
 
-struct ParsedTag {
-    id: u32,
-    name: String,
-    color: String,
-}
 
 struct ParsedMap {
     name: String,
     folder: Option<String>,
-    locations: Vec<LocationData>,
-    tags: Vec<ParsedTag>,
+    locations: Vec<Location>,
+    tags: Vec<Tag>,
     fields: Option<Value>,
     warnings: Vec<String>,
 }
@@ -108,7 +104,7 @@ fn parse_csv(text: &str) -> ParsedMap {
         });
         let flags = if pano_id.is_some() { 1u32 } else { 0u32 };
 
-        locations.push(LocationData {
+        locations.push(Location {
             id: 0,
             lat, lng, heading, pitch, zoom,
             pano_id, flags,
@@ -122,8 +118,13 @@ fn parse_csv(text: &str) -> ParsedMap {
     ParsedMap { name: String::new(), folder: None, locations, tags: Vec::new(), fields: None, warnings: Vec::new() }
 }
 
-fn extract_tag_colors(buf: &[u8]) -> HashMap<String, String> {
-    let mut colors = HashMap::new();
+struct ExtraTagMeta {
+    color: Option<String>,
+    order: Option<u32>,
+}
+
+fn extract_tag_meta(buf: &[u8]) -> HashMap<String, ExtraTagMeta> {
+    let mut meta = HashMap::new();
     let needle = b"\"extra\"";
     // Find "extra" at depth 1 (top-level key, not inside customCoordinates)
     let mut i = 0;
@@ -144,10 +145,10 @@ fn extract_tag_colors(buf: &[u8]) -> HashMap<String, String> {
         if buf[i] == b'}' || buf[i] == b']' { depth -= 1; }
         i += 1;
     }
-    let pos = match pos { Some(p) => p, None => return colors };
+    let pos = match pos { Some(p) => p, None => return meta };
     let mut j = pos + needle.len();
     while j < buf.len() && matches!(buf[j], b' ' | b':' | b'\n' | b'\r' | b'\t') { j += 1; }
-    if j >= buf.len() || buf[j] != b'{' { return colors; }
+    if j >= buf.len() || buf[j] != b'{' { return meta; }
     let obj_start = j;
     let mut depth = 1i32;
     let mut k = obj_start + 1;
@@ -164,21 +165,23 @@ fn extract_tag_colors(buf: &[u8]) -> HashMap<String, String> {
     }
     let extra: serde_json::Value = match serde_json::from_slice(&buf[obj_start..k]) {
         Ok(v) => v,
-        Err(_) => return colors,
+        Err(_) => return meta,
     };
     if let Some(tags_obj) = extra.get("tags").and_then(|t| t.as_object()) {
         for (name, entry) in tags_obj {
-            if let Some(arr) = entry.get("color").and_then(|c| c.as_array()) {
+            let color = entry.get("color").and_then(|c| c.as_array()).and_then(|arr| {
                 if arr.len() >= 3 {
                     let r = arr[0].as_u64().unwrap_or(0) as u8;
                     let g = arr[1].as_u64().unwrap_or(0) as u8;
                     let b = arr[2].as_u64().unwrap_or(0) as u8;
-                    colors.insert(name.clone(), format!("#{:02x}{:02x}{:02x}", r, g, b));
-                }
-            }
+                    Some(format!("#{:02x}{:02x}{:02x}", r, g, b))
+                } else { None }
+            });
+            let order = entry.get("order").and_then(|o| o.as_u64()).map(|o| o as u32);
+            meta.insert(name.clone(), ExtraTagMeta { color, order });
         }
     }
-    colors
+    meta
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +406,7 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
         "flags", "tags", "id", "createdAt", "modifiedAt"];
 
     struct RawLoc {
-        loc: LocationData,
+        loc: Location,
         raw_tags: Vec<String>,
     }
 
@@ -451,7 +454,7 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
         }
 
         Some(RawLoc {
-            loc: LocationData {
+            loc: Location {
                 id: 0, // placeholder; assigned by store on add
                 lat, lng, heading, pitch, zoom,
                 pano_id: pano_id.map(|s| s.to_string()),
@@ -467,7 +470,7 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
 
     let t_parse = t0.elapsed();
 
-    let tag_colors: HashMap<String, String> = extract_tag_colors(buf);
+    let tag_meta = extract_tag_meta(buf);
 
     let mut tags_by_name: HashMap<String, u32> = HashMap::new();
     let mut next_tag: u32 = 1;
@@ -482,11 +485,14 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
         locations.push(loc);
     }
 
-    let tags: Vec<ParsedTag> = tags_by_name.into_iter().map(|(name, id)| {
-        let color = tag_colors.get(&name).cloned()
+    let mut tags: Vec<Tag> = tags_by_name.into_iter().map(|(name, id)| {
+        let meta = tag_meta.get(&name);
+        let color = meta.and_then(|m| m.color.clone())
             .unwrap_or_else(|| color_for_name(&name));
-        ParsedTag { id, name, color }
+        let order = meta.and_then(|m| m.order);
+        Tag { id, name, color, visible: true, order }
     }).collect();
+    tags.sort_by_key(|t| t.order.unwrap_or(u32::MAX));
 
     log::debug!("[parse] scan={:.0}ms boundaries={:.0}ms parallel_parse={:.0}ms total={:.0}ms objs={}",
         t_scan.as_millis(), t_boundaries.as_millis(), t_parse.as_millis(),
@@ -610,10 +616,8 @@ fn write_map_to_db(conn: &Connection, app: &tauri::AppHandle, mut map: ParsedMap
     // Build tags JSON for the maps row
     let tags_json = {
         let mut tag_map = serde_json::Map::new();
-        for (i, tag) in map.tags.iter().enumerate() {
-            tag_map.insert(tag.id.to_string(), serde_json::json!({
-                "id": tag.id, "name": tag.name, "color": tag.color, "visible": true, "order": i
-            }));
+        for tag in &map.tags {
+            tag_map.insert(tag.id.to_string(), serde_json::to_value(tag).unwrap());
         }
         serde_json::Value::Object(tag_map).to_string()
     };
@@ -732,13 +736,6 @@ pub async fn bulk_import_confirm(
 // Single-file import into open map (editor import)
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct EditorImportTag {
-    pub id: u32,
-    pub name: String,
-    pub color: String,
-}
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -751,7 +748,7 @@ pub struct FieldCount {
 #[serde(rename_all = "camelCase")]
 pub struct EditorImportPreview {
     pub location_count: u32,
-    pub tags: Vec<EditorImportTag>,
+    pub tags: Vec<Tag>,
     pub fields: Vec<FieldCount>,
     pub warnings: Vec<String>,
 }
@@ -784,15 +781,9 @@ pub fn store_import_preview(path: String) -> Result<EditorImportPreview, String>
         .map(|(key, count)| FieldCount { key, count })
         .collect();
 
-    let tags: Vec<EditorImportTag> = parsed.tags.iter().map(|t| EditorImportTag {
-        id: t.id,
-        name: t.name.clone(),
-        color: t.color.clone(),
-    }).collect();
-
     let preview = EditorImportPreview {
         location_count: parsed.locations.len() as u32,
-        tags,
+        tags: parsed.tags.clone(),
         fields,
         warnings: parsed.warnings.clone(),
     };
@@ -805,7 +796,7 @@ pub fn store_import_preview(path: String) -> Result<EditorImportPreview, String>
 #[serde(rename_all = "camelCase")]
 pub struct EditorImportResult {
     pub location_count: u32,
-    pub tags: Vec<EditorImportTag>,
+    pub tags: Vec<Tag>,
     pub delta: crate::location_store::RenderDelta,
     pub warnings: Vec<String>,
     pub tag_counts: std::collections::HashMap<u32, usize>,
@@ -917,13 +908,10 @@ pub fn store_import_file(
     log::debug!("[import] total={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
 
     let loc_count = parsed.locations.len();
-    let tags: Vec<EditorImportTag> = parsed.tags.into_iter().map(|t| EditorImportTag {
-        id: t.id, name: t.name, color: t.color,
-    }).collect();
 
     Ok(EditorImportResult {
         location_count: loc_count as u32,
-        tags,
+        tags: parsed.tags,
         // TODO: compute targeted delta from imported locations instead of full_reset
         delta: crate::location_store::RenderDelta { full_reset: true, ..Default::default() },
         warnings: parsed.warnings,
@@ -951,13 +939,10 @@ pub fn store_import_paste(
     log::debug!("[paste-import] total={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
 
     let loc_count = parsed.locations.len();
-    let tags: Vec<EditorImportTag> = parsed.tags.into_iter().map(|t| EditorImportTag {
-        id: t.id, name: t.name, color: t.color,
-    }).collect();
 
     Ok(EditorImportResult {
         location_count: loc_count as u32,
-        tags,
+        tags: parsed.tags,
         // TODO: compute targeted delta from imported locations instead of full_reset
         delta: crate::location_store::RenderDelta { full_reset: true, ..Default::default() },
         warnings: parsed.warnings,

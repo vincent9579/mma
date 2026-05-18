@@ -1034,7 +1034,7 @@ export async function deleteTag(tagId: number) {
 }
 
 export async function deleteSelectedTags() {
-	if (!currentMap) return;
+	if (!currentMapId || !currentMap) return;
 	const tagIds = selections.filter((s) => s.props.type === "Tag").map((s) => (s.props as { type: "Tag"; tagId: number }).tagId);
 	if (tagIds.length === 0) return;
 	for (const tagId of tagIds) {

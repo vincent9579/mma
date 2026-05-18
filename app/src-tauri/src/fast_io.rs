@@ -1,6 +1,7 @@
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 use tauri::ipc::InvokeBody;
+use crate::types::Location;
 use tauri::Manager;
 
 pub fn is_test_mode() -> bool {
@@ -158,26 +159,6 @@ pub(crate) fn read_arrow_ipc(path: &std::path::Path) -> Result<arrow::array::Rec
 // Save
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct LocationData {
-    #[serde(default)]
-    pub id: u32,
-    pub lat: f64,
-    pub lng: f64,
-    pub heading: f64,
-    pub pitch: f64,
-    pub zoom: f64,
-    pub pano_id: Option<String>,
-    pub flags: u32,
-    pub tags: Vec<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extra: Option<serde_json::Map<String, serde_json::Value>>,
-    pub created_at: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub modified_at: Option<String>,
-}
-
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut s = String::with_capacity(digest.len() * 2);
@@ -235,77 +216,5 @@ fn write_fixstr(out: &mut Vec<u8>, s: &str) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample_loc() -> LocationData {
-        LocationData {
-            id: 42,
-            lat: 48.8566,
-            lng: 2.3522,
-            heading: 90.0,
-            pitch: 5.0,
-            zoom: 1.5,
-            pano_id: Some("CAoSLEF".into()),
-            flags: 1,
-            tags: vec![1, 2, 3],
-            extra: Some(serde_json::from_str(r#"{"country":"FR"}"#).unwrap()),
-            created_at: "2024-01-15T10:30:00Z".into(),
-            modified_at: Some("2024-01-15T11:00:00Z".into()),
-        }
-    }
-
-    #[test]
-    fn location_data_serde_round_trip() {
-        let loc = sample_loc();
-        let json = serde_json::to_string(&loc).unwrap();
-        let restored: LocationData = serde_json::from_str(&json).unwrap();
-        assert_eq!(loc, restored);
-    }
-
-    #[test]
-    fn location_data_null_optionals() {
-        let loc = LocationData {
-            id: 1, lat: 0.0, lng: 0.0, heading: 0.0, pitch: 0.0, zoom: 0.0,
-            pano_id: None, flags: 0, tags: vec![], extra: None,
-            created_at: String::new(), modified_at: None,
-        };
-        let json = serde_json::to_string(&loc).unwrap();
-        assert!(!json.contains("extra"));
-        assert!(!json.contains("modifiedAt"));
-        let restored: LocationData = serde_json::from_str(&json).unwrap();
-        assert_eq!(loc, restored);
-    }
-
-    #[test]
-    fn location_data_id_defaults_to_zero() {
-        let json = r#"{"lat":0,"lng":0,"heading":0,"pitch":0,"zoom":0,"panoId":null,"flags":0,"tags":[],"createdAt":""}"#;
-        let loc: LocationData = serde_json::from_str(json).unwrap();
-        assert_eq!(loc.id, 0);
-    }
-
-    #[test]
-    fn sha256_hex_deterministic() {
-        let a = sha256_hex(b"hello");
-        let b = sha256_hex(b"hello");
-        assert_eq!(a, b);
-    }
-
-    #[test]
-    fn sha256_hex_length() {
-        let h = sha256_hex(b"test");
-        assert_eq!(h.len(), 64);
-    }
-
-    #[test]
-    fn sha256_hex_known_value() {
-        // sha256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-        let h = sha256_hex(b"");
-        assert_eq!(h, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-    }
-
-    #[test]
-    fn sha256_hex_differs_for_different_input() {
-        assert_ne!(sha256_hex(b"hello"), sha256_hex(b"world"));
-    }
-}
+#[path = "fast_io.test.rs"]
+mod tests;

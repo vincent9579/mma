@@ -8,6 +8,7 @@ mod selections;
 mod arrow_bridge;
 mod export;
 mod geocoder;
+mod types;
 mod util;
 
 #[tauri::command]
