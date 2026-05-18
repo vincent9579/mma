@@ -44,8 +44,8 @@ const mmaApi = {
 	setActiveLocation: (id: number | null) => store.setActiveLocation(id),
 
 	// Tags
-	addTag: (tag: Tag) => store.addTag(tag),
-	updateTag: (tagId: number, patch: Partial<Tag>) => store.updateTag(tagId, patch),
+	addTag: (tag: Tag) => store.addTags([tag]),
+	updateTag: (tagId: number, patch: Partial<Tag>) => store.updateTags([{ id: tagId, patch }]),
 
 	// Selections
 	getSelections: () => store.getSelections(),

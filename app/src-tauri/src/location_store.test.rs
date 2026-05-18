@@ -372,8 +372,28 @@ fn samey_tag_only_change_skips_render() {
 }
 
 // -----------------------------------------------------------------------
-// finish_mutation
+// store_status / finish_mutation
 // -----------------------------------------------------------------------
+
+#[test]
+fn store_status_reflects_undo_redo() {
+    let l = loc(1, 0.0, 0.0);
+    let mut store = setup_store_with(&[l]);
+
+    let s = store.store_status();
+    assert!(!s.can_undo);
+    assert!(!s.can_redo);
+
+    store.push_undo(EditEntry { created: vec![], removed: vec![] });
+    let s = store.store_status();
+    assert!(s.can_undo);
+    assert!(!s.can_redo);
+
+    store.redo_stack.push(EditEntry { created: vec![], removed: vec![] });
+    let s = store.store_status();
+    assert!(s.can_undo);
+    assert!(s.can_redo);
+}
 
 #[test]
 fn finish_mutation_reports_correct_state() {

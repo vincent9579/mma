@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { createLocation, type ImportResult } from "@/types";
+import { createLocation, type ImportResult, type Tag } from "@/types";
 import {
 	useCurrentMap,
 	useWorkArea,
@@ -8,10 +8,10 @@ import {
 	addLocations,
 	setActiveLocation,
 	getActiveLocation,
-	getCurrentMap,
-	addTag,
+	addTags,
 	addLocationCount,
 	setTagCounts,
+	setUndoRedoState,
 	refreshAfterMutation,
 	scheduleSave,
 	emitRenderDelta,
@@ -48,9 +48,10 @@ function usePasteHandler() {
 				if (parsed) {
 					let tagIds: number[] = [];
 					if (parsed.tags.length > 0) {
-						const resolved: { id: number }[] = await invoke("store_resolve_tag_names", {
+						const resolved = await invoke<Tag[]>("store_resolve_tag_names", {
 							names: parsed.tags,
 						});
+						addTags(resolved);
 						tagIds = resolved.map((t) => t.id);
 					}
 					const loc = createLocation({
@@ -71,15 +72,10 @@ function usePasteHandler() {
 			try {
 				const r = await invoke<ImportResult>("store_import_paste", { text });
 				if (r.locationCount > 0) {
-					const map = getCurrentMap();
-					if (map) {
-						for (const t of r.tags) {
-							if (!map.meta.tags[t.id])
-								await addTag({ id: t.id, name: t.name, color: t.color, visible: true });
-						}
-					}
+					addTags(r.tags.map((t) => ({ id: t.id, name: t.name, color: t.color, visible: true })));
 					addLocationCount(r.locationCount);
 					setTagCounts(r.tagCounts);
+					setUndoRedoState(r.canUndo, r.canRedo);
 					emitRenderDelta(r.delta);
 					refreshAfterMutation();
 					scheduleSave();

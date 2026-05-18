@@ -17,7 +17,7 @@ import {
 	setPolygonName,
 	setSelectionColor,
 	bulkAddTag,
-	addTag,
+	addTags,
 	beginReview,
 	selectDuplicates,
 	selectFilter,
@@ -28,6 +28,7 @@ import {
 	removeChildFromSelection,
 } from "@/store/useMapStore";
 import { invoke } from "@tauri-apps/api/core";
+import type { Tag } from "@/types";
 import { RgbColorPicker } from "react-colorful";
 import type { Selection, PolygonGeometry, FilterOp } from "@/store/selections";
 import { selectionDisplayName } from "@/store/selections";
@@ -694,11 +695,8 @@ export function MapOverview() {
 		e.preventDefault();
 		const name = bulkTagInput.trim();
 		if (!name || selected.size === 0) return;
-		const [resolved]: { id: number; name: string; color: string; created: boolean }[] =
-			await invoke("store_resolve_tag_names", { names: [name] });
-		if (resolved.created) {
-			addTag({ id: resolved.id, name: resolved.name, color: resolved.color, visible: true });
-		}
+		const [resolved] = await invoke<Tag[]>("store_resolve_tag_names", { names: [name] });
+		addTags([resolved]);
 		bulkAddTag(resolved.id);
 		setBulkTagInput("");
 	};

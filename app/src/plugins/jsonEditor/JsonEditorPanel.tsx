@@ -8,13 +8,8 @@ function tagIdsToNames(tagIds: number[], tags: Record<string, Tag>): string[] {
 
 async function resolveTagNames(names: string[]): Promise<number[]> {
 	if (names.length === 0) return [];
-	const resolved: { id: number; name: string; color: string; created: boolean }[] = await invoke(
-		"store_resolve_tag_names",
-		{ names },
-	);
-	for (const t of resolved) {
-		if (t.created) MMA.addTag({ id: t.id, name: t.name, color: t.color, visible: true });
-	}
+	const resolved = await invoke<Tag[]>("store_resolve_tag_names", { names });
+	for (const t of resolved) MMA.addTag(t);
 	return resolved.map((t) => t.id);
 }
 

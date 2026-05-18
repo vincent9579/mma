@@ -510,6 +510,10 @@ export function setTagCounts(counts: Record<number, number>) {
 	tagCounts = counts;
 }
 
+export function setUndoRedoState(canUndo: boolean, canRedo: boolean) {
+	undoRedoState = { canUndo, canRedo };
+}
+
 interface StoreStatus {
 	version: number;
 	locationCount: number;
@@ -992,43 +996,40 @@ function reconcileTags() {
 	}
 }
 
-export async function addTag(tag: Tag) {
-	if (!currentMapId || !currentMap) return;
-	currentMap = {
-		...currentMap,
-		meta: { ...currentMap.meta, tags: { ...currentMap.meta.tags, [tag.id]: tag } },
-	};
-	mapVersion++;
-	notify();
-	persistTags();
-}
-
-export async function updateTag(tagId: number, patch: Partial<Tag>) {
-	if (!currentMapId || !currentMap) return;
-	const existing = currentMap.meta.tags[tagId];
-	if (existing) {
-		currentMap = {
-			...currentMap,
-			meta: {
-				...currentMap.meta,
-				tags: { ...currentMap.meta.tags, [tagId]: { ...existing, ...patch } },
-			},
-		};
+export function addTags(tags: Tag[]) {
+	if (!currentMapId || !currentMap || tags.length === 0) return;
+	const newTags = { ...currentMap.meta.tags };
+	for (const tag of tags) {
+		if (!newTags[tag.id]) newTags[tag.id] = tag;
 	}
+	currentMap = { ...currentMap, meta: { ...currentMap.meta, tags: newTags } };
 	mapVersion++;
 	notify();
 	persistTags();
 }
 
-export async function deleteTag(tagId: number) {
-	if (!currentMapId || !currentMap) return;
-	const existing = currentMap.meta.tags[tagId];
-	if (!existing) return;
-	currentMap = {
-		...currentMap,
-		meta: { ...currentMap.meta, tags: { ...currentMap.meta.tags, [tagId]: { ...existing, visible: false } } },
-	};
-	removeSelection(`tag:${tagId}`);
+export function updateTags(patches: { id: number; patch: Partial<Tag> }[]) {
+	if (!currentMapId || !currentMap || patches.length === 0) return;
+	const newTags = { ...currentMap.meta.tags };
+	for (const { id, patch } of patches) {
+		const existing = newTags[id];
+		if (existing) newTags[id] = { ...existing, ...patch };
+	}
+	currentMap = { ...currentMap, meta: { ...currentMap.meta, tags: newTags } };
+	mapVersion++;
+	notify();
+	persistTags();
+}
+
+export function deleteTags(tagIds: number[]) {
+	if (!currentMapId || !currentMap || tagIds.length === 0) return;
+	const newTags = { ...currentMap.meta.tags };
+	for (const tagId of tagIds) {
+		const existing = newTags[tagId];
+		if (existing) newTags[tagId] = { ...existing, visible: false };
+		removeSelection(`tag:${tagId}`);
+	}
+	currentMap = { ...currentMap, meta: { ...currentMap.meta, tags: newTags } };
 	persistTags();
 	refreshAfterMutation();
 }
@@ -1112,13 +1113,13 @@ export async function renameTagInSelection(tagId: number, newName: string) {
 	);
 	const newTagId = existingTag?.id ?? (await invoke<number>("store_alloc_tag_id"));
 	if (!existingTag) {
-		await addTag({
+		addTags([{
 			id: newTagId,
 			name: newName,
 			color: oldTag.color,
 			visible: true,
 			order: oldTag.order,
-		});
+		}]);
 	}
 
 	const locs: Location[] = await invoke("store_get_locations_by_ids", {

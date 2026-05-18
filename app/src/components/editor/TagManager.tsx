@@ -7,8 +7,8 @@ import {
 	useSelectedTagIds,
 	useTagCounts,
 	toggleTagSelection,
-	updateTag,
-	deleteTag,
+	updateTags,
+	deleteTags,
 	reorderTags,
 	removeTagFromAll,
 	removeTagFromSelection,
@@ -394,12 +394,12 @@ function EditTagDialog({
 	const hexValue = hslToHex(hsl.h, hsl.s, hsl.l);
 
 	const handleSave = () => {
-		updateTag(tag.id, { name: name.trim() || tag.name, color: hexValue });
+		updateTags([{ id: tag.id, patch: { name: name.trim() || tag.name, color: hexValue } }]);
 		onClose();
 	};
 
 	const handleDelete = () => {
-		deleteTag(tag.id);
+		deleteTags([tag.id]);
 		onClose();
 	};
 

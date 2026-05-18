@@ -121,6 +121,8 @@ export interface ImportResult {
 	delta: import("@/lib/render/CellManager").CellDelta;
 	warnings: string[];
 	tagCounts: Record<number, number>;
+	canUndo: boolean;
+	canRedo: boolean;
 }
 
 export type SortMode = "name" | "created" | "opened" | "amount";

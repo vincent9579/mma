@@ -492,7 +492,10 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
         let order = meta.and_then(|m| m.order);
         Tag { id, name, color, visible: true, order }
     }).collect();
-    tags.sort_by_key(|t| t.order.unwrap_or(u32::MAX));
+    tags.sort_by(|a, b| {
+        a.order.unwrap_or(u32::MAX).cmp(&b.order.unwrap_or(u32::MAX))
+            .then_with(|| a.name.cmp(&b.name))
+    });
 
     log::debug!("[parse] scan={:.0}ms boundaries={:.0}ms parallel_parse={:.0}ms total={:.0}ms objs={}",
         t_scan.as_millis(), t_boundaries.as_millis(), t_parse.as_millis(),
@@ -800,6 +803,8 @@ pub struct EditorImportResult {
     pub delta: crate::location_store::RenderDelta,
     pub warnings: Vec<String>,
     pub tag_counts: std::collections::HashMap<u32, usize>,
+    pub can_undo: bool,
+    pub can_redo: bool,
 }
 
 fn add_parsed_to_store(
@@ -825,7 +830,9 @@ fn add_parsed_to_store(
             let cell = &gh[..1];
             store.cell_add_render(cell, loc.id);
             store.overlay_add(loc.clone());
+            for &tag in &loc.tags { *store.tag_counts.entry(tag).or_default() += 1; }
         }
+        store.alive_count += parsed.locations.len();
         store.push_undo(crate::location_store::EditEntry {
             created: parsed.locations.clone(),
             removed: Vec::new(),
@@ -916,6 +923,8 @@ pub fn store_import_file(
         delta: crate::location_store::RenderDelta { full_reset: true, ..Default::default() },
         warnings: parsed.warnings,
         tag_counts: store.tag_counts.clone(),
+        can_undo: !store.undo_stack.is_empty(),
+        can_redo: !store.redo_stack.is_empty(),
     })
 }
 
@@ -947,5 +956,11 @@ pub fn store_import_paste(
         delta: crate::location_store::RenderDelta { full_reset: true, ..Default::default() },
         warnings: parsed.warnings,
         tag_counts: store.tag_counts.clone(),
+        can_undo: !store.undo_stack.is_empty(),
+        can_redo: !store.redo_stack.is_empty(),
     })
 }
+
+#[cfg(test)]
+#[path = "import.test.rs"]
+mod tests;

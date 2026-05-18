@@ -22,7 +22,7 @@ import {
 	removeLocations,
 	duplicateLocation,
 	addLocations,
-	addTag,
+	addTags,
 	setActiveLocation,
 	cancelReview,
 	reviewNext,
@@ -462,17 +462,8 @@ function FullscreenTagBar({
 		e.preventDefault();
 		const name = input.trim();
 		if (!name) return;
-		const [resolved]: { id: number; name: string; color: string; created: boolean }[] =
-			await invoke("store_resolve_tag_names", { names: [name] });
-		if (resolved.created) {
-			const tag: Tag = {
-				id: resolved.id,
-				name: resolved.name,
-				color: resolved.color,
-				visible: true,
-			};
-			addTag(tag);
-		}
+		const [resolved] = await invoke<Tag[]>("store_resolve_tag_names", { names: [name] });
+		addTags([resolved]);
 		if (!pendingTags.includes(resolved.id)) {
 			onChangeTags([...pendingTags, resolved.id]);
 		}
@@ -1258,17 +1249,8 @@ export function LocationPreview() {
 		e.preventDefault();
 		const name = tagInput.trim();
 		if (!name) return;
-		const [resolved]: { id: number; name: string; color: string; created: boolean }[] =
-			await invoke("store_resolve_tag_names", { names: [name] });
-		if (resolved.created) {
-			const tag: Tag = {
-				id: resolved.id,
-				name: resolved.name,
-				color: resolved.color,
-				visible: true,
-			};
-			addTag(tag);
-		}
+		const [resolved] = await invoke<Tag[]>("store_resolve_tag_names", { names: [name] });
+		addTags([resolved]);
 		if (!pendingTags.includes(resolved.id)) {
 			setPendingTags([...pendingTags, resolved.id]);
 		}

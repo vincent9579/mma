@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import {
-	addTag,
+	addTags,
 	emitRenderDelta,
 	refreshAfterMutation,
 	scheduleSave,
-	getCurrentMap,
 	addLocationCount,
 	setTagCounts,
+	setUndoRedoState,
 } from "@/store/useMapStore";
 import { fmt } from "@/lib/util/format";
 import { invoke } from "@tauri-apps/api/core";
@@ -44,6 +44,8 @@ interface ImportResult {
 	delta: CellDelta;
 	warnings: string[];
 	tagCounts: Record<number, number>;
+	canUndo: boolean;
+	canRedo: boolean;
 }
 
 const FIELD_PREFS_KEY = "import-field-prefs";
@@ -115,17 +117,10 @@ export function ImportDialog({ onClose }: Props) {
 			});
 			span.end(`${r.locationCount} locs, ${r.tags.length} tags`);
 
-			const map = getCurrentMap();
-			if (map) {
-				for (const t of r.tags) {
-					if (!map.meta.tags[t.id]) {
-						await addTag({ id: t.id, name: t.name, color: t.color, visible: true });
-					}
-				}
-			}
-
+			addTags(r.tags.map((t) => ({ id: t.id, name: t.name, color: t.color, visible: true })));
 			addLocationCount(r.locationCount);
 			setTagCounts(r.tagCounts);
+			setUndoRedoState(r.canUndo, r.canRedo);
 			emitRenderDelta(r.delta);
 			refreshAfterMutation();
 			scheduleSave();
