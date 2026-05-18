@@ -38,7 +38,7 @@ import { fmt, relativeTime, shortDateFmt } from "@/lib/util/format";
 import { useSetting, type MapListField } from "@/store/settings.add";
 import { GuideDialog } from "@/components/dialogs/Guide.add";
 import { debugSpan } from "@/lib/util/debug";
-import { toast } from "@/components/primitives/Toast.add";
+import { toast } from "@/lib/util/toast.add";
 
 // --- Drag types ---
 

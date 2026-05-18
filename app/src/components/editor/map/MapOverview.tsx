@@ -13,7 +13,6 @@ import {
 	selectUnpanned,
 	selectPanoIds,
 	selectNotPanoIds,
-	selectPolygon,
 	setPolygonName,
 	setSelectionColor,
 	bulkAddTag,
@@ -30,7 +29,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import type { Tag } from "@/types";
 import { RgbColorPicker } from "react-colorful";
-import type { Selection, PolygonGeometry, FilterOp } from "@/store/selections";
+import type { Selection, FilterOp } from "@/store/selections";
 import { selectionDisplayName } from "@/store/selections";
 import { TagManager } from "@/components/editor/TagManager";
 import { ToolBlock } from "@/components/primitives/ToolBlock";
@@ -41,43 +40,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { fmt } from "@/lib/util/format";
 import { rgbCss } from "@/lib/util/color";
 import { getGoogleMap as getGoogleMapInstance } from "@/lib/map/mapState";
-
-export async function loadGeoJSON() {
-	const input = document.createElement("input");
-	input.type = "file";
-	input.accept = ".json,.geojson";
-	input.multiple = true;
-	input.onchange = async () => {
-		if (!input.files) return;
-		for (const file of input.files) {
-			try {
-				const text = await file.text();
-				const data = JSON.parse(text);
-				const features = data.type === "FeatureCollection" ? data.features : [data];
-				for (const f of features) {
-					if (f.geometry?.type === "Polygon") {
-						const poly: PolygonGeometry = {
-							coordinates: f.geometry.coordinates,
-							properties: f.properties ?? undefined,
-						};
-						selectPolygon(poly);
-					} else if (f.geometry?.type === "MultiPolygon") {
-						for (const coords of f.geometry.coordinates) {
-							const poly: PolygonGeometry = {
-								coordinates: coords,
-								properties: f.properties ?? undefined,
-							};
-							selectPolygon(poly);
-						}
-					}
-				}
-			} catch {
-				/* ignore malformed files */
-			}
-		}
-	};
-	input.click();
-}
+import { loadGeoJSON } from "@/lib/util/loadGeoJSON.add";
 
 async function fitSelectionBounds(map: google.maps.Map, selection: Selection) {
 	if (selection.props.type === "Polygon") {

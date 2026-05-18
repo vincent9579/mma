@@ -11,6 +11,7 @@ import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialo
 import * as store from "@/store/useMapStore";
 import { getGoogleMap } from "@/lib/map/mapState";
 import { subscribe, type EditorEvent } from "@/lib/events";
+import { log } from "@/lib/util/log";
 
 type Handler = (...args: unknown[]) => void;
 
@@ -91,7 +92,7 @@ async function loadUserPlugins() {
 			setPendingManifest(null);
 		} catch (e) {
 			setPendingManifest(null);
-			console.error(`[plugin] failed to load user plugin "${m.id}":`, e);
+			log.error(`[plugin] failed to load user plugin "${m.id}":`, e);
 		}
 	}
 }

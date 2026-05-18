@@ -36,7 +36,7 @@ import {
 	deleteSelectedTags,
 	getSelections,
 } from "./useMapStore";
-import { loadGeoJSON } from "@/components/editor/map/MapOverview";
+import { loadGeoJSON } from "@/lib/util/loadGeoJSON.add";
 
 registerCommand({
 	id: "save",
