@@ -41,6 +41,43 @@ import { fmt } from "@/lib/util/format";
 import { rgbCss } from "@/lib/util/color";
 import { getGoogleMap as getGoogleMapInstance } from "@/lib/map/mapState";
 
+export async function loadGeoJSON() {
+	const input = document.createElement("input");
+	input.type = "file";
+	input.accept = ".json,.geojson";
+	input.multiple = true;
+	input.onchange = async () => {
+		if (!input.files) return;
+		for (const file of input.files) {
+			try {
+				const text = await file.text();
+				const data = JSON.parse(text);
+				const features = data.type === "FeatureCollection" ? data.features : [data];
+				for (const f of features) {
+					if (f.geometry?.type === "Polygon") {
+						const poly: PolygonGeometry = {
+							coordinates: f.geometry.coordinates,
+							properties: f.properties ?? undefined,
+						};
+						selectPolygon(poly);
+					} else if (f.geometry?.type === "MultiPolygon") {
+						for (const coords of f.geometry.coordinates) {
+							const poly: PolygonGeometry = {
+								coordinates: coords,
+								properties: f.properties ?? undefined,
+							};
+							selectPolygon(poly);
+						}
+					}
+				}
+			} catch {
+				/* ignore malformed files */
+			}
+		}
+	};
+	input.click();
+}
+
 async function fitSelectionBounds(map: google.maps.Map, selection: Selection) {
 	if (selection.props.type === "Polygon") {
 		const coords = selection.props.polygon.coordinates.flat();
@@ -673,43 +710,6 @@ export function MapOverview() {
 
 	const hasPolygon = selections.some((s) => s.props.type === "Polygon");
 
-	const handleLoadGeoJSON = async () => {
-		const input = document.createElement("input");
-		input.type = "file";
-		input.accept = ".json,.geojson";
-		input.multiple = true;
-		input.onchange = async () => {
-			if (!input.files) return;
-			for (const file of input.files) {
-				try {
-					const text = await file.text();
-					const data = JSON.parse(text);
-					const features = data.type === "FeatureCollection" ? data.features : [data];
-					for (const f of features) {
-						if (f.geometry?.type === "Polygon") {
-							const poly: PolygonGeometry = {
-								coordinates: f.geometry.coordinates,
-								properties: f.properties ?? undefined,
-							};
-							selectPolygon(poly);
-						} else if (f.geometry?.type === "MultiPolygon") {
-							for (const coords of f.geometry.coordinates) {
-								const poly: PolygonGeometry = {
-									coordinates: coords,
-									properties: f.properties ?? undefined,
-								};
-								selectPolygon(poly);
-							}
-						}
-					}
-				} catch {
-					/* ignore malformed files */
-				}
-			}
-		};
-		input.click();
-	};
-
 	const handleDownloadGeoJSON = () => {
 		const features: unknown[] = [];
 		for (const sel of selections) {
@@ -753,7 +753,7 @@ export function MapOverview() {
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Portal>
 								<DropdownMenu.Content className="context-menu" align="end">
-									<DropdownMenu.Item className="context-menu__item" onSelect={handleLoadGeoJSON}>
+									<DropdownMenu.Item className="context-menu__item" onSelect={loadGeoJSON}>
 										Load polygon selections from GeoJSON
 									</DropdownMenu.Item>
 									<DropdownMenu.Item

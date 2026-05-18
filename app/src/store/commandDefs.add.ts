@@ -24,6 +24,8 @@ import {
 	selectEverything,
 	selectUntagged,
 	selectUnpanned,
+	selectPanoIds,
+	selectNotPanoIds,
 	selectInverse,
 	selectIntersection,
 	selectUnion,
@@ -34,6 +36,7 @@ import {
 	deleteSelectedTags,
 	getSelections,
 } from "./useMapStore";
+import { loadGeoJSON } from "@/components/editor/map/MapOverview";
 
 registerCommand({
 	id: "save",
@@ -79,7 +82,10 @@ registerCommand({
 	label: "Select everything",
 	group: "Selections",
 	defaultBinding: "Mod+a",
-	execute: selectEverything,
+	execute: () => {
+		resetSelections();
+		selectEverything();
+	},
 });
 
 registerCommand({
@@ -100,14 +106,14 @@ registerCommand({
 	id: "select-panoid",
 	label: "Select Pano ID locations",
 	group: "Selections",
-	execute: () => {},
+	execute: selectPanoIds,
 });
 
 registerCommand({
 	id: "select-no-panoid",
 	label: "Select non-Pano ID locations",
 	group: "Selections",
-	execute: () => {},
+	execute: selectNotPanoIds,
 });
 
 registerCommand({
@@ -139,7 +145,7 @@ registerCommand({
 	label: "Load shapes from GeoJSON as selection",
 	icon: mdiCodeJson,
 	group: "Selections",
-	execute: () => {},
+	execute: loadGeoJSON,
 });
 
 registerCommand({
@@ -189,7 +195,7 @@ registerCommand({
 	label: "Download tag counts as CSV",
 	icon: mdiFileDelimitedOutline,
 	group: "Tags",
-	execute: () => {},
+	execute: () => {}, // TODO: implement
 });
 
 registerCommand({

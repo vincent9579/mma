@@ -1,4 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
+import { getCommands } from "@/store/commands.add";
+import { getBinding } from "@/lib/util/hotkeys.add";
 
 const IS_MAC = /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
 
@@ -191,4 +193,30 @@ export function useHotkeyRef<T extends HTMLElement = HTMLButtonElement>(
 		options,
 	);
 	return ref;
+}
+
+export function useCommandHotkeys() {
+	useEffect(() => {
+		function handler(e: KeyboardEvent) {
+			if (e.defaultPrevented) return;
+			if (isEditableElement(e.target)) return;
+
+			for (const cmd of getCommands()) {
+				const binding = getBinding(cmd.id);
+				if (!binding) continue;
+
+				const parsed = parseHotkey(binding);
+				for (const alt of parsed) {
+					if (alt.length === 1 && matchesKey(e, alt[0])) {
+						if (cmd.enabled && !cmd.enabled()) return;
+						e.preventDefault();
+						cmd.execute();
+						return;
+					}
+				}
+			}
+		}
+		document.addEventListener("keydown", handler);
+		return () => document.removeEventListener("keydown", handler);
+	}, []);
 }

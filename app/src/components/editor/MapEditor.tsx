@@ -5,11 +5,6 @@ import {
 	useCurrentMap,
 	useWorkArea,
 	closeMap,
-	undo,
-	redo,
-	selectEverything,
-	resetSelections,
-	commitMap,
 	addLocations,
 	setActiveLocation,
 	getActiveLocation,
@@ -31,7 +26,7 @@ import { LocationPreview } from "@/components/editor/location/LocationPreview";
 import { CommandPalette } from "@/components/editor/CommandPalette";
 import { MapRenameForm } from "@/components/editor/MapRenameForm";
 import { Dialog, DialogTrigger, DialogContent } from "@/components/primitives/Dialog";
-import { useHotkey, isEditableElement } from "@/lib/hooks/useHotkey";
+import { useHotkey, useCommandHotkeys, isEditableElement } from "@/lib/hooks/useHotkey";
 import { useBinding } from "@/lib/util/hotkeys.add";
 import { useLocalStorage } from "@/lib/hooks/useLocalStorage";
 import { useSettings, setSetting, getSettings } from "@/store/settings.add";
@@ -172,14 +167,7 @@ export function MapEditor() {
 
 	const appSettings = useSettings();
 	usePasteHandler();
-	useHotkey(useBinding("undo"), () => undo());
-	useHotkey(useBinding("redo"), () => redo());
-	useHotkey(useBinding("selectAll"), () => {
-		resetSelections();
-		selectEverything();
-	});
-	useHotkey(useBinding("deselectAll"), () => resetSelections());
-	useHotkey(useBinding("save"), () => commitMap());
+	useCommandHotkeys();
 	useHotkey(useBinding("toggleFullscreenMap"), () => {
 		setSetting("fullscreenMap", !getSettings().fullscreenMap);
 	});
