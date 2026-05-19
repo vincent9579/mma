@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
-import { getDb } from "@/lib/storage/db";
+import { cmd } from "@/lib/commands";
 
 type Risk = "safe" | "moderate" | "dangerous" | "unknown";
 
@@ -38,32 +38,16 @@ const RISK_COLORS: Record<Risk, string> = {
 };
 
 async function fetchTableInfo(): Promise<TableInfo[]> {
-	const db = getDb();
-	const rows = await db.select<{ name: string }[]>(
-		"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_sqlx_%' ORDER BY name",
-	);
-	const results: TableInfo[] = [];
-	for (const { name } of rows) {
-		const known = KNOWN_TABLES[name];
-		try {
-			const [{ count }] = await db.select<[{ count: number }]>(
-				`SELECT COUNT(*) as count FROM "${name}"`,
-			);
-			results.push({
-				name,
-				rows: count,
-				description: known?.description ?? "",
-				risk: known?.risk ?? "unknown",
-			});
-		} catch {
-			results.push({
-				name,
-				rows: -1,
-				description: known?.description ?? "",
-				risk: known?.risk ?? "unknown",
-			});
-		}
-	}
+	const rows = await cmd.storeDbTableInfo();
+	const results: TableInfo[] = rows.map((r) => {
+		const known = KNOWN_TABLES[r.name];
+		return {
+			name: r.name,
+			rows: r.rows,
+			description: known?.description ?? "",
+			risk: known?.risk ?? "unknown",
+		};
+	});
 	results.sort((a, b) => RISK_ORDER[a.risk] - RISK_ORDER[b.risk]);
 	return results;
 }
@@ -160,9 +144,9 @@ export function DatabaseManager({
 	async function handleClear(table: TableInfo) {
 		setClearing(null);
 		try {
-			await getDb().execute(`DELETE FROM "${table.name}"`);
+			const deleted = await cmd.storeDbClearTable(table.name);
 			setStatus({
-				msg: `Cleared ${table.name} (${table.rows.toLocaleString()} rows deleted)`,
+				msg: `Cleared ${table.name} (${deleted.toLocaleString()} rows deleted)`,
 				ok: true,
 			});
 			refresh();

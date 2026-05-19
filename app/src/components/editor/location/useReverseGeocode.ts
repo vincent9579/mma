@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { getSettings } from "@/store/settings.add";
 import { log } from "@/lib/util/log";
 
@@ -9,12 +9,7 @@ interface GeoResult {
 }
 
 async function geocodeLocal(lat: number, lng: number): Promise<GeoResult | null> {
-	const result = await invoke<{
-		city: string;
-		admin: string;
-		country: string;
-		country_code: string;
-	} | null>("reverse_geocode", { lat, lng });
+	const result = await cmd.reverseGeocode(lat, lng);
 	if (!result) return null;
 	const parts = [result.city, result.admin].filter(Boolean);
 	return {

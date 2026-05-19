@@ -4,10 +4,9 @@ import { createRoot } from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "@/styles.css";
 import App from "@/App.tsx";
-import { initDb } from "@/lib/storage/db";
 import { initLogging, log } from "@/lib/util/log";
 import { initStore, openMap } from "@/store/useMapStore";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { exposeTestApi } from "@/lib/testApi.add";
 import "@/store/commandDefs.add";
 
@@ -15,7 +14,6 @@ if (import.meta.env.DEV || import.meta.env.VITE_E2E) exposeTestApi();
 
 async function boot() {
 	await initLogging();
-	await initDb();
 	await initStore();
 
 	const hashMatch = location.hash.match(/^#map\/(.+)$/);
@@ -30,7 +28,7 @@ async function boot() {
 	getCurrentWindow().onCloseRequested(async (event) => {
 		event.preventDefault();
 		log.info("Window close requested, closing map...");
-		await invoke("store_close_map").catch((e) => log.error("[close] store_close_map failed:", e));
+		await cmd.storeCloseMap().catch((e) => log.error("[close] store_close_map failed:", e));
 		log.info("Map closed, destroying window");
 		getCurrentWindow().destroy();
 	});

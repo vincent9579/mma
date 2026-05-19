@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getCachedPanoDate, setCachedPanoDate } from "@/lib/storage/storage";
+import { cmd } from "@/lib/commands";
 import { resolveExactTimestamp } from "@/lib/sv/exactDate.add";
 
 export function useExactDate(
@@ -28,7 +28,7 @@ export function useExactDate(
 		setState({ ts: null, loading: true, error: false });
 
 		(async () => {
-			const cached = await getCachedPanoDate(panoId);
+			const cached = await cmd.storeGetPanoDate(panoId);
 			if (cancelled) return;
 			if (cached !== null) {
 				setState({ ts: cached, loading: false, error: false });
@@ -37,7 +37,7 @@ export function useExactDate(
 			try {
 				const ts = await resolveExactTimestamp(lat, lng, yearMonth);
 				if (cancelled) return;
-				await setCachedPanoDate(panoId, ts);
+				await cmd.storeSetPanoDate(panoId, ts);
 				setState({ ts, loading: false, error: false });
 			} catch {
 				if (!cancelled) setState({ ts: null, loading: false, error: true });

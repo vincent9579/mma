@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { HslColorPicker } from "react-colorful";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import {
@@ -306,7 +306,7 @@ function TagContextMenuContent({
 			setSelCount(0);
 			return;
 		}
-		invoke<number[]>("store_resolve_selection", { props: { type: "Tag", tagId } }).then(
+		cmd.storeResolveSelection({ type: "Tag", tagId }).then(
 			(tagLocIds) => {
 				let count = 0;
 				for (const id of tagLocIds) if (selIds.has(id)) count++;

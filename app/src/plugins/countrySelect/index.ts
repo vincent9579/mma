@@ -40,13 +40,13 @@ function findCountry(lat: number, lng: number, features: BorderFeature[]): Borde
 function selectCountry(country: BorderFeature) {
 	const { name, code } = country.properties;
 	if (country.geometry.type === "Polygon") {
-		selectPolygon({ coordinates: country.geometry.coordinates, properties: { name, code } }, false);
+		selectPolygon({ coordinates: country.geometry.coordinates as [number, number][][], properties: { name, code } }, false);
 	} else {
 		const [first, ...rest] = country.geometry.coordinates;
 		selectPolygon(
 			{
-				coordinates: first,
-				extraPolygons: rest.length > 0 ? rest : undefined,
+				coordinates: first as [number, number][][],
+				extraPolygons: rest.length > 0 ? (rest as [number, number][][][]) : null,
 				properties: { name, code },
 			},
 			false,

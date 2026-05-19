@@ -5,7 +5,7 @@ import type { PickingInfo, Layer } from "@deck.gl/core";
 import { ScatterplotLayer, PolygonLayer, PathLayer, LineLayer } from "@deck.gl/layers";
 import SDFMarkerLayer from "@/lib/render/sdf-marker-layer/SDFMarkerLayer";
 import { lookupStreetView, svThumbnailUrl, showToast, svSearchRadius } from "@/lib/sv/lookup.add";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { mmaBufUrl } from "@/lib/util/util";
 import { log } from "@/lib/util/log";
 import { useSetting } from "@/store/settings.add";
@@ -793,26 +793,19 @@ export function MapEmbed() {
 				if (layerId?.startsWith("sel-overlay:")) {
 					const id = cellMgrRef.current.selOverlayIds[info.index];
 					if (id == null) return undefined;
-					const loc: Location | null = await invoke("store_get_location", {
-						id,
-					});
+					const loc: Location | null = await cmd.storeGetLocation(id);
 					return loc ?? undefined;
 				}
 				if (!layerId?.startsWith("cell:")) return undefined;
 				const cellKey = layerId.split(":")[1];
 				const id = cellMgrRef.current.resolvePickFromCell(cellKey, info.index);
 				if (id == null) {
-					const rustId: number | null = await invoke("store_resolve_pick", {
-						cell: cellKey,
-						cellIndex: info.index,
-					});
+					const rustId: number | null = await cmd.storeResolvePick(cellKey, info.index);
 					if (rustId == null) return undefined;
-					const loc: Location | null = await invoke("store_get_location", {
-						id: rustId,
-					});
+					const loc: Location | null = await cmd.storeGetLocation(rustId);
 					return loc ?? undefined;
 				}
-				const loc: Location | null = await invoke("store_get_location", { id });
+				const loc: Location | null = await cmd.storeGetLocation(id);
 				return loc ?? undefined;
 			};
 
@@ -1126,7 +1119,7 @@ export function MapEmbed() {
 				});
 
 				if (map.meta.locationCount > 0) {
-					invoke("store_bounds").then((bounds: unknown) => {
+					cmd.storeBounds().then((bounds) => {
 						if (cancelled || !gMapRef.current || !bounds) return;
 						const [west, south, east, north] = bounds as [number, number, number, number];
 						const gm = gMapRef.current!;
@@ -1189,17 +1182,14 @@ export function MapEmbed() {
 		let cancelled = false;
 		const fetchRender = async () => {
 			const t0 = performance.now();
-			const reqPayload = {
-				req: {
+			try {
+				const filePath = await cmd.storeFillRenderFile({
 					west: -180,
 					south: -90,
 					east: 180,
 					north: 90,
 					markerStyle,
-				},
-			};
-			try {
-				const filePath: string = await invoke("store_fill_render_file", reqPayload);
+				});
 				const resp = await fetch(mmaBufUrl(filePath));
 				const buf = await resp.arrayBuffer();
 				const t1 = performance.now();
@@ -1623,7 +1613,7 @@ export function MapEmbed() {
 							onDraw={(rings) => {
 								if (rings.length === 0) return;
 								if (tryInterceptDraw(rings)) return;
-								selectPolygon({ coordinates: rings });
+								selectPolygon({ coordinates: rings as [number, number][][] });
 							}}
 							freehandPathRef={freehandPathRef}
 							requestOverlayUpdate={updateOverlay}

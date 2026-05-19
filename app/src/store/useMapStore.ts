@@ -1,17 +1,16 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { MapData, MapMeta, Location, Tag, WorkArea, ExtraFieldDef } from "@/types";
 import { emit as tauriEmit, listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
-import * as storage from "@/lib/storage/storage";
-import * as vcs from "@/lib/storage/vcs";
+import { cmd } from "@/lib/commands";
+import type { MutationResult_Serialize as MutationResult } from "@/bindings.gen";
 import { emit as emitEvent } from "@/lib/events";
 import { log } from "@/lib/util/log";
 import { ENRICHMENT_FIELD_DEFS } from "@/lib/data/fieldDefs.add";
 import { debugSpan } from "@/lib/util/debug";
 import { mmaBufUrl } from "@/lib/util/util";
-import type { CellDelta } from "@/lib/render/CellManager";
+import type { RenderDelta } from "@/lib/render/CellManager";
 
-type DeltaHandler = (delta: CellDelta) => void;
+type DeltaHandler = (delta: RenderDelta) => void;
 let deltaHandlers: DeltaHandler[] = [];
 export function onRenderDelta(fn: DeltaHandler) {
 	deltaHandlers.push(fn);
@@ -19,7 +18,7 @@ export function onRenderDelta(fn: DeltaHandler) {
 		deltaHandlers = deltaHandlers.filter((h) => h !== fn);
 	};
 }
-export function emitRenderDelta(delta: CellDelta) {
+export function emitRenderDelta(delta: RenderDelta) {
 	for (const h of deltaHandlers) h(delta);
 }
 
@@ -91,7 +90,7 @@ export function useMapList() {
 }
 
 async function reloadMapList() {
-	cachedMapList = await storage.listMaps();
+	cachedMapList = await cmd.storeListMaps();
 	mapListVersion++;
 	notify();
 }
@@ -159,7 +158,7 @@ export function useTagCounts(): Record<number, number> {
 }
 
 async function computeCommitDiff(): Promise<{ added: number; removed: number; modified: number }> {
-	const [added, removed, modified]: [number, number, number] = await invoke("store_commit_diff");
+	const [added, removed, modified] = await cmd.storeCommitDiff();
 	return { added, removed, modified };
 }
 
@@ -249,8 +248,7 @@ let inflightSave: Promise<void> | null = null;
 const AUTOSAVE_DELAY_MS = 2000;
 
 export async function getDirtyCount(): Promise<number> {
-	const result: { locationCount: number; version: number; dirtyCount: number } =
-		await invoke("store_get_summary");
+	const result = await cmd.storeGetSummary();
 	return result.dirtyCount;
 }
 
@@ -266,8 +264,8 @@ async function doSave(): Promise<void> {
 	if (!currentMapId || !currentMap) return;
 	const span = debugSpan("doSave");
 	const t0 = performance.now();
-	inflightSave = storage
-		.saveDirty()
+	inflightSave = cmd
+		.storeSaveDirty()
 		.then(() => {
 			log.debug(`[save] saveDirty=${(performance.now() - t0).toFixed(0)}ms`);
 			invalidateMapList();
@@ -292,7 +290,7 @@ export async function flushSave(): Promise<void> {
 
 // --- Init (called once at startup) ---
 export async function initStore() {
-	cachedMapList = await storage.listMaps();
+	cachedMapList = await cmd.storeListMaps();
 	notify();
 	listen("map-list-changed", () => reloadMapList());
 }
@@ -307,14 +305,14 @@ export async function openMap(id: string, pushHistory = true) {
 	const totalSpan = debugSpan("openMap:total");
 	currentMapId = id;
 	const t0 = performance.now();
-	currentMap = await storage.getMap(id);
+	currentMap = await cmd.storeGetMap(id);
 	log.debug(`[openMap] getMap=${(performance.now() - t0).toFixed(0)}ms`);
 	extraFieldIndex = new Map();
 
 	if (currentMap) {
 		const t1 = performance.now();
 		try {
-			const openResult = await invoke<StoreStatus>("store_open_map", { mapId: id });
+			const openResult = await cmd.storeOpenMap(id);
 			log.debug(`[openMap] store_open_map=${(performance.now() - t1).toFixed(0)}ms`);
 			tagCounts = openResult.tagCounts;
 			undoRedoState = { canUndo: openResult.canUndo, canRedo: openResult.canRedo };
@@ -325,7 +323,7 @@ export async function openMap(id: string, pushHistory = true) {
 			notify();
 			return;
 		}
-		storage.touchMapOpened(id);
+		cmd.storeTouchMapOpened(id);
 	}
 
 	selections = [];
@@ -353,7 +351,7 @@ export async function closeMap(pushHistory = true) {
 	review = null;
 	workArea = "overview";
 
-	await invoke("store_close_map");
+	await cmd.storeCloseMap();
 	emitRenderDelta({ added: [], updated: [], removed: [], colorPatches: [], fullReset: true });
 	undoRedoState = { canUndo: false, canRedo: false };
 	tagCounts = {};
@@ -375,17 +373,17 @@ export function getActiveLocation(): Location | null {
 }
 
 export async function fetchAllLocations(): Promise<Location[]> {
-	const path: string = await invoke("store_get_all_locations");
+	const path = await cmd.storeGetAllLocations();
 	const res = await fetch(mmaBufUrl(path));
 	return res.json();
 }
 
 export async function fetchLocation(id: number): Promise<Location | null> {
-	return invoke("store_get_location", { id });
+	return cmd.storeGetLocation(id) as Promise<Location | null>;
 }
 
 export async function fetchLocationsByIds(ids: number[]): Promise<Location[]> {
-	return invoke("store_get_locations_by_ids", { ids });
+	return cmd.storeGetLocationsByIds(ids) as Promise<Location[]>;
 }
 
 export function getSelections() {
@@ -397,19 +395,19 @@ export function getSelectedLocationIds() {
 }
 
 export async function createMap(name: string, folder: string | null = null) {
-	await storage.createMap(name, folder);
+	await cmd.storeCreateMap(name, folder);
 	await invalidateMapList();
 }
 
 export async function deleteMap(id: string) {
 	// TODO: if this map is open in another window, that window won't know it was deleted
-	await storage.deleteMap(id);
+	await cmd.storeDeleteMap(id);
 	if (currentMapId === id) await closeMap();
 	await invalidateMapList();
 }
 
 export async function renameFolder(from: string, to: string) {
-	await storage.renameFolder(from, to);
+	await cmd.storeRenameFolder(from, to);
 	await invalidateMapList();
 }
 
@@ -420,41 +418,41 @@ export async function moveMapToFolder(mapId: string, folder: string | null) {
 		mapListVersion++;
 		notify();
 	}
-	await storage.moveMapToFolder(mapId, folder);
+	await cmd.storeMoveMapToFolder(mapId, folder);
 	tauriEmit("map-list-changed");
 }
 
 export async function deleteFolder(name: string) {
-	await storage.deleteFolder(name);
+	await cmd.storeDeleteFolder(name);
 	await invalidateMapList();
 }
 
 export async function getAllMaps(): Promise<MapData[]> {
-	const metas = await storage.listMaps();
+	const metas = await cmd.storeListMaps();
 	const maps: MapData[] = [];
 	for (const meta of metas) {
-		const map = await storage.getMap(meta.id);
+		const map = await cmd.storeGetMap(meta.id);
 		if (map) maps.push(map);
 	}
 	return maps;
 }
 
 export async function renameMap(id: string, name: string) {
-	await storage.updateMapMeta(id, { name });
+	await cmd.storeUpdateMapMeta(id, { name });
 	if (currentMap && currentMapId === id) currentMap.meta.name = name;
 	refreshAfterMutation();
 	await invalidateMapList();
 }
 
 export async function updateMapLabels(id: string, labels: string[]) {
-	await storage.updateMapLabels(id, labels);
+	await cmd.storeUpdateMapLabels(id, labels);
 	if (currentMap && currentMapId === id) currentMap.meta.labels = labels;
 	await invalidateMapList();
 }
 
 export async function updateMapMeta(patch: Partial<MapMeta>) {
 	if (!currentMapId || !currentMap) return;
-	await storage.updateMapMeta(currentMapId, patch);
+	await cmd.storeUpdateMapMeta(currentMapId, patch);
 	if (patch.name !== undefined) currentMap.meta.name = patch.name;
 	if (patch.description !== undefined) currentMap.meta.description = patch.description;
 	if (patch.folder !== undefined) currentMap.meta.folder = patch.folder;
@@ -472,7 +470,7 @@ export async function updateMapExtraFields(fields: Record<string, ExtraFieldDef>
 	currentMap = { ...currentMap, meta: { ...currentMap.meta, extra: merged } };
 	mapVersion++;
 	notify();
-	await storage.updateMapMeta(currentMapId, { extra: merged } as Partial<MapMeta>);
+	await cmd.storeUpdateMapMeta(currentMapId, { extra: merged } as Partial<MapMeta>);
 }
 
 export async function setMapExtraFields(fields: Record<string, ExtraFieldDef>) {
@@ -482,7 +480,7 @@ export async function setMapExtraFields(fields: Record<string, ExtraFieldDef>) {
 	currentMap = { ...currentMap, meta: { ...currentMap.meta, extra: replaced } };
 	mapVersion++;
 	notify();
-	await storage.updateMapMeta(currentMapId, { extra: replaced } as Partial<MapMeta>);
+	await cmd.storeUpdateMapMeta(currentMapId, { extra: replaced } as Partial<MapMeta>);
 }
 
 function autoRegisterFieldDefs(extraKeys: string[]) {
@@ -515,18 +513,6 @@ export function setUndoRedoState(canUndo: boolean, canRedo: boolean) {
 	undoRedoState = { canUndo, canRedo };
 }
 
-interface StoreStatus {
-	version: number;
-	locationCount: number;
-	canUndo: boolean;
-	canRedo: boolean;
-	tagCounts: Record<number, number>;
-}
-
-interface MutationResult extends StoreStatus {
-	delta: CellDelta;
-}
-
 function syncMutationResult(r: MutationResult) {
 	if (!currentMap) return;
 	const needsNotify =
@@ -545,8 +531,8 @@ function syncMutationResult(r: MutationResult) {
 	}
 }
 
-async function mutate(cmd: string, args: Record<string, unknown>): Promise<MutationResult> {
-	const r: MutationResult = await invoke(cmd, args);
+async function mutate(p: Promise<MutationResult>): Promise<MutationResult> {
+	const r = await p;
 	emitRenderDelta(r.delta);
 	syncMutationResult(r);
 	refreshAfterMutation();
@@ -562,9 +548,7 @@ export async function addLocations(locs: Location[], opts?: { hideInDelta?: bool
 	const t0 = performance.now();
 	let r: MutationResult;
 	try {
-		r = await invoke<MutationResult>("store_add_locations", {
-			locations: locs,
-		});
+		r = await cmd.storeAddLocations(locs);
 	} catch (e) {
 		log.error("[add] store_add_locations failed:", e);
 		return;
@@ -590,7 +574,7 @@ export async function addLocations(locs: Location[], opts?: { hideInDelta?: bool
 
 export async function duplicateLocation(locId: number): Promise<number | null> {
 	if (!currentMap) return null;
-	const loc: Location | null = await invoke("store_get_location", { id: locId });
+	const loc = await cmd.storeGetLocation(locId) as Location | null;
 	if (!loc) return null;
 	const now = new Date().toISOString();
 	const clone: Location = { ...loc, id: 0, createdAt: now, modifiedAt: now };
@@ -601,7 +585,7 @@ export async function duplicateLocation(locId: number): Promise<number | null> {
 export function removeLocations(ids: Set<number>) {
 	if (!currentMap || ids.size === 0) return;
 	const t0 = performance.now();
-	invoke<MutationResult>("store_remove_locations", { ids: [...ids] })
+	cmd.storeRemoveLocations([...ids])
 		.then((r) => {
 			log.debug(
 				`[delete] ipc_roundtrip=${(performance.now() - t0).toFixed(0)}ms ids=${ids.size} delta: +${r.delta.added.length} -${r.delta.removed.length}`,
@@ -639,11 +623,11 @@ function buildUpdates(
 export function updateLocation(locId: number, patch: Partial<Location>) {
 	if (!currentMap) return;
 	const updates = buildUpdates([{ id: locId, patch }]);
-	mutate("store_update_locations", { updates })
+	mutate(cmd.storeUpdateLocations(updates, true))
 		.then(() => {
 			if (activeLocationId === locId) {
-				invoke("store_get_location", { id: locId })
-					.then((loc: unknown) => {
+				cmd.storeGetLocation(locId)
+					.then((loc) => {
 						cachedActiveLocation = (loc as Location) ?? null;
 						mapVersion++;
 						notify();
@@ -658,7 +642,7 @@ export function updateLocation(locId: number, patch: Partial<Location>) {
 
 export function batchUpdateLocations(updates: { id: number; patch: Partial<Location> }[]) {
 	if (!currentMap || updates.length === 0) return Promise.resolve();
-	const p = mutate("store_update_locations", { updates: buildUpdates(updates) }).catch((e) =>
+	const p = mutate(cmd.storeUpdateLocations(buildUpdates(updates), true)).catch((e) =>
 		log.error("[batchUpdate] store_update_locations failed:", e),
 	);
 	scheduleSave();
@@ -674,10 +658,10 @@ export function patchLocationExtra(
 	indexExtraPatch(extraPatch);
 	autoRegisterFieldDefs(Object.keys(extraPatch));
 	const send = (extra: Record<string, unknown>) => {
-		mutate("store_update_locations", { updates: [[locId, { extra }]], recordUndo: false }).then(
+		mutate(cmd.storeUpdateLocations([[locId, { extra }]], false)).then(
 			() => {
 				if (activeLocationId === locId) {
-					invoke("store_get_location", { id: locId }).then((loc: unknown) => {
+					cmd.storeGetLocation(locId).then((loc) => {
 						cachedActiveLocation = (loc as Location) ?? null;
 						mapVersion++;
 						notify();
@@ -690,8 +674,8 @@ export function patchLocationExtra(
 	if (replace) {
 		send(extraPatch);
 	} else {
-		invoke<Location>("store_get_location", { id: locId }).then((loc) => {
-			send({ ...(loc?.extra || {}), ...extraPatch });
+		cmd.storeGetLocation(locId).then((loc) => {
+			send({ ...((loc as Location)?.extra || {}), ...extraPatch });
 		});
 	}
 }
@@ -726,9 +710,9 @@ async function applySelectionUpdate(updater: (m: MapData, sels: Selection[]) => 
 		return { props: s.props, color };
 	});
 	const t1 = performance.now();
-	let result: { counts: number[]; patchFile: string | null; selectedCount: number };
+	let result;
 	try {
-		result = await invoke("store_sync_selections", { sels });
+		result = await cmd.storeSyncSelections(sels);
 	} catch (e) {
 		log.error("[selection] store_sync_selections failed:", e);
 		return;
@@ -907,11 +891,11 @@ export function useSelectedTagIds() {
 export async function setActiveLocation(id: number | null) {
 	const t0 = performance.now();
 	activeLocationId = id;
-	invoke("store_set_active", { id }).catch((e) =>
+	cmd.storeSetActive(id).catch((e) =>
 		log.error("[setActive] store_set_active failed:", e),
 	);
 	if (id) {
-		const loc: Location | null = await invoke("store_get_location", { id });
+		const loc = await cmd.storeGetLocation(id) as Location | null;
 		log.debug(`[setActive] store_get_location ipc=${(performance.now() - t0).toFixed(0)}ms`);
 		cachedActiveLocation = loc;
 		workArea = "location";
@@ -965,7 +949,7 @@ export function exitPluginMode() {
 // --- Tag CRUD ---
 
 function persistTags() {
-	if (currentMapId && currentMap) storage.saveTags(currentMapId, currentMap.meta.tags);
+	if (currentMapId && currentMap) cmd.storeSaveTags(currentMapId, currentMap.meta.tags);
 }
 
 function reconcileTags() {
@@ -1023,7 +1007,7 @@ export function updateTags(patches: { id: number; patch: Partial<Tag> }[]) {
 
 export async function deleteTags(tagIds: number[]) {
 	if (!currentMapId || !currentMap || tagIds.length === 0) return;
-	await mutate("store_strip_tags", { tagIds });
+	await mutate(cmd.storeStripTags(tagIds));
 	const newTags = { ...currentMap.meta.tags };
 	for (const tagId of tagIds) {
 		const existing = newTags[tagId];
@@ -1057,31 +1041,29 @@ export async function reorderTags(orderedIds: number[]) {
 export async function bulkAddTag(tagId: number) {
 	if (!currentMap || selectedLocationIds.size === 0) return;
 	const ids = [...selectedLocationIds];
-	const locs: Location[] = await invoke("store_get_locations_by_ids", { ids });
+	const locs = await cmd.storeGetLocationsByIds(ids) as Location[];
 	const updates = locs
 		.filter((l) => !l.tags.includes(tagId))
 		.map((l) => [l.id, { tags: [...l.tags, tagId] }]);
 	if (updates.length === 0) return;
-	await mutate("store_update_locations", { updates });
+	await mutate(cmd.storeUpdateLocations(updates as [number, Record<string, unknown>][], true));
 	scheduleSave();
 }
 
 export async function bulkRemoveTag(tagId: number, locationIds: number[]) {
 	if (!currentMap || locationIds.length === 0) return;
-	const locs: Location[] = await invoke("store_get_locations_by_ids", { ids: locationIds });
+	const locs = await cmd.storeGetLocationsByIds(locationIds) as Location[];
 	const updates = locs
 		.filter((l) => l.tags.includes(tagId))
 		.map((l) => [l.id, { tags: l.tags.filter((t: number) => t !== tagId) }]);
 	if (updates.length === 0) return;
-	await mutate("store_update_locations", { updates });
+	await mutate(cmd.storeUpdateLocations(updates as [number, Record<string, unknown>][], true));
 	scheduleSave();
 }
 
 export async function removeTagFromAll(tagId: number) {
 	if (!currentMap) return;
-	const allWithTag: number[] = await invoke("store_resolve_selection", {
-		props: { type: "Tag", tagId },
-	});
+	const allWithTag = await cmd.storeResolveSelection({ type: "Tag", tagId });
 	if (allWithTag.length > 0) await bulkRemoveTag(tagId, allWithTag);
 }
 
@@ -1099,7 +1081,7 @@ export async function renameTagInSelection(tagId: number, newName: string) {
 	const existingTag = Object.values(currentMap.meta.tags).find(
 		(t) => t.name.toLowerCase() === newName.toLowerCase() && t.id !== tagId,
 	);
-	const newTagId = existingTag?.id ?? (await invoke<number>("store_alloc_tag_id"));
+	const newTagId = existingTag?.id ?? (await cmd.storeAllocTagId());
 	if (!existingTag) {
 		addTags([{
 			id: newTagId,
@@ -1110,14 +1092,12 @@ export async function renameTagInSelection(tagId: number, newName: string) {
 		}]);
 	}
 
-	const locs: Location[] = await invoke("store_get_locations_by_ids", {
-		ids: [...selectedLocationIds],
-	});
+	const locs = await cmd.storeGetLocationsByIds([...selectedLocationIds]) as Location[];
 	const updates = locs
 		.filter((l) => l.tags.includes(tagId))
 		.map((l) => [l.id, { tags: [...l.tags.filter((t: number) => t !== tagId), newTagId] }]);
 	if (updates.length > 0) {
-		await mutate("store_update_locations", { updates });
+		await mutate(cmd.storeUpdateLocations(updates as [number, Record<string, unknown>][], true));
 		scheduleSave();
 	}
 }
@@ -1126,7 +1106,7 @@ export async function renameTagInSelection(tagId: number, newName: string) {
 
 export async function beginReview(locationIds: number[]) {
 	if (!currentMap || locationIds.length === 0) return;
-	const existing: Location[] = await invoke("store_get_locations_by_ids", { ids: locationIds });
+	const existing = await cmd.storeGetLocationsByIds(locationIds) as Location[];
 	const valid = existing.map((l) => l.id);
 	if (valid.length === 0) return;
 	review = { locations: valid, index: 0 };
@@ -1169,9 +1149,7 @@ export async function reviewPrev() {
 export async function reviewDelete() {
 	if (!review || !currentMap) return;
 	const currentLocId = review.locations[review.index];
-	const r: MutationResult = await invoke("store_remove_locations", {
-		ids: [currentLocId],
-	});
+	const r = await cmd.storeRemoveLocations([currentLocId]);
 	emitRenderDelta(r.delta);
 	syncMutationResult(r);
 	const remaining = review.locations.filter((id) => id !== currentLocId);
@@ -1190,10 +1168,10 @@ export async function reviewDelete() {
 
 // --- Undo/redo ---
 
-async function undoRedo(cmd: "store_undo" | "store_redo") {
+async function undoRedo(which: () => Promise<MutationResult>) {
 	if (!currentMap) return;
 	try {
-		const r = await mutate(cmd, {});
+		const r = await mutate(which());
 		reconcileTags();
 		if (activeLocationId && r.delta.removed.some((e) => e.id === activeLocationId)) {
 			activeLocationId = null;
@@ -1202,15 +1180,15 @@ async function undoRedo(cmd: "store_undo" | "store_redo") {
 		}
 		scheduleSave();
 	} catch (e) {
-		log.debug(`[${cmd}] nothing or failed:`, e);
+		log.debug(`[${which}] nothing or failed:`, e);
 	}
 }
 
 export function undo() {
-	return undoRedo("store_undo");
+	return undoRedo(cmd.storeUndo);
 }
 export function redo() {
-	return undoRedo("store_redo");
+	return undoRedo(cmd.storeRedo);
 }
 
 let undoRedoState = { canUndo: false, canRedo: false };
@@ -1241,17 +1219,17 @@ function formatDiffMessage(diff: {
 export async function commitMap(message?: string): Promise<string> {
 	if (!currentMapId) throw new Error("No map open");
 	const t0 = performance.now();
-	await invoke("store_bake_and_save");
+	await cmd.storeBakeAndSave();
 	log.debug(`[commit] bake_and_save=${(performance.now() - t0).toFixed(0)}ms`);
 	const t1 = performance.now();
 	const diff = await computeCommitDiff();
 	log.debug(`[commit] computeCommitDiff=${(performance.now() - t1).toFixed(0)}ms`);
 	const t2 = performance.now();
 	const autoMessage = message ?? formatDiffMessage(diff);
-	const id = await vcs.createCommit(currentMapId, autoMessage, diff);
+	const id = await cmd.storeCreateCommit(currentMapId, autoMessage ?? null, diff ?? null);
 	log.debug(`[commit] createCommit=${(performance.now() - t2).toFixed(0)}ms`);
 	const t3 = performance.now();
-	await invoke("store_reset_undo");
+	await cmd.storeResetUndo();
 	log.debug(
 		`[commit] reset_undo=${(performance.now() - t3).toFixed(0)}ms total=${(performance.now() - t0).toFixed(0)}ms`,
 	);
@@ -1266,17 +1244,17 @@ export async function checkoutCommit(commitId: string) {
 	if (!currentMapId) return;
 	await flushSave();
 	try {
-		await invoke("store_close_map");
-		await vcs.checkout(currentMapId, commitId);
-		await invoke("store_open_map", { mapId: currentMapId });
-		await invoke("store_reset_undo");
-		const msg = `Revert to ${vcs.shortHash(commitId)}`;
-		await vcs.createCommit(currentMapId, msg);
+		await cmd.storeCloseMap();
+		await cmd.storeCheckoutCommit(currentMapId, commitId);
+		await cmd.storeOpenMap(currentMapId);
+		await cmd.storeResetUndo();
+		const msg = `Revert to ${commitId.slice(0, 7)}`;
+		await cmd.storeCreateCommit(currentMapId, msg, null);
 	} catch (e) {
 		log.error("[checkout] restore failed:", e);
 		throw e;
 	}
-	currentMap = await storage.getMap(currentMapId);
+	currentMap = await cmd.storeGetMap(currentMapId);
 	selections = [];
 	selectedLocationIds = new Set();
 	activeLocationId = null;

@@ -13,7 +13,7 @@ import {
 import { openMapWindow } from "@/lib/window.add";
 import { log } from "@/lib/util/log";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { mmaBufUrl } from "@/lib/util/util";
 import { listen } from "@tauri-apps/api/event";
 import * as Collapsible from "@radix-ui/react-collapsible";
@@ -465,13 +465,6 @@ function ImportPreviewModal({
 	);
 }
 
-interface RustPreviewEntry {
-	name: string;
-	folder: string | null;
-	locationCount: number;
-	tagCount: number;
-	warnings: string[];
-}
 
 export function BulkActions() {
 	const maps = useMapList();
@@ -484,7 +477,7 @@ export function BulkActions() {
 	const handleExport = useCallback(async () => {
 		setExporting(true);
 		try {
-			const path: string = await invoke("store_export_bulk_zip");
+			const path = await cmd.storeExportBulkZip();
 			const res = await fetch(mmaBufUrl(path));
 			const blob = await res.blob();
 			const url = URL.createObjectURL(blob);
@@ -507,7 +500,7 @@ export function BulkActions() {
 
 		setParseStatus("Scanning file...");
 		try {
-			const entries: RustPreviewEntry[] = await invoke("bulk_import_preview", { path });
+			const entries = await cmd.bulkImportPreview(path);
 			if (entries.length === 0) {
 				log.warn("[bulk import] no maps found");
 				setParseStatus(null);
@@ -547,7 +540,7 @@ export function BulkActions() {
 			(e) => setParseStatus(`Importing ${e.payload.current} / ${e.payload.total}...`),
 		);
 		try {
-			await invoke("bulk_import_confirm", { path, selectedIndices: indices });
+			await cmd.bulkImportConfirm(path, indices);
 			await invalidateMapList();
 		} catch (e) {
 			log.error("[bulk import] confirm failed:", e);

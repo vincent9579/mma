@@ -465,7 +465,7 @@ pub type StoreState = Mutex<Store>;
 // Helpers
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreStatus {
     pub version: u64,
@@ -475,13 +475,13 @@ pub struct StoreStatus {
     pub tag_counts: HashMap<u32, usize>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveResult {
     pub saved_chunks: usize,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SummaryResult {
     pub location_count: usize,
@@ -489,7 +489,7 @@ pub struct SummaryResult {
     pub dirty_count: usize,
 }
 
-#[derive(serde::Serialize, Default)]
+#[derive(serde::Serialize, Default, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderDelta {
     pub added: Vec<RenderEntry>,
@@ -500,28 +500,34 @@ pub struct RenderDelta {
     pub full_reset: bool,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderEntry {
     pub cell: String,
     pub id: u32,
+    #[specta(type = specta_typescript::Number)]
     pub lng: f32,
+    #[specta(type = specta_typescript::Number)]
     pub lat: f32,
+    #[specta(type = specta_typescript::Number)]
     pub heading: f32,
     pub r: u8, pub g: u8, pub b: u8, pub a: u8,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPatchEntry {
     pub cell: String,
     pub cell_index: usize,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub lng: Option<f32>,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub lat: Option<f32>,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub heading: Option<f32>,
 }
 
-#[derive(serde::Serialize, Default)]
+#[derive(serde::Serialize, Default, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CellRemoval {
     pub cell: String,
@@ -529,7 +535,7 @@ pub struct CellRemoval {
     pub id: u32,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ColorPatchEntry {
     pub cell: String,
@@ -537,7 +543,7 @@ pub struct ColorPatchEntry {
     pub r: u8, pub g: u8, pub b: u8, pub a: u8,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MutationResult {
     #[serde(flatten)]
@@ -557,22 +563,30 @@ where
     Ok(Some(Option::deserialize(deserializer)?))
 }
 
-#[derive(Default, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, serde::Deserialize, specta::Type)]
+#[serde(default, rename_all = "camelCase")]
 pub struct LocationPatch {
+    #[specta(type = Option<specta_typescript::Number>)]
     pub lat: Option<f64>,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub lng: Option<f64>,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub heading: Option<f64>,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub pitch: Option<f64>,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub zoom: Option<f64>,
     #[serde(default, deserialize_with = "nullable")]
+    #[specta(type = Option<Option<String>>)]
     pub pano_id: Option<Option<String>>,
     pub flags: Option<u32>,
     pub tags: Option<Vec<u32>>,
     #[serde(default, deserialize_with = "nullable")]
+    #[specta(type = Option<Option<specta_typescript::Any>>)]
     pub extra: Option<Option<serde_json::Map<String, serde_json::Value>>>,
     pub created_at: Option<String>,
     #[serde(default, deserialize_with = "nullable")]
+    #[specta(type = Option<Option<String>>)]
     pub modified_at: Option<Option<String>>,
 }
 
@@ -583,6 +597,7 @@ pub struct LocationPatch {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[specta::specta]
 pub async fn store_open_map(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -686,7 +701,7 @@ pub async fn store_open_map(
 
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let count = batch.num_rows();
-    let version = store.bump();
+    store.bump();
     store.map_id = Some(map_id.clone());
     store.next_id = max_id + 1;
     // Build tag counts from batch
@@ -732,6 +747,7 @@ pub async fn store_open_map(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_close_map(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -771,6 +787,7 @@ pub fn store_close_map(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_add_locations(
     state: tauri::State<'_, StoreState>,
     mut locations: Vec<Location>,
@@ -806,6 +823,7 @@ pub fn store_add_locations(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_remove_locations(
     state: tauri::State<'_, StoreState>,
     ids: Vec<u32>,
@@ -873,6 +891,7 @@ fn build_update_delta(store: &mut Store, id: u32, new_loc: &Location, patch: &Lo
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_update_locations(
     state: tauri::State<'_, StoreState>,
     updates: Vec<(u32, LocationPatch)>,
@@ -916,6 +935,7 @@ pub fn store_update_locations(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_strip_tags(
     state: tauri::State<'_, StoreState>,
     tag_ids: Vec<u32>,
@@ -963,6 +983,7 @@ pub fn store_strip_tags(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_set_active(
     state: tauri::State<'_, StoreState>,
     id: Option<u32>,
@@ -973,6 +994,7 @@ pub fn store_set_active(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_location(
     state: tauri::State<'_, StoreState>,
     id: u32,
@@ -985,6 +1007,7 @@ pub fn store_get_location(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_locations_by_ids(
     state: tauri::State<'_, StoreState>,
     ids: Vec<u32>,
@@ -1000,6 +1023,7 @@ pub fn store_get_locations_by_ids(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_all_locations(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1021,6 +1045,7 @@ struct DeltaOverlay {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn store_save_dirty(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1070,6 +1095,7 @@ pub async fn store_save_dirty(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_summary(
     state: tauri::State<'_, StoreState>,
 ) -> Result<SummaryResult, String> {
@@ -1130,6 +1156,7 @@ fn save_arrow_inner(store: &Store, app: &tauri::AppHandle, map_id: &str) -> Resu
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_bake_and_save(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1145,7 +1172,7 @@ pub fn store_bake_and_save(
     Ok(())
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitBlobEntry {
     pub geohash: String,
@@ -1153,10 +1180,9 @@ pub struct CommitBlobEntry {
     pub location_count: u32,
 }
 
-#[tauri::command]
-pub fn store_snapshot_commit(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, StoreState>,
+pub(crate) fn snapshot_inner(
+    app: &tauri::AppHandle,
+    state: &StoreState,
 ) -> Result<Vec<CommitBlobEntry>, String> {
     let _t = std::time::Instant::now();
     let mut store = state.lock().map_err(|e| e.to_string())?;
@@ -1192,7 +1218,7 @@ pub fn store_snapshot_commit(
                 arrow::compute::take(col.as_ref(), &take_idx, None).unwrap()
             }).collect();
             let cell_batch = RecordBatch::try_new(schema.clone(), columns).unwrap();
-            let (hash, count) = fast_io::write_blob(&app, &cell_batch)
+            let (hash, count) = fast_io::write_blob(app, &cell_batch)
                 .expect("blob write failed");
             entries.push(CommitBlobEntry {
                 geohash: gh.clone(),
@@ -1205,7 +1231,7 @@ pub fn store_snapshot_commit(
             .map(|e| (e.geohash.clone(), (e.blob_hash.clone(), e.location_count)))
             .collect();
         store.dirty_geohashes.clear();
-        log::debug!("[cmd] store_snapshot_commit (full) total={}ms cells={}", _t.elapsed().as_millis(), entries.len());
+        log::debug!("[cmd] snapshot_inner (full) total={}ms cells={}", _t.elapsed().as_millis(), entries.len());
         Ok(entries)
     } else {
         let dirty_cells: Vec<String> = dirty.iter().cloned().collect();
@@ -1223,7 +1249,7 @@ pub fn store_snapshot_commit(
                 arrow::compute::take(col.as_ref(), &take_idx, None).unwrap()
             }).collect();
             let cell_batch = RecordBatch::try_new(schema.clone(), columns).unwrap();
-            let (hash, count) = fast_io::write_blob(&app, &cell_batch)
+            let (hash, count) = fast_io::write_blob(app, &cell_batch)
                 .expect("blob write failed");
             dirty_entries.push(CommitBlobEntry {
                 geohash: gh.clone(),
@@ -1253,23 +1279,31 @@ pub fn store_snapshot_commit(
             })
             .collect();
 
-        log::debug!("[cmd] store_snapshot_commit (incremental) total={}ms dirty={} total_cells={}",
+        log::debug!("[cmd] snapshot_inner (incremental) total={}ms dirty={} total_cells={}",
             _t.elapsed().as_millis(), dirty_cells.len(), entries.len());
         Ok(entries)
     }
 }
 
 #[tauri::command]
-pub fn store_restore_commit(
+#[specta::specta]
+pub fn store_snapshot_commit(
     app: tauri::AppHandle,
-    map_id: String,
+    state: tauri::State<'_, StoreState>,
+) -> Result<Vec<CommitBlobEntry>, String> {
+    snapshot_inner(&app, &state)
+}
+
+pub(crate) fn restore_inner(
+    app: &tauri::AppHandle,
+    map_id: &str,
     blobs: Vec<CommitBlobEntry>,
 ) -> Result<(), String> {
     let _t = std::time::Instant::now();
     let s = schema();
     let batches: Result<Vec<RecordBatch>, String> = blobs
         .par_iter()
-        .map(|entry| fast_io::read_blob(&app, &entry.blob_hash))
+        .map(|entry| fast_io::read_blob(app, &entry.blob_hash))
         .collect();
     let batches = batches?;
     let batch = if batches.is_empty() {
@@ -1277,22 +1311,39 @@ pub fn store_restore_commit(
     } else {
         concat_batches(&s, &batches).map_err(|e| e.to_string())?
     };
-    let path = fast_io::arrow_path(&app, &map_id)?;
+    let path = fast_io::arrow_path(app, map_id)?;
     fast_io::write_arrow_ipc(&path, &batch)?;
-    let delta = fast_io::arrow_delta_path(&app, &map_id)?;
+    let delta = fast_io::arrow_delta_path(app, map_id)?;
     let _ = std::fs::remove_file(delta);
-    log::debug!("[cmd] store_restore_commit total={}ms rows={}", _t.elapsed().as_millis(), batch.num_rows());
+    log::debug!("[cmd] restore_inner total={}ms rows={}", _t.elapsed().as_millis(), batch.num_rows());
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn store_restore_commit(
+    app: tauri::AppHandle,
+    map_id: String,
+    blobs: Vec<CommitBlobEntry>,
+) -> Result<(), String> {
+    restore_inner(&app, &map_id, blobs)
 }
 
 // ---------------------------------------------------------------------------
 // Render buffer
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, serde::Deserialize, specta::Type)]
+#[serde(default, rename_all = "camelCase")]
 pub struct RenderRequest {
-    pub west: f64, pub south: f64, pub east: f64, pub north: f64,
+    #[specta(type = specta_typescript::Number)]
+    pub west: f64,
+    #[specta(type = specta_typescript::Number)]
+    pub south: f64,
+    #[specta(type = specta_typescript::Number)]
+    pub east: f64,
+    #[specta(type = specta_typescript::Number)]
+    pub north: f64,
     pub selected_ids: Option<Vec<u32>>,
     pub marker_style: String,
 }
@@ -1446,6 +1497,7 @@ pub fn store_fill_render_attrs(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn store_fill_render_file(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1467,14 +1519,15 @@ pub async fn store_fill_render_file(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_resolve_pick(
     state: tauri::State<'_, StoreState>,
     cell: String,
-    cell_index: usize,
+    cell_index: u32,
 ) -> Result<Option<u32>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     Ok(store.render_cells.get(&cell)
-        .and_then(|cr| cr.id_order.get(cell_index).copied()))
+        .and_then(|cr| cr.id_order.get(cell_index as usize).copied()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1482,6 +1535,7 @@ pub fn store_resolve_pick(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_undo(state: tauri::State<'_, StoreState>) -> Result<MutationResult, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let _t = std::time::Instant::now();
@@ -1495,6 +1549,7 @@ pub fn store_undo(state: tauri::State<'_, StoreState>) -> Result<MutationResult,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_redo(state: tauri::State<'_, StoreState>) -> Result<MutationResult, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let _t = std::time::Instant::now();
@@ -1508,6 +1563,7 @@ pub fn store_redo(state: tauri::State<'_, StoreState>) -> Result<MutationResult,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_commit_diff(state: tauri::State<'_, StoreState>) -> Result<(u32, u32, u32), String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     let mut added = HashSet::new();
@@ -1527,6 +1583,7 @@ pub fn store_commit_diff(state: tauri::State<'_, StoreState>) -> Result<(u32, u3
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_reset_undo(state: tauri::State<'_, StoreState>) -> Result<(), String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     store.undo_stack.clear();
@@ -1535,6 +1592,7 @@ pub fn store_reset_undo(state: tauri::State<'_, StoreState>) -> Result<(), Strin
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_can_undo_redo(state: tauri::State<'_, StoreState>) -> Result<(bool, bool), String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     Ok((!store.undo_stack.is_empty(), !store.redo_stack.is_empty()))
@@ -1620,15 +1678,17 @@ fn apply_edit_reverse(store: &mut Store, entry: &EditEntry) -> RenderDelta {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn store_tag_counts(state: tauri::State<'_, StoreState>) -> Result<HashMap<u32, usize>, String> {
+#[specta::specta]
+pub fn store_tag_counts(state: tauri::State<'_, StoreState>) -> Result<HashMap<u32, u32>, String> {
     let _t = std::time::Instant::now();
     let store = state.lock().map_err(|e| e.to_string())?;
-    let r = store.tag_counts.clone();
+    let r: HashMap<u32, u32> = store.tag_counts.iter().map(|(&k, &v)| (k, v as u32)).collect();
     log::debug!("[cmd] store_tag_counts total={}ms", _t.elapsed().as_millis());
     Ok(r)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_alloc_tag_id(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let id = store.next_tag_id;
@@ -1654,6 +1714,7 @@ fn write_tags_json(conn: &rusqlite::Connection, map_id: &str, tags: &HashMap<u32
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_resolve_tag_names(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1696,6 +1757,7 @@ pub fn store_resolve_tag_names(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_bounds(state: tauri::State<'_, StoreState>) -> Result<Option<[f64; 4]>, String> {
     let _t = std::time::Instant::now();
     let store = state.lock().map_err(|e| e.to_string())?;
@@ -1736,12 +1798,15 @@ pub fn store_bounds(state: tauri::State<'_, StoreState>) -> Result<Option<[f64; 
 }
 
 #[tauri::command]
-pub fn store_location_count(state: tauri::State<'_, StoreState>) -> Result<usize, String> {
+#[specta::specta]
+pub fn store_location_count(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
-    Ok(store.alive_count)
+    Ok(store.alive_count as u32)
 }
 
+
 #[tauri::command]
+#[specta::specta]
 pub fn store_extra_field_values(state: tauri::State<'_, StoreState>, field: String) -> Result<Vec<String>, String> {
     let _t = std::time::Instant::now();
     let store = state.lock().map_err(|e| e.to_string())?;
@@ -1799,6 +1864,7 @@ pub fn store_extra_field_values(state: tauri::State<'_, StoreState>, field: Stri
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_has_location(state: tauri::State<'_, StoreState>, id: u32) -> Result<bool, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     Ok(store.get_loc_by_id(id).is_some())
@@ -1808,14 +1874,14 @@ pub fn store_has_location(state: tauri::State<'_, StoreState>, id: u32) -> Resul
 // Selections
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionInput {
     pub props: SelectionProps,
     pub color: [u8; 3],
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSelectionsResult {
     pub counts: Vec<usize>,
@@ -1824,6 +1890,7 @@ pub struct SyncSelectionsResult {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn store_sync_selections(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1909,12 +1976,14 @@ pub async fn store_sync_selections(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_selected_ids_list(state: tauri::State<'_, StoreState>) -> Result<Vec<u32>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     Ok(store.selected_ids.iter().copied().collect())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_set_selected_ids(state: tauri::State<'_, StoreState>, ids: Vec<u32>) -> Result<(), String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     store.selected_ids = ids.into_iter().collect();
@@ -1922,6 +1991,7 @@ pub fn store_set_selected_ids(state: tauri::State<'_, StoreState>, ids: Vec<u32>
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_resolve_selection(state: tauri::State<'_, StoreState>, props: SelectionProps) -> Result<Vec<u32>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     let view = store.loc_view();
@@ -1932,7 +2002,7 @@ pub fn store_resolve_selection(state: tauri::State<'_, StoreState>, props: Selec
 // Selection commands
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionResult {
     pub key: String,
@@ -1941,6 +2011,7 @@ pub struct SelectionResult {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_add_selection(state: tauri::State<'_, StoreState>, props: SelectionProps) -> Result<SelectionResult, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let view = store.loc_view();
@@ -1954,22 +2025,25 @@ pub fn store_add_selection(state: tauri::State<'_, StoreState>, props: Selection
 }
 
 #[tauri::command]
-pub fn store_remove_selection(state: tauri::State<'_, StoreState>, key: String) -> Result<u64, String> {
+#[specta::specta]
+pub fn store_remove_selection(state: tauri::State<'_, StoreState>, key: String) -> Result<u32, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     store.selections.retain(|s| s.key != key);
     store.selection_version += 1;
-    Ok(store.selection_version)
+    Ok(store.selection_version as u32)
 }
 
 #[tauri::command]
-pub fn store_reset_selections(state: tauri::State<'_, StoreState>) -> Result<u64, String> {
+#[specta::specta]
+pub fn store_reset_selections(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     store.selections.clear();
     store.selection_version += 1;
-    Ok(store.selection_version)
+    Ok(store.selection_version as u32)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_selections(state: tauri::State<'_, StoreState>) -> Result<Vec<SelectionSummary>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     Ok(store.selections.iter().map(|s| SelectionSummary {
@@ -1981,6 +2055,7 @@ pub fn store_get_selections(state: tauri::State<'_, StoreState>) -> Result<Vec<S
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_selected_ids(state: tauri::State<'_, StoreState>) -> Result<Vec<u32>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     let mut all = HashSet::new();
@@ -1989,7 +2064,8 @@ pub fn store_get_selected_ids(state: tauri::State<'_, StoreState>) -> Result<Vec
 }
 
 #[tauri::command]
-pub fn store_refresh_selections(state: tauri::State<'_, StoreState>) -> Result<u64, String> {
+#[specta::specta]
+pub fn store_refresh_selections(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
     let _t = std::time::Instant::now();
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let resolved: Vec<Vec<u32>> = {
@@ -2002,7 +2078,7 @@ pub fn store_refresh_selections(state: tauri::State<'_, StoreState>) -> Result<u
     }
     store.selection_version += 1;
     log::debug!("[cmd] store_refresh_selections total={}ms sels={}", _t.elapsed().as_millis(), n);
-    Ok(store.selection_version)
+    Ok(store.selection_version as u32)
 }
 
 // --- Helpers ---

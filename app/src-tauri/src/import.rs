@@ -24,7 +24,7 @@ const DEFAULT_SETTINGS: &str = r#"{"pointAlongRoad":true,"preferDirection":null,
 // Types returned to JS
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportPreviewEntry {
     pub name: String,
@@ -34,7 +34,7 @@ pub struct ImportPreviewEntry {
     pub warnings: Vec<String>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportedMapInfo {
     pub id: String,
@@ -646,6 +646,7 @@ fn write_map_to_db(conn: &Connection, app: &tauri::AppHandle, mut map: ParsedMap
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[specta::specta]
 pub async fn bulk_import_preview(path: String) -> Result<Vec<ImportPreviewEntry>, String> {
     tokio::task::spawn_blocking(move || {
         let entries = if path.ends_with(".zip") {
@@ -673,7 +674,7 @@ pub async fn bulk_import_preview(path: String) -> Result<Vec<ImportPreviewEntry>
     }).await.map_err(|e| e.to_string())?
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportProgress {
     pub current: u32,
@@ -682,10 +683,11 @@ pub struct ImportProgress {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn bulk_import_confirm(
     app: tauri::AppHandle,
     path: String,
-    selected_indices: Vec<usize>,
+    selected_indices: Vec<u32>,
 ) -> Result<Vec<ImportedMapInfo>, String> {
     let main_path = fast_io::db_path(&app)?;
     let app_handle = app.clone();
@@ -706,10 +708,10 @@ pub async fn bulk_import_confirm(
             }
         };
 
-        let selected_set: std::collections::HashSet<usize> = selected_indices.into_iter().collect();
+        let selected_set: std::collections::HashSet<u32> = selected_indices.into_iter().collect();
         let parsed_maps: Vec<ParsedMap> = all_maps.into_iter()
             .enumerate()
-            .filter(|(i, _)| selected_set.contains(i))
+            .filter(|(i, _)| selected_set.contains(&(*i as u32)))
             .map(|(_, m)| m)
             .collect();
         let total = parsed_maps.len() as u32;
@@ -740,14 +742,14 @@ pub async fn bulk_import_confirm(
 // ---------------------------------------------------------------------------
 
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct FieldCount {
     pub key: String,
     pub count: u32,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorImportPreview {
     pub location_count: u32,
@@ -759,6 +761,7 @@ pub struct EditorImportPreview {
 static EDITOR_IMPORT_CACHE: Mutex<Option<ParsedMap>> = Mutex::new(None);
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_import_preview(path: String) -> Result<EditorImportPreview, String> {
     let t0 = std::time::Instant::now();
     let mut buf = std::fs::read(&path).map_err(|e| e.to_string())?;
@@ -795,7 +798,7 @@ pub fn store_import_preview(path: String) -> Result<EditorImportPreview, String>
     Ok(preview)
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorImportResult {
     pub location_count: u32,
@@ -882,6 +885,7 @@ fn add_parsed_to_store(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_import_file(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::location_store::StoreState>,
@@ -928,6 +932,7 @@ pub fn store_import_file(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_import_paste(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::location_store::StoreState>,

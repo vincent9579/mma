@@ -4,7 +4,7 @@ use crate::fast_io;
 
 const LOAD_AS_PANO_ID: u32 = 1;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportOpts {
     pub export_zoom: bool,
@@ -31,6 +31,7 @@ fn hex_to_rgb(hex: &str) -> Option<[u8; 3]> {
 mod tests;
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_export_json(
     state: tauri::State<'_, StoreState>,
     opts: ExportOpts,
@@ -134,6 +135,7 @@ pub fn store_export_json(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_export_csv(
     state: tauri::State<'_, StoreState>,
     scope: Option<Vec<u32>>,
@@ -160,6 +162,7 @@ pub fn store_export_csv(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_export_geojson(
     state: tauri::State<'_, StoreState>,
     scope: Option<Vec<u32>>,
@@ -205,6 +208,7 @@ pub fn store_export_geojson(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn store_export_bulk_zip(
     app: tauri::AppHandle,
 ) -> Result<String, String> {

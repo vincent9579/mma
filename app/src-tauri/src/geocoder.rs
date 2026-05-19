@@ -8,7 +8,7 @@ fn get_geocoder() -> &'static ReverseGeocoder {
     GEOCODER.get_or_init(ReverseGeocoder::new)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 pub struct GeoResult {
     pub city: String,
     pub admin: String,
@@ -28,6 +28,7 @@ impl From<&SearchResult<'_>> for GeoResult {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn reverse_geocode(lat: f64, lng: f64) -> Option<GeoResult> {
     let gc = get_geocoder();
     let result = gc.search((lat, lng));

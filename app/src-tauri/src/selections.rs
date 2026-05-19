@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::types::Location;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "type")]
 pub enum SelectionProps {
     Locations { locations: Vec<u32>, name: Option<String> },
@@ -17,23 +17,26 @@ pub enum SelectionProps {
     PanoIds,
     NotPanoIds,
     Manual { locations: Vec<u32> },
-    Duplicates { distance: f64 },
+    Duplicates { #[specta(type = specta_typescript::Number)] distance: f64 },
     ValidationState { locations: Vec<u32>, state: u8 },
     Intersection { selections: Vec<Selection> },
     Union { selections: Vec<Selection> },
     Invert { selections: Vec<Selection> },
-    Filter { field: String, op: String, value: serde_json::Value, value2: Option<serde_json::Value> },
+    Filter { field: String, op: String, #[specta(type = specta_typescript::Any)] value: serde_json::Value, #[specta(type = Option<specta_typescript::Any>)] value2: Option<serde_json::Value> },
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Default, Serialize, Deserialize, specta::Type)]
+#[serde(default, rename_all = "camelCase")]
 pub struct PolygonGeometry {
+    #[specta(type = Vec<Vec<[specta_typescript::Number; 2]>>)]
     pub coordinates: Vec<Vec<[f64; 2]>>,
+    #[specta(type = Option<Vec<Vec<Vec<[specta_typescript::Number; 2]>>>>)]
     pub extra_polygons: Option<Vec<Vec<Vec<[f64; 2]>>>>,
+    #[specta(type = Option<specta_typescript::Any>)]
     pub properties: Option<serde_json::Value>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Selection {
     pub key: String,
@@ -43,7 +46,7 @@ pub struct Selection {
     pub locations: Vec<u32>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionSummary {
     pub key: String,

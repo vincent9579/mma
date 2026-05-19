@@ -8,7 +8,7 @@ import {
 	useMemo,
 	useSyncExternalStore,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { LocationFlag, hasLoadAsPanoId, createLocation } from "@/types";
 import type { Location, Tag } from "@/types";
 import {
@@ -462,7 +462,7 @@ function FullscreenTagBar({
 		e.preventDefault();
 		const name = input.trim();
 		if (!name) return;
-		const [resolved] = await invoke<Tag[]>("store_resolve_tag_names", { names: [name] });
+		const [resolved] = await cmd.storeResolveTagNames([name]);
 		addTags([resolved]);
 		if (!pendingTags.includes(resolved.id)) {
 			onChangeTags([...pendingTags, resolved.id]);
@@ -548,9 +548,9 @@ let singletonPano: google.maps.StreetViewPanorama | null = null;
 (window as any).__mma_pano = () => singletonPano;
 
 export function loadSeenPano(entry: SeenEntry) {
-	seenSkipNext(entry.pano_id);
+	seenSkipNext(entry.panoId);
 
-	const existing = entry.location_id;
+	const existing = entry.locationId;
 
 	if (existing) {
 		const active = getActiveLocation();
@@ -559,16 +559,14 @@ export function loadSeenPano(entry: SeenEntry) {
 			return;
 		}
 	} else {
-		// CRITICAL: seen table doesn't store tags/flags/extra — cross-map or deleted-location
-		// entries recreate a bare location. Original metadata is lost.
 		const loc = createLocation({
 			lat: entry.lat,
 			lng: entry.lng,
 			heading: entry.heading,
 			pitch: entry.pitch,
 			zoom: entry.zoom,
-			panoId: entry.pano_id,
-			extra: entry.country_code ? { countryCode: entry.country_code } : undefined,
+			panoId: entry.panoId,
+			extra: entry.countryCode ? { countryCode: entry.countryCode } : undefined,
 		});
 		addLocations([loc]).then(() => setActiveLocation(loc.id));
 		return;
@@ -576,7 +574,7 @@ export function loadSeenPano(entry: SeenEntry) {
 
 	if (!singletonPano) return;
 	const pano = singletonPano;
-	pano.setPano(entry.pano_id);
+	pano.setPano(entry.panoId);
 	pano.setPov({ heading: entry.heading, pitch: entry.pitch });
 	pano.setZoom(entry.zoom);
 }
@@ -1249,7 +1247,7 @@ export function LocationPreview() {
 		e.preventDefault();
 		const name = tagInput.trim();
 		if (!name) return;
-		const [resolved] = await invoke<Tag[]>("store_resolve_tag_names", { names: [name] });
+		const [resolved] = await cmd.storeResolveTagNames([name]);
 		addTags([resolved]);
 		if (!pendingTags.includes(resolved.id)) {
 			setPendingTags([...pendingTags, resolved.id]);

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Command, type Child } from "@tauri-apps/plugin-shell";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { createLocation } from "@/types";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiArrowLeft } from "@mdi/js";
@@ -58,7 +58,7 @@ export function ValiSidebar({ onClose }: { onClose: () => void }) {
 	const importLocations = useCallback(
 		async (outputPath: string) => {
 			try {
-				const raw = await invoke<string>("read_file", { path: outputPath });
+				const raw = await cmd.readFile(outputPath);
 				const valiLocs: ValiLocation[] = JSON.parse(raw);
 				const locations = valiLocs.map((v) =>
 					createLocation({
@@ -103,10 +103,7 @@ export function ValiSidebar({ onClose }: { onClose: () => void }) {
 
 		let tempPath: string;
 		try {
-			tempPath = await invoke<string>("write_temp_file", {
-				name: "vali_config.json",
-				content: json,
-			});
+			tempPath = await cmd.writeTempFile("vali_config.json", json);
 		} catch (e) {
 			setError(`Failed to write config: ${e}`);
 			return;

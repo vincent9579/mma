@@ -1,7 +1,7 @@
 import { useState, useEffect, useId } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { useCurrentMap, useSelectedLocationIds } from "@/store/useMapStore";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { mmaBufUrl } from "@/lib/util/util";
 import { fmt } from "@/lib/util/format";
 
@@ -42,7 +42,7 @@ export function ExportDialog({ onClose }: Props) {
 	const [fileName, setFileName] = useState(map?.meta.name ?? "");
 	const selCount = selectedIds.size;
 	useEffect(() => {
-		if (map) invoke<number>("store_location_count").then(setLocationCount);
+		if (map) cmd.storeLocationCount().then(setLocationCount);
 	}, [map]);
 
 	if (!map) return null;
@@ -51,16 +51,14 @@ export function ExportDialog({ onClose }: Props) {
 	const scopeIds = scope === ExportScope.Selection ? [...selectedIds] : undefined;
 
 	const exportJson = async () => {
-		const path: string = await invoke("store_export_json", {
-			opts: {
-				exportZoom: saveZoom,
-				exportUnpanned: bypassUnpanned,
-				exportExtras: saveExtras,
-				scope: scopeIds ?? null,
-				mapName: map.meta.name,
-				tagsJson: JSON.stringify(map.meta.tags),
-				extraFieldsJson: map.meta.extra?.fields ? JSON.stringify(map.meta.extra.fields) : null,
-			},
+		const path = await cmd.storeExportJson({
+			exportZoom: saveZoom,
+			exportUnpanned: bypassUnpanned,
+			exportExtras: saveExtras,
+			scope: scopeIds ?? null,
+			mapName: map.meta.name,
+			tagsJson: JSON.stringify(map.meta.tags),
+			extraFieldsJson: map.meta.extra?.fields ? JSON.stringify(map.meta.extra.fields) : null,
 		});
 		return fetchExportFile(path);
 	};
@@ -69,17 +67,14 @@ export function ExportDialog({ onClose }: Props) {
 	const downloadJson = async () => downloadBlob(await exportJson(), `${baseName}.json`);
 
 	const exportCsv = async () => {
-		const path: string = await invoke("store_export_csv", { scope: scopeIds ?? null });
+		const path = await cmd.storeExportCsv(scopeIds ?? null);
 		return fetchExportFile(path);
 	};
 	const copyCsv = async () => navigator.clipboard.writeText(await exportCsv());
 	const downloadCsv = async () => downloadBlob(await exportCsv(), `${baseName}.csv`);
 
 	const downloadGeoJson = async () => {
-		const path: string = await invoke("store_export_geojson", {
-			scope: scopeIds ?? null,
-			tagsJson: JSON.stringify(map.meta.tags),
-		});
+		const path = await cmd.storeExportGeojson(scopeIds ?? null, JSON.stringify(map.meta.tags));
 		downloadBlob(await fetchExportFile(path), `${baseName}.geojson`);
 	};
 

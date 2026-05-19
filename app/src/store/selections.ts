@@ -3,6 +3,11 @@
 import type { MapData } from "@/types";
 import { hslToRgb } from "@/lib/util/color";
 
+export type { SelectionProps, PolygonGeometry } from "@/bindings.gen";
+import type { Selection as BaseSelection, SelectionProps } from "@/bindings.gen";
+
+export type Selection = BaseSelection & { count?: number };
+
 export enum ValidationState {
 	Ok = 0,
 	UpdateAvailable = 1,
@@ -13,47 +18,7 @@ export enum ValidationState {
 	GoodcamAvailable = 6,
 }
 
-export type SelectionType =
-	| "Locations"
-	| "Everything"
-	| "Polygon"
-	| "Tag"
-	| "Untagged"
-	| "Unpanned"
-	| "PanoIds"
-	| "NotPanoIds"
-	| "Duplicates"
-	| "Manual"
-	| "Intersection"
-	| "Union"
-	| "Invert"
-	| "ValidationState"
-	| "Filter";
-
-export interface PolygonGeometry {
-	// GeoJSON Polygon (rings) — outer + holes
-	coordinates: number[][][];
-	// Additional polygons for MultiPolygon geometry
-	extraPolygons?: number[][][][];
-	properties?: { name?: string; code?: string };
-}
-
-export type SelectionProps =
-	| { type: "Locations"; locations: number[]; name?: string }
-	| { type: "Everything" }
-	| { type: "Polygon"; polygon: PolygonGeometry; includeInformational: boolean }
-	| { type: "Tag"; tagId: number }
-	| { type: "Untagged" }
-	| { type: "Unpanned" }
-	| { type: "PanoIds" }
-	| { type: "NotPanoIds" }
-	| { type: "Manual"; locations: number[] }
-	| { type: "Duplicates"; distance: number }
-	| { type: "ValidationState"; locations: number[]; state: ValidationState }
-	| { type: "Intersection"; selections: Selection[] }
-	| { type: "Union"; selections: Selection[] }
-	| { type: "Invert"; selections: Selection[] }
-	| { type: "Filter"; field: string; op: FilterOp; value: unknown; value2?: unknown };
+export type SelectionType = SelectionProps["type"];
 
 export type FilterOp =
 	| "eq"
@@ -65,13 +30,6 @@ export type FilterOp =
 	| "between"
 	| "has"
 	| "nothas";
-
-export interface Selection {
-	key: string;
-	color: [number, number, number];
-	props: SelectionProps;
-	count: number;
-}
 
 export function colorForKey(key: string): [number, number, number] {
 	let t = 0;
@@ -482,8 +440,8 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 				return s;
 			};
 			if (p.op === "between")
-				return `${fieldLabel} ${OP_LABELS[p.op]} ${fmtVal(p.value)}..${fmtVal(p.value2)}`;
-			return `${fieldLabel} ${OP_LABELS[p.op]} ${fmtVal(p.value)}`;
+				return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}..${fmtVal(p.value2)}`;
+			return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}`;
 		}
 	}
 }

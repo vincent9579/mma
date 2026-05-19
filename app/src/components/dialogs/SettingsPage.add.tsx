@@ -782,8 +782,8 @@ function AdvancedTab() {
 					<button
 						className="button"
 						onClick={async () => {
-							const { invoke } = await import("@tauri-apps/api/core");
-							await invoke("open_data_folder");
+							const { cmd } = await import("@/lib/commands");
+							await cmd.openDataFolder();
 						}}
 					>
 						Open data folder

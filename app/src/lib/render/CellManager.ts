@@ -1,45 +1,11 @@
-export interface CellDelta {
-	added: CellRenderEntry[];
-	updated: CellPatchEntry[];
-	removed: CellRemoval[];
-	colorPatches: CellColorPatch[];
-	fullReset?: boolean;
-}
+import type {
+	RenderDelta_Serialize,
+	RenderEntry,
+	CellRemoval as _CellRemoval,
+	ColorPatchEntry,
+} from "@/bindings.gen";
 
-export interface CellRenderEntry {
-	cell: string;
-	id: number;
-	lng: number;
-	lat: number;
-	heading: number;
-	r: number;
-	g: number;
-	b: number;
-	a: number;
-}
-
-export interface CellPatchEntry {
-	cell: string;
-	cellIndex: number;
-	lng?: number;
-	lat?: number;
-	heading?: number;
-}
-
-export interface CellRemoval {
-	cell: string;
-	cellIndex: number;
-	id: number;
-}
-
-export interface CellColorPatch {
-	cell: string;
-	cellIndex: number;
-	r: number;
-	g: number;
-	b: number;
-	a: number;
-}
+export type RenderDelta = RenderDelta_Serialize;
 
 const MIN_CAPACITY = 256;
 
@@ -61,7 +27,7 @@ export class CellBuffer {
 		this.angles = new Float32Array(capacity);
 	}
 
-	append(entry: CellRenderEntry) {
+	append(entry: RenderEntry) {
 		this.ensureCapacity(this.count + 1);
 		const i = this.count;
 		this.positions[i * 2] = entry.lng;
@@ -210,7 +176,7 @@ export class CellManager {
 		this.version++;
 	}
 
-	applyDelta(delta: CellDelta): Set<string> {
+	applyDelta(delta: RenderDelta): Set<string> {
 		const affected = new Set<string>();
 
 		for (const rem of delta.removed) {
@@ -271,7 +237,7 @@ export class CellManager {
 	selOverlayCount = 0;
 	selOverlayVersion = 0;
 
-	buildSelectionOverlay(colorPatches: CellColorPatch[], _angles?: boolean) {
+	buildSelectionOverlay(colorPatches: ColorPatchEntry[], _angles?: boolean) {
 		this.selOverlayCount = colorPatches.length;
 		if (colorPatches.length === 0) {
 			this.selOverlayIds = [];
