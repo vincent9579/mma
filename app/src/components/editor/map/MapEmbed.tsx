@@ -31,8 +31,8 @@ import {
 	addLocations,
 	getWorkArea,
 	getSelectedLocationIds,
-	onRenderDelta,
-	onSelectionBitmasks,
+	renderDeltaBus,
+	selBitmaskBus,
 } from "@/store/useMapStore";
 import { loadOpenSV, getGoogle } from "@/lib/sv/opensv";
 import { useTrailVersion, getTrail } from "@/lib/sv/svTrail.add";
@@ -1212,7 +1212,7 @@ export function MapEmbed() {
 	}, [mapReady, fullResetCounter, markerStyle]);
 
 	useEffect(() => {
-		const unsub1 = onRenderDelta((delta) => {
+		const unsub1 = renderDeltaBus.on((delta) => {
 			if (delta.fullReset) {
 				setFullResetCounter((c) => c + 1);
 				return;
@@ -1241,7 +1241,7 @@ export function MapEmbed() {
 			);
 			if (affected.size > 0 || delta.colorPatches.length > 0) setRenderTick((t) => t + 1);
 		});
-		const unsub2 = onSelectionBitmasks((selColors, cellEntries, setIds) => {
+		const unsub2 = selBitmaskBus.on((selColors, cellEntries, setIds) => {
 			const t0 = performance.now();
 			const ids = cellMgrRef.current.applySelectionBitmasks(selColors, cellEntries);
 			setIds(ids);

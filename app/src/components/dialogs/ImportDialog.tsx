@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import {
 	addTags,
-	emitRenderDelta,
+	renderDeltaBus,
 	refreshAfterMutation,
 	scheduleSave,
 	addLocationCount,
@@ -91,7 +91,7 @@ export function ImportDialog({ onClose }: Props) {
 			addLocationCount(r.locationCount);
 			setTagCounts(r.tagCounts);
 			setUndoRedoState(r.canUndo, r.canRedo);
-			emitRenderDelta(r.delta);
+			renderDeltaBus.emit(r.delta);
 			refreshAfterMutation();
 			scheduleSave();
 			setResult(r);

@@ -14,7 +14,7 @@ import {
 	setUndoRedoState,
 	refreshAfterMutation,
 	scheduleSave,
-	emitRenderDelta,
+	renderDeltaBus,
 } from "@/store/useMapStore";
 import { activatePlugins, deactivatePlugins } from "@/plugins/registry";
 import { getGoogleMap as getGoogleMapInstance } from "@/lib/map/mapState";
@@ -74,7 +74,7 @@ function usePasteHandler() {
 					addLocationCount(r.locationCount);
 					setTagCounts(r.tagCounts);
 					setUndoRedoState(r.canUndo, r.canRedo);
-					emitRenderDelta(r.delta);
+					renderDeltaBus.emit(r.delta);
 					refreshAfterMutation();
 					scheduleSave();
 				}

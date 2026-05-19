@@ -10,39 +10,22 @@ import { debugSpan } from "@/lib/util/debug";
 import { mmaBufUrl } from "@/lib/util/util";
 import type { RenderDelta } from "@/lib/render/CellManager";
 
-type DeltaHandler = (delta: RenderDelta) => void;
-let deltaHandlers: DeltaHandler[] = [];
-export function onRenderDelta(fn: DeltaHandler) {
-	deltaHandlers.push(fn);
-	return () => {
-		deltaHandlers = deltaHandlers.filter((h) => h !== fn);
+function createBus<T extends (...args: never[]) => void>() {
+	let handlers: T[] = [];
+	return {
+		on: (fn: T) => { handlers.push(fn); return () => { handlers = handlers.filter((h) => h !== fn); }; },
+		emit: ((...args: Parameters<T>) => { for (const h of handlers) h(...args); }) as T,
 	};
 }
-export function emitRenderDelta(delta: RenderDelta) {
-	for (const h of deltaHandlers) h(delta);
-}
+
+export const renderDeltaBus = createBus<(delta: RenderDelta) => void>();
 
 type SelectionBitmaskHandler = (
 	selColors: [number, number, number][],
 	cellEntries: { cellChar: string; locCount: number; masks: Uint8Array[] }[],
 	setIds: (ids: Set<number>) => void,
 ) => void;
-let selBitmaskHandlers: SelectionBitmaskHandler[] = [];
-export function onSelectionBitmasks(fn: SelectionBitmaskHandler) {
-	selBitmaskHandlers.push(fn);
-	return () => {
-		selBitmaskHandlers = selBitmaskHandlers.filter((h) => h !== fn);
-	};
-}
-function emitSelectionBitmasks(
-	selColors: [number, number, number][],
-	cellEntries: { cellChar: string; locCount: number; masks: Uint8Array[] }[],
-) {
-	const setIds = (ids: Set<number>) => {
-		selectedLocationIds = ids;
-	};
-	for (const h of selBitmaskHandlers) h(selColors, cellEntries, setIds);
-}
+export const selBitmaskBus = createBus<SelectionBitmaskHandler>();
 
 import {
 	type Selection,
@@ -64,18 +47,9 @@ import {
 	composeSiblings as composeSiblingsSel,
 } from "./selections";
 
-type Listener = () => void;
-
-let listeners: Listener[] = [];
-function subscribe(fn: Listener) {
-	listeners.push(fn);
-	return () => {
-		listeners = listeners.filter((l) => l !== fn);
-	};
-}
-function notify() {
-	listeners.forEach((fn) => fn());
-}
+const storeBus = createBus<() => void>();
+const subscribe = storeBus.on;
+const notify = storeBus.emit;
 
 // --- Map list state ---
 let mapListVersion = 0;
@@ -345,7 +319,7 @@ export async function closeMap(pushHistory = true) {
 	workArea = "overview";
 
 	await cmd.storeCloseMap();
-	emitRenderDelta({ added: [], updated: [], removed: [], colorPatches: [], fullReset: true });
+	renderDeltaBus.emit({ added: [], updated: [], removed: [], colorPatches: [], fullReset: true });
 	undoRedoState = { canUndo: false, canRedo: false };
 	tagCounts = {};
 	mapVersion++;
@@ -559,7 +533,7 @@ async function applySelectionSync(sync: { counts: number[]; patchFile: string | 
 			}
 			cellEntries.push({ cellChar, locCount, masks });
 		}
-		emitSelectionBitmasks(selColors, cellEntries);
+		selBitmaskBus.emit(selColors, cellEntries, (ids) => { selectedLocationIds = ids; });
 	}
 	selectionVersion++;
 	mapVersion++;
@@ -568,7 +542,7 @@ async function applySelectionSync(sync: { counts: number[]; patchFile: string | 
 
 async function mutate(p: Promise<MutationResult>): Promise<MutationResult> {
 	const r = await p;
-	emitRenderDelta(r.delta);
+	renderDeltaBus.emit(r.delta);
 	syncMutationResult(r);
 	refreshAfterMutation();
 	return r;
@@ -597,7 +571,7 @@ export async function addLocations(locs: Location[], opts?: { hideInDelta?: bool
 			entry.a = 0;
 		}
 	}
-	emitRenderDelta(r.delta);
+	renderDeltaBus.emit(r.delta);
 	log.debug(
 		`[add] ipc_roundtrip=${(t1 - t0).toFixed(0)}ms delta: +${r.delta.added.length} -${r.delta.removed.length}`,
 	);
@@ -625,7 +599,7 @@ export function removeLocations(ids: Set<number>) {
 			log.debug(
 				`[delete] ipc_roundtrip=${(performance.now() - t0).toFixed(0)}ms ids=${ids.size} delta: +${r.delta.added.length} -${r.delta.removed.length}`,
 			);
-			emitRenderDelta(r.delta);
+			renderDeltaBus.emit(r.delta);
 			syncMutationResult(r);
 			if (selections.length > 0) {
 				applySelectionUpdate((_, sels) => sels);
@@ -786,7 +760,7 @@ async function applySelectionUpdate(updater: (m: MapData, sels: Selection[]) => 
 			cellEntries.push({ cellChar, locCount, masks });
 		}
 
-		emitSelectionBitmasks(selColors, cellEntries);
+		selBitmaskBus.emit(selColors, cellEntries, (ids) => { selectedLocationIds = ids; });
 	}
 	const t3 = performance.now();
 	log.debug(
@@ -1186,7 +1160,7 @@ export async function reviewDelete() {
 	if (!review || !currentMap) return;
 	const currentLocId = review.locations[review.index];
 	const r = await cmd.storeRemoveLocations([currentLocId]);
-	emitRenderDelta(r.delta);
+	renderDeltaBus.emit(r.delta);
 	syncMutationResult(r);
 	const remaining = review.locations.filter((id) => id !== currentLocId);
 	if (remaining.length === 0 || review.index >= remaining.length) {
@@ -1296,7 +1270,7 @@ export async function checkoutCommit(commitId: string) {
 	activeLocationId = null;
 	undoRedoState = { canUndo: false, canRedo: false };
 
-	emitRenderDelta({ added: [], updated: [], removed: [], colorPatches: [], fullReset: true });
+	renderDeltaBus.emit({ added: [], updated: [], removed: [], colorPatches: [], fullReset: true });
 	refreshAfterMutation();
 	await invalidateMapList();
 }
