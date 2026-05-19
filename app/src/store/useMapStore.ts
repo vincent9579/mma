@@ -987,6 +987,7 @@ function persistTags() {
 	if (currentMapId && currentMap) cmd.storeSaveTags(currentMapId, currentMap.meta.tags);
 }
 
+// TODO: likely dead code - Rust reconcile_tags now handles import dedup, and no known path creates orphaned tag IDs
 function reconcileTags() {
 	if (!currentMap) return;
 	const tags = currentMap.meta.tags;

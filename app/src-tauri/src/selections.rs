@@ -44,8 +44,6 @@ pub struct Selection {
     pub key: String,
     pub color: [u8; 3],
     pub props: SelectionProps,
-    #[serde(default)]
-    pub locations: Vec<u32>,
 }
 
 #[derive(Serialize, specta::Type)]
@@ -111,6 +109,9 @@ impl<'a> LocView<'a> {
     pub fn len(&self) -> usize {
         self.batch_rows + self.adds.len()
     }
+
+    pub fn batch_rows(&self) -> usize { self.batch_rows }
+    pub fn adds(&self) -> &[Location] { self.adds }
 
     pub fn batch_id(&self, i: usize) -> u32 { self.ids.unwrap().value(i) }
 
@@ -254,7 +255,7 @@ fn test_batch_row(view: &LocView, i: usize, props: &SelectionProps) -> bool {
     }
 }
 
-fn test_add_row(loc: &Location, props: &SelectionProps) -> bool {
+pub(crate) fn test_add_row(loc: &Location, props: &SelectionProps) -> bool {
     match props {
         SelectionProps::Everything => true,
         SelectionProps::Locations { locations, .. }

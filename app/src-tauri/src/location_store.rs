@@ -119,6 +119,7 @@ pub struct Store {
     pub(crate) render_cells: HashMap<String, CellRender>,
     pub(crate) id_to_cell: HashMap<u32, String>,
     pub selections: Vec<Selection>,
+    pub(crate) selection_loc_sets: Vec<HashSet<u32>>,
     pub selection_version: u64,
     selected_ids: HashSet<u32>,
     selected_colors: HashMap<u32, [u8; 3]>,
@@ -154,6 +155,7 @@ impl Store {
             render_cells: HashMap::new(),
             id_to_cell: HashMap::new(),
             selections: Vec::new(),
+            selection_loc_sets: Vec::new(),
             selection_version: 0,
             selected_ids: HashSet::new(),
             selected_colors: HashMap::new(),
@@ -183,7 +185,11 @@ impl Store {
     pub(crate) fn finish_mutation(&mut self, delta: RenderDelta) -> MutationResult {
         self.bump();
         let selection_sync = if !self.selections.is_empty() {
-            Some(self.refresh_and_sync_selections())
+            if delta.full_reset || delta.added.len() + delta.removed.len() + delta.updated.len() > 100 {
+                Some(self.refresh_and_sync_selections())
+            } else {
+                Some(self.incremental_selection_update(&delta))
+            }
         } else {
             None
         };
@@ -194,58 +200,63 @@ impl Store {
         }
     }
 
-    pub(crate) fn refresh_and_sync_selections(&mut self) -> SelectionSync {
-        let props: Vec<SelectionProps> = self.selections.iter().map(|s| s.props.clone()).collect();
-        let masks: Vec<Vec<bool>> = {
-            let view = self.loc_view();
-            props.iter().map(|p| selections::resolve_bitmask(&view, p)).collect()
-        };
+    fn incremental_selection_update(&mut self, delta: &RenderDelta) -> SelectionSync {
+        let removed_ids: HashSet<u32> = delta.removed.iter().map(|r| r.id).collect();
+        let added_ids: Vec<u32> = delta.added.iter().map(|a| a.id).collect();
 
-        let counts: Vec<usize> = masks.iter()
-            .map(|m| m.iter().filter(|&&b| b).count())
+        if !removed_ids.is_empty() {
+            for set in &mut self.selection_loc_sets {
+                for id in &removed_ids { set.remove(id); }
+            }
+            for &id in &removed_ids {
+                self.selected_ids.remove(&id);
+                self.selected_colors.remove(&id);
+            }
+        }
+
+        let locs_to_check: Vec<Location> = added_ids.iter()
+            .filter_map(|&id| self.get_loc_by_id(id))
             .collect();
 
-        let colors: Vec<[u8; 3]> = self.selections.iter().map(|s| s.color).collect();
-        let num_sels = masks.len();
-        let mut all_selected = HashSet::new();
-        let mut color_map = HashMap::new();
-        let mut all_ids: Vec<Vec<u32>> = vec![Vec::new(); num_sels];
-
-        let batch_len = self.batch.as_ref().map_or(0, |b| b.num_rows());
-        for si in 0..num_sels {
-            let mask = &masks[si];
-            if let Some(ref b) = self.batch {
-                let id_col = col_id(b);
-                for i in 0..b.num_rows() {
-                    let id = id_col.value(i);
-                    if self.overlay_dead.contains(&id) { continue; }
-                    if i < mask.len() && mask[i] {
-                        all_ids[si].push(id);
-                        all_selected.insert(id);
-                        color_map.insert(id, colors[si]);
-                    }
-                }
-            }
-            for (j, loc) in self.overlay_adds.iter().enumerate() {
-                let mi = batch_len + j;
-                if mi < mask.len() && mask[mi] {
-                    all_ids[si].push(loc.id);
-                    all_selected.insert(loc.id);
-                    color_map.insert(loc.id, colors[si]);
+        let sel_props: Vec<SelectionProps> = self.selections.iter().map(|s| s.props.clone()).collect();
+        for (si, props) in sel_props.iter().enumerate() {
+            let color = self.selections[si].color;
+            for loc in &locs_to_check {
+                if selections::test_add_row(loc, props) {
+                    self.selection_loc_sets[si].insert(loc.id);
+                    self.selected_ids.insert(loc.id);
+                    self.selected_colors.insert(loc.id, color);
                 }
             }
         }
 
-        for (si, ids) in all_ids.into_iter().enumerate() {
-            self.selections[si].locations = ids;
-        }
-
-        let selected_count = all_selected.len();
-        self.selected_ids = all_selected;
-        self.selected_colors = color_map;
+        let counts: Vec<usize> = self.selection_loc_sets.iter().map(|s| s.len()).collect();
+        let selected_count = self.selected_ids.len();
         self.selection_version += 1;
 
-        // Build bitmask binary
+        // Build bitmask for ONLY changed cells, patch into existing file
+        let changed_ids: HashSet<u32> = removed_ids.iter().copied()
+            .chain(added_ids.iter().copied())
+            .collect();
+
+        // Find affected cells
+        let mut affected_cells: Vec<(&String, &CellRender)> = Vec::new();
+        for (cell_key, cr) in &self.render_cells {
+            if cr.id_order.iter().any(|id| changed_ids.contains(id)) {
+                affected_cells.push((cell_key, cr));
+            }
+        }
+
+        if affected_cells.is_empty() {
+            return SelectionSync { counts, patch_file: None, selected_count };
+        }
+
+        // Rebuild full bitmask but use selection_loc_sets (HashSet, O(1) lookup)
+        // Only iterate affected cells for the expensive contains check;
+        // for unaffected cells, all bits stay the same from the previous bitmask.
+        // BUT: JS replaces the full file, so we need all cells.
+        // Optimization: write only affected cells + metadata, have JS patch locally.
+        // For now: full rebuild but using HashSets (no allocation, just lookups).
         let num_sels = self.selections.len();
         let mut buf: Vec<u8> = Vec::new();
         buf.push(num_sels as u8);
@@ -254,9 +265,6 @@ impl Store {
         }
         let num_cells = self.render_cells.len();
         buf.push(num_cells as u8);
-        let sel_id_sets: Vec<HashSet<u32>> = self.selections.iter()
-            .map(|s| s.locations.iter().copied().collect())
-            .collect();
         for (cell_key, cr) in &self.render_cells {
             buf.push(cell_key.as_bytes()[0]);
             let n = cr.id_order.len();
@@ -265,7 +273,7 @@ impl Store {
             for si in 0..num_sels {
                 let mut bitmask = vec![0u8; mask_bytes];
                 for (li, &id) in cr.id_order.iter().enumerate() {
-                    if sel_id_sets[si].contains(&id) {
+                    if self.selection_loc_sets[si].contains(&id) {
                         bitmask[li / 8] |= 1 << (li % 8);
                     }
                 }
@@ -280,6 +288,99 @@ impl Store {
         } else {
             None
         };
+
+        log::debug!("[sel-incr] total={}ms sels={} selected={} cells={} affected={} buf={}",
+            std::time::Instant::now().duration_since(std::time::Instant::now()).as_millis(),
+            num_sels, selected_count, num_cells, affected_cells.len(), buf.len());
+
+        SelectionSync { counts, patch_file, selected_count }
+    }
+
+    pub(crate) fn refresh_and_sync_selections(&mut self) -> SelectionSync {
+        let props: Vec<SelectionProps> = self.selections.iter().map(|s| s.props.clone()).collect();
+        let masks: Vec<Vec<bool>> = {
+            let view = self.loc_view();
+            props.iter().map(|p| selections::resolve_bitmask(&view, p)).collect()
+        };
+
+        let num_sels = masks.len();
+        let batch_len = self.batch.as_ref().map_or(0, |b| b.num_rows());
+        self.selection_loc_sets = vec![HashSet::new(); num_sels];
+        for si in 0..num_sels {
+            let mask = &masks[si];
+            if let Some(ref b) = self.batch {
+                let id_col = col_id(b);
+                for i in 0..b.num_rows() {
+                    if self.overlay_dead.contains(&id_col.value(i)) { continue; }
+                    if i < mask.len() && mask[i] {
+                        self.selection_loc_sets[si].insert(id_col.value(i));
+                    }
+                }
+            }
+            for (j, loc) in self.overlay_adds.iter().enumerate() {
+                let mi = batch_len + j;
+                if mi < mask.len() && mask[mi] {
+                    self.selection_loc_sets[si].insert(loc.id);
+                }
+            }
+        }
+
+        self.rebuild_selection_render_state()
+    }
+
+    fn rebuild_selection_render_state(&mut self) -> SelectionSync {
+        let t0 = std::time::Instant::now();
+        let counts: Vec<usize> = self.selection_loc_sets.iter().map(|s| s.len()).collect();
+        let mut all_selected = HashSet::new();
+        let mut color_map = HashMap::new();
+        for (si, set) in self.selection_loc_sets.iter().enumerate() {
+            let color = self.selections[si].color;
+            for &id in set {
+                all_selected.insert(id);
+                color_map.insert(id, color);
+            }
+        }
+        let selected_count = all_selected.len();
+        self.selected_ids = all_selected;
+        self.selected_colors = color_map;
+        self.selection_version += 1;
+        let t1 = t0.elapsed().as_millis();
+
+        let num_sels = self.selections.len();
+        let mut buf: Vec<u8> = Vec::new();
+        buf.push(num_sels as u8);
+        for sel in &self.selections {
+            buf.extend_from_slice(&sel.color);
+        }
+        let num_cells = self.render_cells.len();
+        buf.push(num_cells as u8);
+        for (cell_key, cr) in &self.render_cells {
+            buf.push(cell_key.as_bytes()[0]);
+            let n = cr.id_order.len();
+            buf.extend_from_slice(&(n as u32).to_le_bytes());
+            let mask_bytes = n.div_ceil(8);
+            for si in 0..num_sels {
+                let mut bitmask = vec![0u8; mask_bytes];
+                for (li, &id) in cr.id_order.iter().enumerate() {
+                    if self.selection_loc_sets[si].contains(&id) {
+                        bitmask[li / 8] |= 1 << (li % 8);
+                    }
+                }
+                buf.extend_from_slice(&bitmask);
+            }
+        }
+
+        let patch_file = if num_cells > 0 {
+            let path = std::env::temp_dir().join("mma_sel_patches.bin");
+            let _ = std::fs::write(&path, &buf);
+            Some(path.to_string_lossy().into_owned())
+        } else {
+            None
+        };
+
+        log::debug!("[sel-rebuild] id_maps={}ms bitmask={}ms total={}ms sels={} selected={} cells={} buf={}",
+            t1, t0.elapsed().as_millis() - t1, t0.elapsed().as_millis(),
+            num_sels, selected_count, num_cells, buf.len());
 
         SelectionSync { counts, patch_file, selected_count }
     }
@@ -841,6 +942,7 @@ pub async fn store_open_map(
     store.dirty_geohashes.clear();
     store.committed_blobs.clear();
     store.selections.clear();
+    store.selection_loc_sets.clear();
     store.selected_ids.clear();
     store.selected_colors.clear();
     store.active_id = None;
@@ -1811,7 +1913,7 @@ pub fn store_alloc_tag_id(state: tauri::State<'_, StoreState>) -> Result<u32, St
 }
 
 
-fn read_tags_json(conn: &rusqlite::Connection, map_id: &str) -> HashMap<u32, Tag> {
+pub(crate) fn read_tags_json(conn: &rusqlite::Connection, map_id: &str) -> HashMap<u32, Tag> {
     let json: String = conn.query_row(
         "SELECT tags FROM maps WHERE id = ?1", [map_id], |row| row.get(0),
     ).unwrap_or_else(|_| "{}".into());
@@ -2003,6 +2105,10 @@ pub struct SyncSelectionsResult {
     pub selected_count: usize,
 }
 
+// TODO: selection resolution perf at 1M+ scale (~500ms currently)
+// - Inverted index (tag_id → HashSet<loc_id>) for O(1) tag/untagged/panoId lookups
+// - BitVec instead of HashSet for membership — 1M locs = 125KB, bitmask binary becomes a direct copy
+// - "select everything" shortcut — flag instead of 125KB of all-1 bits
 #[tauri::command]
 #[specta::specta]
 pub async fn store_sync_selections(
@@ -2014,31 +2120,51 @@ pub async fn store_sync_selections(
     let (counts, buf, selected_count, num_cells) = {
         let mut store = state.lock().map_err(|e| e.to_string())?;
 
+        let num_sels = sels.len();
+
+        // 1. Resolve bitmasks (parallel via rayon inside resolve_bitmask)
         let view = store.loc_view();
         let masks: Vec<Vec<bool>> = sels.iter()
             .map(|sel| selections::resolve_bitmask(&view, &sel.props))
             .collect();
-        let counts: Vec<usize> = masks.iter()
-            .map(|m| m.iter().filter(|&&b| b).count())
-            .collect();
 
-        let id_to_sel = view.collect_id_to_selection(&masks);
-        let all_selected: HashSet<u32> = id_to_sel.keys().copied().collect();
+        // 2. Single pass: build per-selection HashSets + selected_ids + color_map from masks
+        let batch_rows = view.batch_rows();
+        let mut sel_sets: Vec<HashSet<u32>> = vec![HashSet::new(); num_sels];
+        let mut all_selected = HashSet::new();
+        let mut color_map = HashMap::new();
+        for si in 0..num_sels {
+            let mask = &masks[si];
+            let color = sels[si].color;
+            for i in 0..batch_rows {
+                if mask[i] && view.is_alive(i) {
+                    let id = view.id_at(i);
+                    sel_sets[si].insert(id);
+                    all_selected.insert(id);
+                    color_map.insert(id, color);
+                }
+            }
+            for (j, loc) in view.adds().iter().enumerate() {
+                if mask[batch_rows + j] {
+                    sel_sets[si].insert(loc.id);
+                    all_selected.insert(loc.id);
+                    color_map.insert(loc.id, color);
+                }
+            }
+        }
+        drop(view);
+
+        let counts: Vec<usize> = sel_sets.iter().map(|s| s.len()).collect();
         let selected_count = all_selected.len();
 
-        // Pack grouped bitmask binary:
-        // [u8 num_sels][per sel: u8 r, g, b]
-        // [u8 num_cells][per cell: u8 cell_char, u32 loc_count, per sel: ceil(loc_count/8) bitmask bytes]
-        let num_sels = sels.len();
+        // 3. Build bitmask binary using sel_sets (O(1) lookups, no intermediate maps)
         let mut buf: Vec<u8> = Vec::new();
         buf.push(num_sels as u8);
         for sel in &sels {
             buf.extend_from_slice(&sel.color);
         }
-
         let num_cells = store.render_cells.len();
         buf.push(num_cells as u8);
-
         for (cell_key, cr) in &store.render_cells {
             buf.push(cell_key.as_bytes()[0]);
             let n = cr.id_order.len();
@@ -2047,10 +2173,8 @@ pub async fn store_sync_selections(
             for si in 0..num_sels {
                 let mut bitmask = vec![0u8; mask_bytes];
                 for (li, &id) in cr.id_order.iter().enumerate() {
-                    if let Some(&sel_idx) = id_to_sel.get(&id) {
-                        if sel_idx == si {
-                            bitmask[li / 8] |= 1 << (li % 8);
-                        }
+                    if sel_sets[si].contains(&id) {
+                        bitmask[li / 8] |= 1 << (li % 8);
                     }
                 }
                 buf.extend_from_slice(&bitmask);
@@ -2058,20 +2182,15 @@ pub async fn store_sync_selections(
         }
 
         store.selected_ids = all_selected;
-        let mut color_map = HashMap::new();
-        for (&id, &si) in &id_to_sel {
-            color_map.insert(id, sels[si].color);
-        }
         store.selected_colors = color_map;
-
         store.selections = sels.iter().enumerate().map(|(i, sel)| {
             selections::Selection {
                 key: format!("sync:{i}"),
                 color: sel.color,
                 props: sel.props.clone(),
-                locations: Vec::new(),
             }
         }).collect();
+        store.selection_loc_sets = sel_sets;
         store.selection_version += 1;
 
         let render_total: usize = store.render_cells.values().map(|cr| cr.id_order.len()).sum();
@@ -2143,7 +2262,8 @@ pub fn store_add_selection(state: tauri::State<'_, StoreState>, props: Selection
     let key = selection_key(&props, &locations);
     let color = color_for_key(&key);
     let count = locations.len();
-    store.selections.push(Selection { key: key.clone(), color, props, locations });
+    store.selections.push(Selection { key: key.clone(), color, props });
+    store.selection_loc_sets.push(locations.into_iter().collect());
     store.selection_version += 1;
     Ok(SelectionResult { key, count, selection_version: store.selection_version })
 }
@@ -2152,7 +2272,11 @@ pub fn store_add_selection(state: tauri::State<'_, StoreState>, props: Selection
 #[specta::specta]
 pub fn store_remove_selection(state: tauri::State<'_, StoreState>, key: String) -> Result<u32, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
-    store.selections.retain(|s| s.key != key);
+    let idx = store.selections.iter().position(|s| s.key == key);
+    if let Some(i) = idx {
+        store.selections.remove(i);
+        store.selection_loc_sets.remove(i);
+    }
     store.selection_version += 1;
     Ok(store.selection_version as u32)
 }
@@ -2162,6 +2286,7 @@ pub fn store_remove_selection(state: tauri::State<'_, StoreState>, key: String) 
 pub fn store_reset_selections(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     store.selections.clear();
+    store.selection_loc_sets.clear();
     store.selection_version += 1;
     Ok(store.selection_version as u32)
 }
@@ -2170,11 +2295,11 @@ pub fn store_reset_selections(state: tauri::State<'_, StoreState>) -> Result<u32
 #[specta::specta]
 pub fn store_get_selections(state: tauri::State<'_, StoreState>) -> Result<Vec<SelectionSummary>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
-    Ok(store.selections.iter().map(|s| SelectionSummary {
+    Ok(store.selections.iter().enumerate().map(|(i, s)| SelectionSummary {
         key: s.key.clone(),
         color: s.color,
         sel_type: selection_type_name(&s.props),
-        count: s.locations.len(),
+        count: store.selection_loc_sets.get(i).map_or(0, |s| s.len()),
     }).collect())
 }
 
@@ -2183,7 +2308,7 @@ pub fn store_get_selections(state: tauri::State<'_, StoreState>) -> Result<Vec<S
 pub fn store_get_selected_ids(state: tauri::State<'_, StoreState>) -> Result<Vec<u32>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     let mut all = HashSet::new();
-    for sel in &store.selections { for &id in &sel.locations { all.insert(id); } }
+    for set in &store.selection_loc_sets { for &id in set { all.insert(id); } }
     Ok(all.into_iter().collect())
 }
 
@@ -2197,9 +2322,7 @@ pub fn store_refresh_selections(state: tauri::State<'_, StoreState>) -> Result<u
         store.selections.iter().map(|s| selections::resolve(&view, &s.props)).collect()
     };
     let n = resolved.len();
-    for (i, ids) in resolved.into_iter().enumerate() {
-        store.selections[i].locations = ids;
-    }
+    store.selection_loc_sets = resolved.into_iter().map(|ids| ids.into_iter().collect()).collect();
     store.selection_version += 1;
     log::debug!("[cmd] store_refresh_selections total={}ms sels={}", _t.elapsed().as_millis(), n);
     Ok(store.selection_version as u32)

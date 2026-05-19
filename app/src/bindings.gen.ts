@@ -486,7 +486,6 @@ export type Selection = {
 	key: string,
 	color: [number, number, number],
 	props: SelectionProps,
-	locations?: number[],
 };
 
 export type SelectionInput = {

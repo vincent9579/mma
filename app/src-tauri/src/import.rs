@@ -810,17 +810,48 @@ pub struct EditorImportResult {
     pub can_redo: bool,
 }
 
+fn reconcile_tags(
+    store: &mut crate::location_store::Store,
+    parsed: &mut ParsedMap,
+    existing_tags: &HashMap<u32, Tag>,
+) -> HashMap<u32, u32> {
+    let mut name_to_id: HashMap<String, u32> = HashMap::new();
+    for (_, tag) in existing_tags {
+        name_to_id.insert(tag.name.to_lowercase(), tag.id);
+    }
+
+    let mut remap: HashMap<u32, u32> = HashMap::new();
+    parsed.tags.retain_mut(|tag| {
+        if let Some(&existing_id) = name_to_id.get(&tag.name.to_lowercase()) {
+            remap.insert(tag.id, existing_id);
+            false
+        } else {
+            let new_id = store.alloc_tag_id();
+            remap.insert(tag.id, new_id);
+            name_to_id.insert(tag.name.to_lowercase(), new_id);
+            tag.id = new_id;
+            true
+        }
+    });
+    remap
+}
+
 fn add_parsed_to_store(
     app: &tauri::AppHandle,
     store: &mut crate::location_store::Store,
     parsed: &mut ParsedMap,
 ) -> Result<(), String> {
-    let mut tag_id_remap: HashMap<u32, u32> = HashMap::new();
-    for tag in &mut parsed.tags {
-        let new_id = store.alloc_tag_id();
-        tag_id_remap.insert(tag.id, new_id);
-        tag.id = new_id;
-    }
+    let existing_tags = if let Some(map_id) = &store.map_id {
+        if let Ok(conn) = fast_io::open_db(app) {
+            crate::location_store::read_tags_json(&conn, map_id)
+        } else {
+            HashMap::new()
+        }
+    } else {
+        HashMap::new()
+    };
+
+    let tag_id_remap = reconcile_tags(store, parsed, &existing_tags);
 
     for loc in &mut parsed.locations {
         loc.id = store.alloc_id();
