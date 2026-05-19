@@ -69,7 +69,7 @@ import {
 	type SeenFilter,
 } from "@/lib/seen/seen.add";
 import { loadSeenPano } from "@/components/editor/location/LocationPreview";
-import { cmd } from "@/lib/commands";
+import { cmd, fetchViaFile } from "@/lib/commands";
 import type { LocationPatch_Deserialize } from "@/bindings.gen";
 import type { Location, Tag, MapMeta } from "@/types";
 import { enrichAll, needsEnrichment } from "@/lib/sv/enrich.add";
@@ -101,7 +101,7 @@ function buildTestApi() {
 		patchLocationExtra: (id: number, extra: Record<string, unknown>, replace?: boolean) =>
 			patchLocationExtra(id, extra, replace),
 		fetchAllLocations: () => fetchAllLocations(),
-		fetchLocation: (id: number) => cmd.storeGetLocation(id),
+		fetchLocation: (id: number) => fetchViaFile<Location>(cmd.storeGetLocationFile(id)),
 		getLocationCount: () => cmd.storeLocationCount(),
 
 		// --- Undo/Redo ---

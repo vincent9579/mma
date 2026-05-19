@@ -1,4 +1,5 @@
 import { commands } from "@/bindings.gen";
+import { mmaBufUrl } from "@/lib/util/util";
 
 type ExtractOk<T> = [T] extends [{ status: "ok"; data: infer D } | { status: "error"; error: unknown }] ? D : T;
 
@@ -22,3 +23,10 @@ export const cmd = new Proxy(commands, {
 		return (...args: unknown[]) => (fn as Function)(...args).then(unwrap);
 	},
 }) as unknown as Unwrapped;
+
+export async function fetchViaFile<T>(pathPromise: Promise<string | null>): Promise<T | null> {
+	const path = await pathPromise;
+	if (!path) return null;
+	const resp = await fetch(mmaBufUrl(path));
+	return resp.json();
+}

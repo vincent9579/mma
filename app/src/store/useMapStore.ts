@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { MapData, MapMeta, Location, Tag, WorkArea, ExtraFieldDef } from "@/types";
 import { emit as tauriEmit, listen } from "@tauri-apps/api/event";
-import { cmd } from "@/lib/commands";
+import { cmd, fetchViaFile } from "@/lib/commands";
 import type { MutationResult_Serialize as MutationResult, LocationPatch_Deserialize as LocationPatch } from "@/bindings.gen";
 import { emit as emitEvent } from "@/lib/events";
 import { log } from "@/lib/util/log";
@@ -372,7 +372,7 @@ export async function fetchAllLocations(): Promise<Location[]> {
 }
 
 export async function fetchLocation(id: number): Promise<Location | null> {
-	return cmd.storeGetLocation(id);
+	return fetchViaFile<Location>(cmd.storeGetLocationFile(id));
 }
 
 export async function fetchLocationsByIds(ids: number[]): Promise<Location[]> {
@@ -609,7 +609,7 @@ export async function addLocations(locs: Location[], opts?: { hideInDelta?: bool
 
 export async function duplicateLocation(locId: number): Promise<number | null> {
 	if (!currentMap) return null;
-	const loc = await cmd.storeGetLocation(locId);
+	const loc = await fetchViaFile<Location>(cmd.storeGetLocationFile(locId));
 	if (!loc) return null;
 	const now = new Date().toISOString();
 	const clone: Location = { ...loc, id: 0, createdAt: now, modifiedAt: now };
@@ -661,7 +661,7 @@ export function updateLocation(locId: number, patch: Partial<Location>) {
 	mutate(cmd.storeUpdateLocations(updates, true))
 		.then(() => {
 			if (activeLocationId === locId) {
-				cmd.storeGetLocation(locId)
+				fetchViaFile<Location>(cmd.storeGetLocationFile(locId))
 					.then((loc) => {
 						cachedActiveLocation = loc ?? null;
 						mapVersion++;
@@ -696,7 +696,7 @@ export function patchLocationExtra(
 		mutate(cmd.storeUpdateLocations([[locId, { extra }]], false)).then(
 			() => {
 				if (activeLocationId === locId) {
-					cmd.storeGetLocation(locId).then((loc) => {
+					fetchViaFile<Location>(cmd.storeGetLocationFile(locId)).then((loc) => {
 						cachedActiveLocation = loc ?? null;
 						mapVersion++;
 						notify();
@@ -709,7 +709,7 @@ export function patchLocationExtra(
 	if (replace) {
 		send(extraPatch);
 	} else {
-		cmd.storeGetLocation(locId).then((loc) => {
+		fetchViaFile<Location>(cmd.storeGetLocationFile(locId)).then((loc) => {
 			send({ ...(loc?.extra || {}), ...extraPatch });
 		});
 	}
@@ -930,8 +930,8 @@ export async function setActiveLocation(id: number | null) {
 		log.error("[setActive] store_set_active failed:", e),
 	);
 	if (id) {
-		const loc = await cmd.storeGetLocation(id);
-		log.debug(`[setActive] store_get_location ipc=${(performance.now() - t0).toFixed(0)}ms`);
+		const loc = await fetchViaFile<Location>(cmd.storeGetLocationFile(id));
+		log.debug(`[setActive] store_get_location_file ipc=${(performance.now() - t0).toFixed(0)}ms`);
 		cachedActiveLocation = loc ?? null;
 		workArea = "location";
 	} else {

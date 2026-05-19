@@ -1113,6 +1113,25 @@ pub fn store_get_location(
 
 #[tauri::command]
 #[specta::specta]
+pub fn store_get_location_file(
+    state: tauri::State<'_, StoreState>,
+    id: u32,
+) -> Result<Option<String>, String> {
+    let _t = std::time::Instant::now();
+    let store = state.lock().map_err(|e| e.to_string())?;
+    let loc = match store.get_loc_by_id(id) {
+        Some(l) => l,
+        None => return Ok(None),
+    };
+    let json = serde_json::to_vec(&loc).map_err(|e| e.to_string())?;
+    let path = std::env::temp_dir().join(format!("mma_loc_{id}.json"));
+    std::fs::write(&path, &json).map_err(|e| e.to_string())?;
+    log::debug!("[cmd] store_get_location_file total={}ms bytes={}", _t.elapsed().as_millis(), json.len());
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn store_get_locations_by_ids(
     state: tauri::State<'_, StoreState>,
     ids: Vec<u32>,

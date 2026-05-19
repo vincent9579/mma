@@ -36,6 +36,7 @@ export const commands = {
 	createdAt: string,
 	modifiedAt?: string | null,
 } | null, string>(__TAURI_INVOKE("store_get_location", { id })),
+	storeGetLocationFile: (id: number) => typedError<string | null, string>(__TAURI_INVOKE("store_get_location_file", { id })),
 	storeGetLocationsByIds: (ids: number[]) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_get_locations_by_ids", { ids })),
 	storeGetAllLocations: () => typedError<string, string>(__TAURI_INVOKE("store_get_all_locations")),
 	storeSaveDirty: () => typedError<SaveResult, string>(__TAURI_INVOKE("store_save_dirty")),
