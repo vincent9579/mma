@@ -18,15 +18,10 @@ fn default_visible() -> bool {
 pub struct Location {
     #[serde(default)]
     pub id: u32,
-    #[specta(type = specta_typescript::Number)]
     pub lat: f64,
-    #[specta(type = specta_typescript::Number)]
     pub lng: f64,
-    #[specta(type = specta_typescript::Number)]
     pub heading: f64,
-    #[specta(type = specta_typescript::Number)]
     pub pitch: f64,
-    #[specta(type = specta_typescript::Number)]
     pub zoom: f64,
     pub pano_id: Option<String>,
     pub flags: u32,

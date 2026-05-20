@@ -741,11 +741,8 @@ pub struct RenderDelta {
 pub struct RenderEntry {
     pub cell: String,
     pub id: u32,
-    #[specta(type = specta_typescript::Number)]
     pub lng: f32,
-    #[specta(type = specta_typescript::Number)]
     pub lat: f32,
-    #[specta(type = specta_typescript::Number)]
     pub heading: f32,
     pub r: u8, pub g: u8, pub b: u8, pub a: u8,
 }
@@ -755,11 +752,8 @@ pub struct RenderEntry {
 pub struct RenderPatchEntry {
     pub cell: String,
     pub cell_index: usize,
-    #[specta(type = Option<specta_typescript::Number>)]
     pub lng: Option<f32>,
-    #[specta(type = Option<specta_typescript::Number>)]
     pub lat: Option<f32>,
-    #[specta(type = Option<specta_typescript::Number>)]
     pub heading: Option<f32>,
 }
 
@@ -811,15 +805,10 @@ where
 #[derive(Default, serde::Deserialize, specta::Type)]
 #[serde(default, rename_all = "camelCase")]
 pub struct LocationPatch {
-    #[specta(type = Option<specta_typescript::Number>)]
     pub lat: Option<f64>,
-    #[specta(type = Option<specta_typescript::Number>)]
     pub lng: Option<f64>,
-    #[specta(type = Option<specta_typescript::Number>)]
     pub heading: Option<f64>,
-    #[specta(type = Option<specta_typescript::Number>)]
     pub pitch: Option<f64>,
-    #[specta(type = Option<specta_typescript::Number>)]
     pub zoom: Option<f64>,
     #[serde(default, deserialize_with = "nullable")]
     #[specta(type = Option<Option<String>>)]
@@ -1651,13 +1640,9 @@ pub fn store_restore_commit(
 #[derive(Default, serde::Deserialize, specta::Type)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RenderRequest {
-    #[specta(type = specta_typescript::Number)]
     pub west: f64,
-    #[specta(type = specta_typescript::Number)]
     pub south: f64,
-    #[specta(type = specta_typescript::Number)]
     pub east: f64,
-    #[specta(type = specta_typescript::Number)]
     pub north: f64,
     pub selected_ids: Option<Vec<u32>>,
     pub marker_style: String,

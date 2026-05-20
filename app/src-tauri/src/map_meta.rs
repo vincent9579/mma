@@ -11,7 +11,6 @@ use crate::util::now_iso;
 #[serde(rename_all = "camelCase")]
 pub struct MapSettings {
     pub point_along_road: bool,
-    #[specta(type = Option<specta_typescript::Number>)]
     pub prefer_direction: Option<f64>,
     pub prefer_official: bool,
     pub prefer_higher_quality: bool,
@@ -63,7 +62,7 @@ pub struct MapExtra {
 #[serde(untagged)]
 pub enum ScoreBounds {
     Auto(String),
-    Bounds(#[specta(type = [specta_typescript::Number; 4])] [f64; 4]),
+    Bounds([f64; 4]),
 }
 
 impl Default for ScoreBounds {

@@ -5,15 +5,10 @@ use rusqlite::params_from_iter;
 pub struct SeenEntry {
     pub id: u32,
     pub pano_id: String,
-    #[specta(type = specta_typescript::Number)]
     pub lat: f64,
-    #[specta(type = specta_typescript::Number)]
     pub lng: f64,
-    #[specta(type = specta_typescript::Number)]
     pub heading: f64,
-    #[specta(type = specta_typescript::Number)]
     pub pitch: f64,
-    #[specta(type = specta_typescript::Number)]
     pub zoom: f64,
     pub entered_at: i64,
     pub map_id: Option<String>,

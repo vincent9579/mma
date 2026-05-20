@@ -13,23 +13,23 @@ export const commands = {
 	bulkImportPreview: (path: string) => typedError<ImportPreviewEntry[], string>(__TAURI_INVOKE("bulk_import_preview", { path })),
 	bulkImportConfirm: (path: string, selectedIndices: number[]) => typedError<ImportedMapInfo[], string>(__TAURI_INVOKE("bulk_import_confirm", { path, selectedIndices })),
 	storeImportPreview: (path: string) => typedError<EditorImportPreview, string>(__TAURI_INVOKE("store_import_preview", { path })),
-	storeImportFile: (droppedFields: string[]) => typedError<EditorImportResult_Serialize, string>(__TAURI_INVOKE("store_import_file", { droppedFields })),
+	storeImportFile: (droppedFields: string[]) => typedError<EditorImportResult_Serialize, string>(__TAURI_INVOKE("store_import_file", { droppedFields })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**
 	 *  Parse raw text (JSON or CSV) as locations and import into the open map.
 	 *  Handles tag reconciliation, ID allocation, and render delta in one shot.
 	 */
-	storeImportPaste: (text: string) => typedError<EditorImportResult_Serialize, string>(__TAURI_INVOKE("store_import_paste", { text })),
+	storeImportPaste: (text: string) => typedError<EditorImportResult_Serialize, string>(__TAURI_INVOKE("store_import_paste", { text })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**
 	 *  Load a map's Arrow data from disk, rebuild all indexes, and return initial state
 	 *  (tag counts, undo/redo availability). Must be called before any other store commands.
 	 */
 	storeOpenMap: (mapId: string) => typedError<StoreStatus, string>(__TAURI_INVOKE("store_open_map", { mapId })),
 	storeCloseMap: () => typedError<null, string>(__TAURI_INVOKE("store_close_map")),
-	storeAddLocations: (locations: Location_Deserialize[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_add_locations", { locations })),
-	storeRemoveLocations: (ids: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_remove_locations", { ids })),
-	storeUpdateLocations: (updates: ([number, LocationPatch_Deserialize])[], recordUndo: boolean | null) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_update_locations", { updates, recordUndo })),
+	storeAddLocations: (locations: Location_Deserialize[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_add_locations", { locations: locations.map(i=>i) })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
+	storeRemoveLocations: (ids: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_remove_locations", { ids })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
+	storeUpdateLocations: (updates: ([number, LocationPatch_Deserialize])[], recordUndo: boolean | null) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_update_locations", { updates: updates.map(i=>([i[0],({...i[1],lat:i[1].lat==null?i[1].lat:i[1].lat,lng:i[1].lng==null?i[1].lng:i[1].lng,heading:i[1].heading==null?i[1].heading:i[1].heading,pitch:i[1].pitch==null?i[1].pitch:i[1].pitch,zoom:i[1].zoom==null?i[1].zoom:i[1].zoom})])), recordUndo })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**  Remove the given tag IDs from every location that has them. Returns a MutationResult. */
-	storeStripTags: (tagIds: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_strip_tags", { tagIds })),
+	storeStripTags: (tagIds: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_strip_tags", { tagIds })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	storeSetActive: (id: number | null) => typedError<null, string>(__TAURI_INVOKE("store_set_active", { id })),
 	storeGetLocation: (id: number) => typedError<{
 	id: number,
@@ -44,13 +44,13 @@ export const commands = {
 	extra?: any | null,
 	createdAt: string,
 	modifiedAt?: string | null,
-} | null, string>(__TAURI_INVOKE("store_get_location", { id })),
+} | null, string>(__TAURI_INVOKE("store_get_location", { id })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:v.data } : v) as typeof v)),
 	/**
 	 *  Write a single location as JSON to a temp file and return the path.
 	 *  Faster than invoke for the response payload (~10ms less IPC overhead).
 	 */
 	storeGetLocationFile: (id: number) => typedError<string | null, string>(__TAURI_INVOKE("store_get_location_file", { id })),
-	storeGetLocationsByIds: (ids: number[]) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_get_locations_by_ids", { ids })),
+	storeGetLocationsByIds: (ids: number[]) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_get_locations_by_ids", { ids })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
 	storeGetAllLocations: () => typedError<string, string>(__TAURI_INVOKE("store_get_all_locations")),
 	/**
 	 *  Delta-only autosave: writes only dirty geohash chunks to disk (~17ms).
@@ -64,8 +64,8 @@ export const commands = {
 	storeBounds: () => typedError<[number, number, number, number] | null, string>(__TAURI_INVOKE("store_bounds")).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:v.data.map(i=>i) } : v) as typeof v)),
 	storeCommitDiff: () => typedError<[number, number, number], string>(__TAURI_INVOKE("store_commit_diff")),
 	storeResetUndo: () => typedError<null, string>(__TAURI_INVOKE("store_reset_undo")),
-	storeUndo: () => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_undo")),
-	storeRedo: () => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_redo")),
+	storeUndo: () => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_undo")).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
+	storeRedo: () => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_redo")).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	storeCanUndoRedo: () => typedError<[boolean, boolean], string>(__TAURI_INVOKE("store_can_undo_redo")),
 	storeLocationCount: () => typedError<number, string>(__TAURI_INVOKE("store_location_count")),
 	storeHasLocation: (id: number) => typedError<boolean, string>(__TAURI_INVOKE("store_has_location", { id })),
@@ -91,7 +91,7 @@ export const commands = {
 	 *  that rejects 99.9%+ of points before haversine is called.
 	 *  At 1M locations this is sub-millisecond on a modern CPU.
 	 */
-	storeFindNearby: (lat: number, lng: number, radiusM: number) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_find_nearby", { lat, lng, radiusM })),
+	storeFindNearby: (lat: number, lng: number, radiusM: number) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_find_nearby", { lat, lng, radiusM })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
 	storeAddSelection: (props: SelectionProps) => typedError<SelectionResult, string>(__TAURI_INVOKE("store_add_selection", { props })),
 	storeRemoveSelection: (key: string) => typedError<number, string>(__TAURI_INVOKE("store_remove_selection", { key })),
 	storeResetSelections: () => typedError<number, string>(__TAURI_INVOKE("store_reset_selections")),
@@ -115,13 +115,13 @@ export const commands = {
 	country: string,
 	country_code: string,
 } | null>("reverse_geocode", { lat, lng }),
-	storeListMaps: () => typedError<MapMeta[], string>(__TAURI_INVOKE("store_list_maps")),
+	storeListMaps: () => typedError<MapMeta[], string>(__TAURI_INVOKE("store_list_maps")).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>({...i,settings:({...i.settings,preferDirection:i.settings.preferDirection==null?i.settings.preferDirection:i.settings.preferDirection})})) } : v) as typeof v)),
 	storeGetMap: (id: string) => typedError<{
 	meta: MapMeta,
-} | null, string>(__TAURI_INVOKE("store_get_map", { id })),
-	storeCreateMap: (name: string, folder: string | null) => typedError<MapData, string>(__TAURI_INVOKE("store_create_map", { name, folder })),
+} | null, string>(__TAURI_INVOKE("store_get_map", { id })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:({...v.data,meta:({...v.data.meta,settings:({...v.data.meta.settings,preferDirection:v.data.meta.settings.preferDirection==null?v.data.meta.settings.preferDirection:v.data.meta.settings.preferDirection})})}) } : v) as typeof v)),
+	storeCreateMap: (name: string, folder: string | null) => typedError<MapData, string>(__TAURI_INVOKE("store_create_map", { name, folder })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,meta:({...v.data.meta,settings:({...v.data.meta.settings,preferDirection:v.data.meta.settings.preferDirection==null?v.data.meta.settings.preferDirection:v.data.meta.settings.preferDirection})})}) } : v) as typeof v)),
 	storeDeleteMap: (id: string) => typedError<null, string>(__TAURI_INVOKE("store_delete_map", { id })),
-	storeUpdateMapMeta: (id: string, patch: MapMetaPatch) => typedError<null, string>(__TAURI_INVOKE("store_update_map_meta", { id, patch })),
+	storeUpdateMapMeta: (id: string, patch: MapMetaPatch) => typedError<null, string>(__TAURI_INVOKE("store_update_map_meta", { id, patch: ({...patch,settings:patch.settings==null?patch.settings:({...patch.settings,preferDirection:patch.settings.preferDirection==null?patch.settings.preferDirection:patch.settings.preferDirection}),scoreBounds:patch.scoreBounds==null?patch.scoreBounds:patch.scoreBounds}) })),
 	storeSaveTags: (mapId: string, tags: { [key in string]: Tag }) => typedError<null, string>(__TAURI_INVOKE("store_save_tags", { mapId, tags })),
 	storeTouchMapOpened: (mapId: string) => typedError<null, string>(__TAURI_INVOKE("store_touch_map_opened", { mapId })),
 	storeRenameFolder: (from: string, to: string) => typedError<null, string>(__TAURI_INVOKE("store_rename_folder", { from, to })),
@@ -138,7 +138,7 @@ export const commands = {
 	country?: string | null,
 	mapId?: string | null,
 	search?: string | null,
-} | null) => typedError<SeenEntry[], string>(__TAURI_INVOKE("store_seen_list", { limit, offset, filter })),
+} | null) => typedError<SeenEntry[], string>(__TAURI_INVOKE("store_seen_list", { limit, offset, filter })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
 	storeSeenCount: (filter: {
 	country?: string | null,
 	mapId?: string | null,

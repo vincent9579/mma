@@ -17,7 +17,7 @@ pub enum SelectionProps {
     PanoIds,
     NotPanoIds,
     Manual { locations: Vec<u32> },
-    Duplicates { #[specta(type = specta_typescript::Number)] distance: f64 },
+    Duplicates { distance: f64 },
     ValidationState { locations: Vec<u32>, state: u8 },
     Intersection { selections: Vec<Selection> },
     Union { selections: Vec<Selection> },
@@ -28,10 +28,8 @@ pub enum SelectionProps {
 #[derive(Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PolygonGeometry {
-    #[specta(type = Vec<Vec<[specta_typescript::Number; 2]>>)]
     pub coordinates: Vec<Vec<[f64; 2]>>,
     #[serde(default)]
-    #[specta(type = Option<Vec<Vec<Vec<[specta_typescript::Number; 2]>>>>)]
     pub extra_polygons: Option<Vec<Vec<Vec<[f64; 2]>>>>,
     #[serde(default)]
     #[specta(type = Option<specta_typescript::Any>)]
