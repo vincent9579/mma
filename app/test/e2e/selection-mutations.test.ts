@@ -57,7 +57,7 @@ describe("Live selection correctness after add/remove", () => {
 			await api.selectTag(tagId);
 			const before = api.getSelectedLocationIds().length;
 
-			const newLocs: any[] = [];
+			const newLocs = [];
 			for (let i = 0; i < 10; i++) {
 				newLocs.push({
 					lat: 50 + i,
@@ -406,6 +406,7 @@ describe("Review mode delete with active selections", () => {
 		await withApi(async (api) => {
 			const newLoc = [
 				{
+					id: 0,
 					lat: 99,
 					lng: 99,
 					heading: 0,
@@ -428,7 +429,7 @@ describe("Review mode delete with active selections", () => {
 			await api.selectEverything();
 			const before = api.getSelectedLocationIds().length;
 			const allLocs = await api.fetchAllLocations();
-			const ids = allLocs.slice(0, 3).map((l: any) => l.id);
+			const ids = allLocs.slice(0, 3).map(l => l.id);
 			await api.beginReview(ids);
 			await api.reviewDelete();
 			const result = await api.syncSelections();
@@ -808,7 +809,7 @@ describe("Bulk operations with active selections", () => {
 		const tagBulk = await createTag("t-bulk");
 		tagBulkId = tagBulk.id;
 
-		const locs: any[] = [];
+		const locs = [];
 		for (let i = 0; i < 100; i++) {
 			locs.push(
 				makeLoc({

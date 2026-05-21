@@ -4,26 +4,27 @@
  */
 
 import type { TestAPI } from "@/lib/testApi.add";
+import type { Location } from "@/types";
 
 /**
  * Run an async function in the browser with the test API injected as `api`.
  * Handles the done callback, try/catch, and serialization boilerplate.
+ * The result type is inferred from whatever the callback returns.
  *
  * Usage: `await withApi(async (api, id) => api.fetchLocation(id), locId);`
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function withApi(
-	fn: (api: TestAPI, ...args: any[]) => any,
-	...args: any[]
-): Promise<any> {
+export async function withApi<A extends unknown[], R>(
+	fn: (api: TestAPI, ...args: A) => R,
+	...args: A
+): Promise<Awaited<R>> {
 	const wrapped = new Function(
 		"...___a",
 		`const ___d = ___a.pop();
      const api = window.__TEST_API__;
      (async () => { try { ___d(await (${fn.toString()})(api, ...___a)); } catch(e) { ___d({error:e.message}); } })();`,
 	);
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return browser.executeAsync(wrapped as any, ...args);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- callback is serialized and re-evaluated in the browser; this bridge can't be statically typed
+	return browser.executeAsync(wrapped as any, ...args) as Promise<Awaited<R>>;
 }
 
 export async function waitForReady() {
@@ -66,6 +67,21 @@ export async function deleteMap(id: string) {
 
 export async function flushAndWait() {
 	await withApi(async (api) => api.flushSave());
+}
+
+/** Open a location in the editor via the test API. */
+export async function openLocation(id: number) {
+	await withApi(async (api, locId) => {
+		api.setActiveLocation(locId);
+	}, id);
+}
+
+/** Close the active location (return to overview) via the test API. */
+export async function closeLocation() {
+	await withApi(async (api) => {
+		api.setActiveLocation(null);
+	});
+	await browser.pause(300);
 }
 
 // --- Location helpers ---
@@ -125,22 +141,19 @@ export function makeLocBatch(
 }
 
 export async function addLocs(locs: Record<string, unknown>[]): Promise<number[]> {
-	const result = await withApi(async (api, locations) => {
-		await api.addLocations(locations);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		return locations.map((l: any) => l.id);
+	const result: number[] | { error: string } = await withApi(async (api, locations) => {
+		await api.addLocations(locations as unknown as Location[]);
+		return locations.map((l) => (l as { id: number }).id);
 	}, locs);
 	if (result && typeof result === "object" && "error" in result) throw new Error(result.error);
-	return result as number[];
+	return result;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getLoc(id: number): Promise<any> {
+export async function getLoc(id: number): Promise<Location> {
 	return withApi(async (api, locId) => api.fetchLocation(locId), id);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getAllLocs(): Promise<any[]> {
+export async function getAllLocs(): Promise<Location[]> {
 	return withApi(async (api) => api.fetchAllLocations());
 }
 
