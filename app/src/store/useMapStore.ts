@@ -561,12 +561,13 @@ async function applySelectionSync(sync: { counts: number[]; patchFile: string | 
 	notify();
 }
 
-/** Await a mutation IPC, emit its render delta, and sync JS state. Wraps all mutating Rust calls. */
+/** Await a mutation IPC, emit its render delta, sync JS state, and schedule a save. */
 async function mutate(p: Promise<MutationResult>): Promise<MutationResult> {
 	const r = await p;
 	renderDeltaBus.emit(r.delta);
 	syncMutationResult(r);
 	refreshAfterMutation();
+	scheduleSave();
 	return r;
 }
 
@@ -577,29 +578,14 @@ export async function addLocations(locs: Location[], opts?: { hideInDelta?: bool
 	for (const l of locs) if (l.extra) for (const k of Object.keys(l.extra)) extraKeys.add(k);
 	if (extraKeys.size > 0) autoRegisterFieldDefs([...extraKeys]);
 	const t0 = performance.now();
-	let r: MutationResult;
-	try {
-		r = await cmd.storeAddLocations(locs);
-	} catch (e) {
-		log.error("[add] store_add_locations failed:", e);
-		return;
-	}
-	const t1 = performance.now();
+	const r = await mutate(cmd.storeAddLocations(locs));
+	log.debug(`[add] ipc=${(performance.now() - t0).toFixed(0)}ms delta: +${r.delta.added.length} -${r.delta.removed.length}`);
 	for (let i = 0; i < r.delta.added.length && i < locs.length; i++) {
 		locs[i].id = r.delta.added[i].id;
 	}
 	if (opts?.hideInDelta) {
-		for (const entry of r.delta.added) {
-			entry.a = 0;
-		}
+		for (const entry of r.delta.added) entry.a = 0;
 	}
-	renderDeltaBus.emit(r.delta);
-	log.debug(
-		`[add] ipc_roundtrip=${(t1 - t0).toFixed(0)}ms delta: +${r.delta.added.length} -${r.delta.removed.length}`,
-	);
-	syncMutationResult(r);
-	refreshAfterMutation();
-	scheduleSave();
 	emitEvent("location:add", locs);
 }
 
@@ -613,8 +599,8 @@ export async function duplicateLocation(locId: number): Promise<number | null> {
 	return clone.id;
 }
 
-export function removeLocations(ids: Set<number>): Promise<void> {
-	if (!currentMap || ids.size === 0) return Promise.resolve();
+export function removeLocations(ids: Set<number>) {
+	if (!currentMap || ids.size === 0) return;
 	if (activeLocationId && ids.has(activeLocationId)) {
 		activeLocationId = null;
 		cachedActiveLocation = null;
@@ -622,10 +608,8 @@ export function removeLocations(ids: Set<number>): Promise<void> {
 	}
 	mapVersion++;
 	notify();
-	scheduleSave();
 	emitEvent("location:remove", [...ids]);
-	return mutate(cmd.storeRemoveLocations([...ids]))
-		.then(() => {})
+	mutate(cmd.storeRemoveLocations([...ids]))
 		.catch((e) => log.error("[delete] store_remove_locations failed:", e));
 }
 
@@ -641,12 +625,11 @@ function buildUpdates(
 	});
 }
 
-export function updateLocation(locId: number, patch: Partial<Location>): Promise<void> {
-	if (!currentMap) return Promise.resolve();
+export function updateLocation(locId: number, patch: Partial<Location>) {
+	if (!currentMap) return;
 	const updates = buildUpdates([{ id: locId, patch }]);
-	scheduleSave();
 	emitEvent("location:update", { id: locId, ...patch });
-	return mutate(cmd.storeUpdateLocations(updates, true))
+	mutate(cmd.storeUpdateLocations(updates, true))
 		.then(() => {
 			if (activeLocationId === locId) {
 				fetchViaFile<Location>(cmd.storeGetLocationFile(locId))
@@ -663,11 +646,9 @@ export function updateLocation(locId: number, patch: Partial<Location>): Promise
 
 export function batchUpdateLocations(updates: { id: number; patch: Partial<Location> }[]) {
 	if (!currentMap || updates.length === 0) return Promise.resolve();
-	const p = mutate(cmd.storeUpdateLocations(buildUpdates(updates), true)).catch((e) =>
+	return mutate(cmd.storeUpdateLocations(buildUpdates(updates), true)).catch((e) =>
 		log.error("[batchUpdate] store_update_locations failed:", e),
 	);
-	scheduleSave();
-	return p;
 }
 
 export function patchLocationExtra(
@@ -690,7 +671,6 @@ export function patchLocationExtra(
 				}
 			},
 		);
-		scheduleSave();
 	};
 	if (replace) {
 		send(extraPatch);
@@ -1044,7 +1024,6 @@ export async function deleteTags(tagIds: number[]) {
 	}
 	currentMap = { ...currentMap, meta: { ...currentMap.meta, tags: newTags } };
 	persistTags();
-	scheduleSave();
 }
 
 export async function deleteSelectedTags() {
@@ -1075,7 +1054,6 @@ export async function bulkAddTag(tagId: number) {
 		.map((l) => [l.id, { tags: [...l.tags, tagId] }]);
 	if (updates.length === 0) return;
 	await mutate(cmd.storeUpdateLocations(updates, true));
-	scheduleSave();
 }
 
 export async function bulkRemoveTag(tagId: number, locationIds: number[]) {
@@ -1086,7 +1064,6 @@ export async function bulkRemoveTag(tagId: number, locationIds: number[]) {
 		.map((l) => [l.id, { tags: l.tags.filter((t: number) => t !== tagId) }]);
 	if (updates.length === 0) return;
 	await mutate(cmd.storeUpdateLocations(updates, true));
-	scheduleSave();
 }
 
 export async function removeTagFromAll(tagId: number) {
@@ -1126,7 +1103,6 @@ export async function renameTagInSelection(tagId: number, newName: string) {
 		.map((l) => [l.id, { tags: [...l.tags.filter((t: number) => t !== tagId), newTagId] }]);
 	if (updates.length > 0) {
 		await mutate(cmd.storeUpdateLocations(updates, true));
-		scheduleSave();
 	}
 }
 
@@ -1177,9 +1153,7 @@ export async function reviewPrev() {
 export async function reviewDelete() {
 	if (!review || !currentMap) return;
 	const currentLocId = review.locations[review.index];
-	const r = await cmd.storeRemoveLocations([currentLocId]);
-	renderDeltaBus.emit(r.delta);
-	syncMutationResult(r);
+	await mutate(cmd.storeRemoveLocations([currentLocId]));
 	const remaining = review.locations.filter((id) => id !== currentLocId);
 	if (remaining.length === 0 || review.index >= remaining.length) {
 		review = null;
@@ -1191,7 +1165,6 @@ export async function reviewDelete() {
 	if (selections.length > 0) {
 		applySelectionUpdate((_, sels) => sels);
 	}
-	scheduleSave();
 }
 
 // --- Undo/redo ---
@@ -1207,7 +1180,6 @@ async function undoRedo(which: () => Promise<MutationResult>) {
 			cachedActiveLocation = null;
 			workArea = "overview";
 		}
-		scheduleSave();
 	} catch (e) {
 		log.debug(`[${which.name}] nothing or failed:`, e);
 	}
