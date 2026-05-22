@@ -18,7 +18,7 @@ export const commands = {
 	 *  Parse raw text (JSON or CSV) as locations and import into the open map.
 	 *  Handles tag reconciliation, ID allocation, and render delta in one shot.
 	 */
-	storeImportPaste: (text: string) => typedError<EditorImportResult_Serialize, string>(__TAURI_INVOKE("store_import_paste", { text })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
+	storeImportPaste: (text: string) => typedError<[EditorImportResult_Serialize, number | null], string>(__TAURI_INVOKE("store_import_paste", { text })).then((v) => ((v.status === "ok" ? { ...v, data: ([({...v.data[0],delta:({...v.data[0].delta,added:v.data[0].delta.added.map(i=>i),updated:v.data[0].delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}),v.data[1]]) } : v) as typeof v)),
 	/**
 	 *  Load a map's Arrow data from disk, rebuild all indexes, and return initial state
 	 *  (tag counts, undo/redo availability). Must be called before any other store commands.

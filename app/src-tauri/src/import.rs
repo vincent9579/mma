@@ -981,7 +981,7 @@ pub fn store_import_paste(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::location_store::StoreState>,
     text: String,
-) -> Result<EditorImportResult, String> {
+) -> Result<(EditorImportResult, Option<u32>), String> {
     let t0 = std::time::Instant::now();
     let mut buf = text.into_bytes();
     let mut parsed = parse_file(&mut buf);
@@ -996,8 +996,10 @@ pub fn store_import_paste(
     log::debug!("[paste-import] total={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
 
     let loc_count = parsed.locations.len();
+    // Single-location paste → return its id so the caller can open it; bulk → None.
+    let single_id = if loc_count == 1 { parsed.locations.first().map(|l| l.id) } else { None };
 
-    Ok(EditorImportResult {
+    Ok((EditorImportResult {
         location_count: loc_count as u32,
         tags: parsed.tags,
         // TODO: compute targeted delta from imported locations instead of full_reset
@@ -1006,7 +1008,7 @@ pub fn store_import_paste(
         tag_counts: store.tag_counts.clone(),
         can_undo: !store.undo_stack.is_empty(),
         can_redo: !store.redo_stack.is_empty(),
-    })
+    }, single_id))
 }
 
 #[cfg(test)]

@@ -70,7 +70,7 @@ function usePasteHandler() {
 			}
 
 			try {
-				const r = await cmd.storeImportPaste(text);
+				const [r, singleId] = await cmd.storeImportPaste(text);
 				if (r.locationCount > 0) {
 					addTags(r.tags.map((t) => ({ id: t.id, name: t.name, color: t.color, visible: true })));
 					addLocationCount(r.locationCount);
@@ -79,6 +79,7 @@ function usePasteHandler() {
 					renderDeltaBus.emit(r.delta);
 					refreshAfterMutation();
 					scheduleSave();
+					if (singleId != null) setActiveLocation(singleId);
 				}
 			} catch {
 				log.warn('Couldn\'t import locations via paste.')
