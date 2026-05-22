@@ -40,9 +40,8 @@ fn setup_store_with(locs: &[Location]) -> Store {
     for l in locs {
         store.add_tag_counts(std::slice::from_ref(l));
         store.overlay_add(l.clone());
-        let gh = encode_geohash(l.lat, l.lng);
-        let cell = render_cell_key(&gh).to_string();
-        store.cell_add_render(&cell, l.id);
+        let ci = render_cell_idx(l.lat, l.lng);
+        store.cell_add_render(ci, l.id);
     }
     store.alive_count = locs.len();
     store
@@ -296,19 +295,20 @@ fn delta_has_removed_entry_for_deleted_location() {
     let entry = EditEntry { created: vec![], removed: vec![l] };
     let delta = apply_edit_forward(&mut store, &entry);
     assert_eq!(delta.removed.len(), 1);
-    assert_eq!(delta.removed[0].id, 1);
+    assert_eq!(delta.removed[0], 1);
     assert_eq!(delta.added.len(), 0);
 }
 
 #[test]
 fn delta_has_both_for_moved_location() {
     let old = loc(1, 10.0, 20.0);
-    let new = loc(1, 50.0, 60.0);
+    let new = loc(1, -80.0, -170.0); // far enough to cross render cells
     let mut store = setup_store_with(&[old.clone()]);
 
     let entry = EditEntry { created: vec![new], removed: vec![old] };
-    let delta = apply_edit_forward(&mut store, &entry);
-    // position changed => remove old + add new
+    let changes = apply_edit_forward(&mut store, &entry);
+    let delta = store.derive_render_delta(&changes);
+    // cross-cell move => remove old + add new
     assert_eq!(delta.removed.len(), 1);
     assert_eq!(delta.added.len(), 1);
 }
@@ -327,10 +327,12 @@ fn samey_location_skips_render_delta() {
     let mut store = setup_store_with(&[old.clone()]);
 
     let entry = EditEntry { created: vec![new], removed: vec![old] };
-    let delta = apply_edit_forward(&mut store, &entry);
+    let changes = apply_edit_forward(&mut store, &entry);
+    let delta = store.derive_render_delta(&changes);
 
     assert_eq!(delta.added.len(), 0, "no re-render needed for pitch/zoom change");
     assert_eq!(delta.removed.len(), 0);
+    assert_eq!(delta.updated.len(), 0);
 }
 
 #[test]
@@ -340,10 +342,13 @@ fn samey_location_with_heading_change_does_rerender() {
     let mut store = setup_store_with(&[old.clone()]);
 
     let entry = EditEntry { created: vec![new], removed: vec![old] };
-    let delta = apply_edit_forward(&mut store, &entry);
+    let changes = apply_edit_forward(&mut store, &entry);
+    let delta = store.derive_render_delta(&changes);
 
-    assert_eq!(delta.added.len(), 1, "heading change requires re-render");
-    assert_eq!(delta.removed.len(), 1);
+    // heading change in the same cell => in-place render patch
+    assert_eq!(delta.updated.len(), 1, "heading change requires a render patch");
+    assert_eq!(delta.added.len(), 0);
+    assert_eq!(delta.removed.len(), 0);
 }
 
 #[test]
@@ -353,9 +358,10 @@ fn samey_location_with_lat_change_does_rerender() {
     let mut store = setup_store_with(&[old.clone()]);
 
     let entry = EditEntry { created: vec![new], removed: vec![old] };
-    let delta = apply_edit_forward(&mut store, &entry);
+    let changes = apply_edit_forward(&mut store, &entry);
+    let delta = store.derive_render_delta(&changes);
 
-    assert!(delta.added.len() + delta.removed.len() > 0, "lat change requires re-render");
+    assert!(delta.added.len() + delta.removed.len() + delta.updated.len() > 0, "lat change requires re-render");
 }
 
 #[test]
@@ -401,7 +407,7 @@ fn finish_mutation_reports_correct_state() {
     let mut store = setup_store_with(&[l]);
     store.push_undo(EditEntry { created: vec![], removed: vec![] });
 
-    let result = store.finish_mutation(RenderDelta::default());
+    let result = store.finish_mutation(ChangeSet::default());
     assert_eq!(result.status.location_count, 1);
     assert!(result.status.can_undo);
     assert!(!result.status.can_redo);
@@ -440,7 +446,7 @@ fn geohash_length_matches_precision() {
 #[test]
 fn cell_add_and_lookup() {
     let mut store = setup_store_with(&[]);
-    store.cell_add_render("s", 1);
+    store.cell_add_render(24, 1); // 24 = 's' in BASE32
     let (cell, idx) = store.cell_lookup(1).unwrap();
     assert_eq!(cell, "s");
     assert_eq!(idx, 0);
@@ -449,19 +455,18 @@ fn cell_add_and_lookup() {
 #[test]
 fn cell_remove_returns_correct_info() {
     let mut store = setup_store_with(&[]);
-    store.cell_add_render("s", 1);
-    store.cell_add_render("s", 2);
+    store.cell_add_render(24, 1);
+    store.cell_add_render(24, 2);
     let removal = store.cell_remove_render(1).unwrap();
     assert_eq!(removal.id, 1);
     assert_eq!(removal.cell, "s");
-    // after removal, id 2 should still be findable
     assert!(store.cell_lookup(2).is_some());
 }
 
 #[test]
 fn cell_remove_nonexistent_returns_none() {
     let store = setup_store_with(&[]);
-    assert!(store.id_to_cell.get(&999).is_none());
+    assert!(store.id_to_cell_idx.get(999).copied().unwrap_or(255) == 255);
 }
 
 // -----------------------------------------------------------------------
@@ -630,34 +635,29 @@ fn readd_after_remove_through_undo() {
 #[test]
 fn cell_swap_remove_maintains_correct_indices() {
     let mut store = setup_store_with(&[]);
-    store.cell_add_render("s", 10);
-    store.cell_add_render("s", 20);
-    store.cell_add_render("s", 30);
+    store.cell_add_render(24, 10);
+    store.cell_add_render(24, 20);
+    store.cell_add_render(24, 30);
 
-    // remove the first — 30 should move into slot 0
     let removal = store.cell_remove_render(10).unwrap();
     assert_eq!(removal.cell_index, 0);
 
-    // 30 should now be at index 0
     let (_, idx30) = store.cell_lookup(30).unwrap();
     assert_eq!(idx30, 0, "id 30 should have been swapped into slot 0");
 
-    // 20 should still be at index 1
     let (_, idx20) = store.cell_lookup(20).unwrap();
     assert_eq!(idx20, 1, "id 20 should be undisturbed");
 
-    // cell should have 2 entries
-    let cr = store.render_cells.get("s").unwrap();
+    let cr = store.render_cells[24].as_ref().unwrap();
     assert_eq!(cr.id_order.len(), 2);
 }
 
 #[test]
 fn cell_swap_remove_last_element() {
     let mut store = setup_store_with(&[]);
-    store.cell_add_render("s", 10);
-    store.cell_add_render("s", 20);
+    store.cell_add_render(24, 10);
+    store.cell_add_render(24, 20);
 
-    // remove the last — no swap needed
     let removal = store.cell_remove_render(20).unwrap();
     assert_eq!(removal.cell_index, 1);
 
@@ -711,17 +711,21 @@ fn multiple_undo_redo_cycles_consistent() {
 }
 
 // -----------------------------------------------------------------------
-// build_update_delta
+// derive_render_delta (updates)
 // -----------------------------------------------------------------------
+
+fn render_delta_for_update(store: &mut Store, id: u32, patch: LocationPatch) -> RenderDelta {
+    let old = store.get_loc_by_id(id).unwrap();
+    store.overlay_update(id, &patch);
+    let new_loc = store.get_loc_by_id(id).unwrap();
+    store.derive_render_delta(&ChangeSet { updated: vec![(old, new_loc)], ..Default::default() })
+}
 
 #[test]
 fn update_delta_heading_only_produces_patch() {
     let l = loc_with_heading(1, 10.0, 20.0, 0.0);
     let mut store = setup_store_with(&[l]);
-    store.overlay_update(1, &LocationPatch { heading: Some(90.0), ..patch() });
-    let new_loc = store.get_loc_by_id(1).unwrap();
-    let p = LocationPatch { heading: Some(90.0), ..patch() };
-    let delta = build_update_delta(&mut store, 1, &new_loc, &p);
+    let delta = render_delta_for_update(&mut store, 1, LocationPatch { heading: Some(90.0), ..patch() });
     assert!(delta.added.is_empty());
     assert!(delta.removed.is_empty());
     assert_eq!(delta.updated.len(), 1);
@@ -734,10 +738,7 @@ fn update_delta_same_cell_position_produces_patch() {
     let l = loc(1, 10.0, 20.0);
     let mut store = setup_store_with(&[l]);
     // small position change that stays in the same render cell
-    store.overlay_update(1, &LocationPatch { lat: Some(10.001), ..patch() });
-    let new_loc = store.get_loc_by_id(1).unwrap();
-    let p = LocationPatch { lat: Some(10.001), ..patch() };
-    let delta = build_update_delta(&mut store, 1, &new_loc, &p);
+    let delta = render_delta_for_update(&mut store, 1, LocationPatch { lat: Some(10.001), ..patch() });
     // should be an in-place patch, not a cell migration
     assert_eq!(delta.updated.len(), 1);
     assert!(delta.added.is_empty());
@@ -748,10 +749,7 @@ fn update_delta_cross_cell_position_produces_remove_and_add() {
     let l = loc(1, 10.0, 20.0);
     let mut store = setup_store_with(&[l]);
     // large position change that crosses render cells
-    store.overlay_update(1, &LocationPatch { lat: Some(-80.0), lng: Some(-170.0), ..patch() });
-    let new_loc = store.get_loc_by_id(1).unwrap();
-    let p = LocationPatch { lat: Some(-80.0), lng: Some(-170.0), ..patch() };
-    let delta = build_update_delta(&mut store, 1, &new_loc, &p);
+    let delta = render_delta_for_update(&mut store, 1, LocationPatch { lat: Some(-80.0), lng: Some(-170.0), ..patch() });
     assert_eq!(delta.removed.len(), 1, "old cell entry removed");
     assert_eq!(delta.added.len(), 1, "new cell entry added");
     assert!(delta.updated.is_empty());
@@ -761,10 +759,7 @@ fn update_delta_cross_cell_position_produces_remove_and_add() {
 fn update_delta_tags_only_produces_empty_delta() {
     let l = loc_with_tags(1, 10.0, 20.0, vec![10]);
     let mut store = setup_store_with(&[l]);
-    store.overlay_update(1, &LocationPatch { tags: Some(vec![20]), ..patch() });
-    let new_loc = store.get_loc_by_id(1).unwrap();
-    let p = LocationPatch { tags: Some(vec![20]), ..patch() };
-    let delta = build_update_delta(&mut store, 1, &new_loc, &p);
+    let delta = render_delta_for_update(&mut store, 1, LocationPatch { tags: Some(vec![20]), ..patch() });
     assert!(delta.added.is_empty());
     assert!(delta.removed.is_empty());
     assert!(delta.updated.is_empty());
@@ -1106,25 +1101,25 @@ fn cell_render_id_order_matches_after_swap_remove_sequence() {
     // must match what JS's CellBuffer.ids[i] would be after the same
     // sequence of applyDelta calls. Both use swap-remove.
     let mut store = setup_store_with(&[]);
-    store.cell_add_render("s", 10);
-    store.cell_add_render("s", 20);
-    store.cell_add_render("s", 30);
+    store.cell_add_render(24, 10);
+    store.cell_add_render(24, 20);
+    store.cell_add_render(24, 30);
     // order: [10, 20, 30]
 
     // Remove index 0 (id=10) — 30 swaps in
     store.cell_remove_render(10);
-    let cr = store.render_cells.get("s").unwrap();
+    let cr = store.render_cells[24].as_ref().unwrap();
     assert_eq!(cr.id_order, vec![30, 20]);
 
     // Remove index 0 (id=30) — 20 swaps in
     store.cell_remove_render(30);
-    let cr = store.render_cells.get("s").unwrap();
+    let cr = store.render_cells[24].as_ref().unwrap();
     assert_eq!(cr.id_order, vec![20]);
 
     // Add new entries
-    store.cell_add_render("s", 40);
-    store.cell_add_render("s", 50);
-    let cr = store.render_cells.get("s").unwrap();
+    store.cell_add_render(24, 40);
+    store.cell_add_render(24, 50);
+    let cr = store.render_cells[24].as_ref().unwrap();
     assert_eq!(cr.id_order, vec![20, 40, 50]);
 
     // Verify index lookups
@@ -1146,12 +1141,14 @@ fn undo_delete_readds_render_entry() {
 
     // Delete
     let entry = EditEntry { created: vec![], removed: vec![l.clone()] };
-    let delta = apply_edit_forward(&mut store, &entry);
+    let changes = apply_edit_forward(&mut store, &entry);
+    let delta = store.derive_render_delta(&changes);
     assert_eq!(delta.removed.len(), 1);
     assert!(store.cell_lookup(1).is_none());
 
     // Undo delete
-    let delta = apply_edit_reverse(&mut store, &entry);
+    let changes = apply_edit_reverse(&mut store, &entry);
+    let delta = store.derive_render_delta(&changes);
     assert_eq!(delta.added.len(), 1);
     assert_eq!(delta.added[0].id, 1);
     assert!(store.cell_lookup(1).is_some(), "render entry must be restored after undo delete");
@@ -1166,13 +1163,15 @@ fn undo_delete_multiple_then_readd_renders_correctly() {
 
     // Delete l1 and l2
     let entry = EditEntry { created: vec![], removed: vec![l1.clone(), l2.clone()] };
-    apply_edit_forward(&mut store, &entry);
+    let changes = apply_edit_forward(&mut store, &entry);
+    store.derive_render_delta(&changes);
     assert!(store.cell_lookup(1).is_none());
     assert!(store.cell_lookup(2).is_none());
     assert!(store.cell_lookup(3).is_some());
 
     // Undo
-    let delta = apply_edit_reverse(&mut store, &entry);
+    let changes = apply_edit_reverse(&mut store, &entry);
+    let delta = store.derive_render_delta(&changes);
     assert_eq!(delta.added.len(), 2);
     assert!(store.cell_lookup(1).is_some());
     assert!(store.cell_lookup(2).is_some());
@@ -1348,4 +1347,198 @@ fn render_buffer_with_selection_overlay() {
     }
     let sel_count = u32::from_le_bytes(buf[offset..offset+4].try_into().unwrap());
     assert_eq!(sel_count, 1, "one selected location");
+}
+
+// -----------------------------------------------------------------------
+// Sorted ID invariant
+// -----------------------------------------------------------------------
+
+fn ids_sorted(store: &Store) -> bool {
+    if let Some(ref b) = store.batch {
+        let ids = col_id(b);
+        (1..b.num_rows()).all(|i| ids.value(i - 1) < ids.value(i))
+    } else {
+        true
+    }
+}
+
+#[test]
+fn bake_preserves_sorted_ids_after_adds() {
+    let mut store = setup_store_with(&[loc(1, 10.0, 20.0), loc(2, 30.0, 40.0), loc(3, 50.0, 60.0)]);
+    store.bake_overlay();
+    assert!(ids_sorted(&store));
+}
+
+#[test]
+fn bake_preserves_sorted_ids_after_patches() {
+    let mut store = setup_store_with(&[loc(1, 10.0, 20.0), loc(2, 30.0, 40.0), loc(3, 50.0, 60.0)]);
+    store.bake_overlay();
+    store.overlay_update(2, &LocationPatch { lat: Some(99.0), ..patch() });
+    store.bake_overlay();
+    assert!(ids_sorted(&store));
+    assert_eq!(store.get_loc_by_id(2).unwrap().lat, 99.0);
+}
+
+#[test]
+fn bake_preserves_sorted_ids_after_remove_and_patch() {
+    let mut store = setup_store_with(&[loc(1, 0.0, 0.0), loc(2, 10.0, 10.0), loc(3, 20.0, 20.0), loc(4, 30.0, 30.0)]);
+    store.bake_overlay();
+    store.overlay_remove(&[loc(2, 10.0, 10.0)]);
+    store.alive_count -= 1;
+    store.overlay_update(3, &LocationPatch { heading: Some(45.0), ..patch() });
+    store.bake_overlay();
+    assert!(ids_sorted(&store));
+    let ids: Vec<u32> = {
+        let b = store.batch.as_ref().unwrap();
+        (0..b.num_rows()).map(|i| col_id(b).value(i)).collect()
+    };
+    assert_eq!(ids, vec![1, 3, 4]);
+}
+
+#[test]
+fn bake_preserves_sorted_ids_after_mixed_ops() {
+    let mut store = setup_store_with(&[loc(1, 0.0, 0.0), loc(2, 10.0, 10.0)]);
+    store.bake_overlay();
+    // Remove 1, patch 2, add 3
+    store.overlay_remove(&[loc(1, 0.0, 0.0)]);
+    store.alive_count -= 1;
+    store.overlay_update(2, &LocationPatch { lat: Some(99.0), ..patch() });
+    let l3 = loc(3, 50.0, 50.0);
+    store.overlay_add(l3);
+    store.alive_count += 1;
+    store.bake_overlay();
+    assert!(ids_sorted(&store));
+    let ids: Vec<u32> = {
+        let b = store.batch.as_ref().unwrap();
+        (0..b.num_rows()).map(|i| col_id(b).value(i)).collect()
+    };
+    assert_eq!(ids, vec![2, 3]);
+}
+
+#[test]
+fn bake_sorted_ids_survive_multiple_cycles() {
+    let mut store = setup_store_with(&[loc(1, 0.0, 0.0), loc(2, 10.0, 10.0)]);
+    store.bake_overlay();
+    for round in 0..5 {
+        let new_id = 10 + round;
+        store.overlay_add(loc(new_id, round as f64, round as f64));
+        store.alive_count += 1;
+        if round % 2 == 0 {
+            store.overlay_update(2, &LocationPatch { heading: Some(round as f64), ..patch() });
+        }
+        store.bake_overlay();
+        assert!(ids_sorted(&store), "failed at round {round}");
+    }
+}
+
+// -----------------------------------------------------------------------
+// Binary search (batch_row_for_id)
+// -----------------------------------------------------------------------
+
+#[test]
+fn binary_search_finds_existing_ids() {
+    let mut store = setup_store_with(&[loc(1, 0.0, 0.0), loc(5, 10.0, 10.0), loc(10, 20.0, 20.0)]);
+    store.bake_overlay();
+    let b = store.batch.as_ref().unwrap();
+    assert_eq!(batch_row_for_id(b, 1), Some(0));
+    assert_eq!(batch_row_for_id(b, 5), Some(1));
+    assert_eq!(batch_row_for_id(b, 10), Some(2));
+}
+
+#[test]
+fn binary_search_returns_none_for_missing() {
+    let mut store = setup_store_with(&[loc(1, 0.0, 0.0), loc(5, 10.0, 10.0), loc(10, 20.0, 20.0)]);
+    store.bake_overlay();
+    let b = store.batch.as_ref().unwrap();
+    assert_eq!(batch_row_for_id(b, 0), None);
+    assert_eq!(batch_row_for_id(b, 3), None);
+    assert_eq!(batch_row_for_id(b, 7), None);
+    assert_eq!(batch_row_for_id(b, 99), None);
+}
+
+#[test]
+fn binary_search_on_empty_batch() {
+    let b = empty_batch();
+    assert_eq!(batch_row_for_id(&b, 1), None);
+}
+
+#[test]
+fn binary_search_single_element() {
+    let mut store = setup_store_with(&[loc(42, 0.0, 0.0)]);
+    store.bake_overlay();
+    let b = store.batch.as_ref().unwrap();
+    assert_eq!(batch_row_for_id(b, 42), Some(0));
+    assert_eq!(batch_row_for_id(b, 41), None);
+    assert_eq!(batch_row_for_id(b, 43), None);
+}
+
+#[test]
+fn get_loc_by_id_uses_binary_search_on_batch() {
+    let mut store = setup_store_with(&[loc(1, 10.0, 20.0), loc(2, 30.0, 40.0), loc(3, 50.0, 60.0)]);
+    store.bake_overlay();
+    // All in batch now, no overlay
+    assert_eq!(store.get_loc_by_id(1).unwrap().lat, 10.0);
+    assert_eq!(store.get_loc_by_id(2).unwrap().lat, 30.0);
+    assert_eq!(store.get_loc_by_id(3).unwrap().lat, 50.0);
+    assert!(store.get_loc_by_id(99).is_none());
+}
+
+#[test]
+fn overlay_add_distinguishes_batch_vs_new_ids() {
+    let mut store = setup_store_with(&[loc(1, 10.0, 20.0), loc(2, 30.0, 40.0)]);
+    store.bake_overlay();
+    // Adding id=1 again should go to patches (exists in batch)
+    store.overlay_add(loc(1, 99.0, 99.0));
+    assert!(store.overlay_patches.contains_key(&1));
+    assert!(store.overlay_adds.is_empty());
+    // Adding id=5 should go to adds (not in batch)
+    store.overlay_add(loc(5, 50.0, 50.0));
+    assert_eq!(store.overlay_adds.len(), 1);
+    assert_eq!(store.overlay_adds[0].id, 5);
+}
+
+// -----------------------------------------------------------------------
+// Full lifecycle: add/remove/undo across bake boundaries
+// -----------------------------------------------------------------------
+
+#[test]
+fn full_lifecycle_add_bake_remove_bake_undo() {
+    let mut store = setup_store_with(&[loc(1, 0.0, 0.0), loc(2, 10.0, 10.0)]);
+    store.bake_overlay();
+    assert!(ids_sorted(&store));
+    assert_eq!(store.alive_count, 2);
+
+    // Add loc 3, bake
+    store.overlay_add(loc(3, 20.0, 20.0));
+    store.alive_count += 1;
+    store.bake_overlay();
+    assert!(ids_sorted(&store));
+    assert_eq!(store.batch.as_ref().unwrap().num_rows(), 3);
+
+    // Remove loc 2, bake
+    store.overlay_remove(&[loc(2, 10.0, 10.0)]);
+    store.alive_count -= 1;
+    store.bake_overlay();
+    assert!(ids_sorted(&store));
+    assert_eq!(store.batch.as_ref().unwrap().num_rows(), 2);
+
+    // Verify surviving IDs
+    assert!(store.get_loc_by_id(1).is_some());
+    assert!(store.get_loc_by_id(2).is_none());
+    assert!(store.get_loc_by_id(3).is_some());
+}
+
+#[test]
+fn patch_all_rows_preserves_order() {
+    let mut store = setup_store_with(&[loc(1, 0.0, 0.0), loc(2, 10.0, 10.0), loc(3, 20.0, 20.0)]);
+    store.bake_overlay();
+    // Patch every single row
+    store.overlay_update(1, &LocationPatch { heading: Some(10.0), ..patch() });
+    store.overlay_update(2, &LocationPatch { heading: Some(20.0), ..patch() });
+    store.overlay_update(3, &LocationPatch { heading: Some(30.0), ..patch() });
+    store.bake_overlay();
+    assert!(ids_sorted(&store));
+    assert_eq!(store.get_loc_by_id(1).unwrap().heading, 10.0);
+    assert_eq!(store.get_loc_by_id(2).unwrap().heading, 20.0);
+    assert_eq!(store.get_loc_by_id(3).unwrap().heading, 30.0);
 }

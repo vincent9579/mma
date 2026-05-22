@@ -1,7 +1,7 @@
 import { distMeters } from "@/lib/geo/geo";
 import { fetchPanoDotsWithIds } from "@/lib/geo/photometa";
-import { isOfficialPano } from "@/lib/sv/panoId";
-import { cameraTypeFromHeight } from "@/lib/sv/svMeta";
+import { google } from "@/lib/sv/opensv";
+import { cameraTypeFromHeight, fetchSvMetadata } from "@/lib/sv/svMeta";
 import { LocationFlag, hasLoadAsPanoId } from "@/types";
 import type { Location } from "@/types";
 
@@ -26,31 +26,12 @@ export function parsePanoDate(d: Date | { year?: number; month?: number } | stri
 	return new Date(0);
 }
 
-/** Extract deduplicated, sorted historical pano dates from a PanoData response. */
-export function extractPanoDates(
-	data: google.maps.StreetViewResolvedPanoramaData | null,
-): PanoTime[] {
-	if (!data?.time) return [];
-	const seen = new Set<string>();
-	const dates: PanoTime[] = [];
-	for (const t of data.time) {
-		if (t.pano && !seen.has(t.pano)) {
-			seen.add(t.pano);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- opensv uses .AA for date in some versions
-			dates.push({ pano: t.pano, date: parsePanoDate(t.date ?? (t as any).AA) });
-		}
-	}
-	dates.sort((a, b) => a.date.getTime() - b.date.getTime());
-	return dates;
-}
-
 /** Fetch panorama data via StreetViewService. Returns null on failure or missing location. */
 export async function fetchPanoData(
-	g: Google,
 	request: google.maps.StreetViewPanoRequest | google.maps.StreetViewLocationRequest,
 ): Promise<google.maps.StreetViewResolvedPanoramaData | null> {
 	try {
-		const sv = new g.maps.StreetViewService();
+		const sv = new google.maps.StreetViewService();
 		const result = await sv.getPanorama(request);
 		const data = result?.data;
 		if (data?.location?.latLng) return data as google.maps.StreetViewResolvedPanoramaData;
@@ -58,35 +39,6 @@ export async function fetchPanoData(
 	} catch {
 		return null;
 	}
-}
-
-/** Get all available historical pano dates for a location (merges coord + panoId lookups). */
-export async function fetchPanoDates(g: Google, loc: Location): Promise<PanoTime[]> {
-	const byCoord = fetchPanoData(g, { location: { lat: loc.lat, lng: loc.lng }, radius: 50 });
-	const byPano = loc.panoId ? fetchPanoData(g, { pano: loc.panoId }) : Promise.resolve(null);
-	const [coordData, panoData] = await Promise.all([byCoord, byPano]);
-
-	const current = panoData ?? coordData;
-	const allUnofficial = current?.time?.every((t) => !isOfficialPano(t.pano)) ?? true;
-
-	let officialData: google.maps.StreetViewResolvedPanoramaData | null = null;
-	if (allUnofficial) {
-		officialData = await fetchPanoData(g, {
-			location: { lat: loc.lat, lng: loc.lng },
-			radius: 25,
-			source: g.maps.StreetViewSource.GOOGLE,
-		});
-	}
-
-	const merged = new Map<string, PanoTime>();
-	if (officialData) {
-		for (const d of extractPanoDates(officialData)) merged.set(d.pano, d);
-	}
-	const primary = panoData ?? coordData;
-	if (primary) {
-		for (const d of extractPanoDates(primary)) merged.set(d.pano, d);
-	}
-	return Array.from(merged.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
 export async function getPanoAtCoords(
@@ -108,13 +60,13 @@ export interface ResolvedPano {
 	isFallback: boolean;
 }
 
-export async function resolvePano(g: Google, loc: Location): Promise<ResolvedPano> {
+export async function resolvePano(loc: Location): Promise<ResolvedPano> {
 	const pinned = hasLoadAsPanoId(loc);
 	let resolved: google.maps.StreetViewResolvedPanoramaData | null = null;
 	if (pinned && loc.panoId) {
-		resolved = await fetchPanoData(g, { pano: loc.panoId });
+		resolved = await fetchPanoData({ pano: loc.panoId });
 	}
-	resolved ??= await fetchPanoData(g, {
+	resolved ??= await fetchPanoData({
 		location: { lat: loc.lat, lng: loc.lng },
 		radius: SV_SEARCH_RADIUS,
 	});
@@ -140,6 +92,7 @@ export async function resolvePanoIds(
 ): Promise<ResolvePanoResult> {
 	const { concurrency = 500, batchSize = 200, signal, onProgress } = opts;
 	const result: ResolvePanoResult = { resolved: [], failed: [] };
+	if (!google) return result;
 	const { runConcurrent } = await import("@/lib/util/concurrent");
 	const { batchUpdateLocations } = await import("@/store/useMapStore");
 
@@ -242,8 +195,7 @@ export function isUnofficial(p: google.maps.StreetViewResolvedPanoramaData | nul
 /** Find nearest pano via photometa tile dots (bypasses StreetViewService for coverage discovery). */
 export async function photometaSnap(
 	click: { lat: number; lng: number },
-	radius: number,
-	g: Google,
+	radius: number
 ): Promise<google.maps.StreetViewResolvedPanoramaData | null> {
 	try {
 		const wc = (() => {
@@ -262,7 +214,7 @@ export async function photometaSnap(
 			if (dist < radius && (!best || dist < best.dist)) best = { panoId: d.panoId, dist };
 		}
 		if (!best) return null;
-		return fetchPanoData(g, { pano: best.panoId });
+		return fetchPanoData({ pano: best.panoId });
 	} catch {
 		return null;
 	}
@@ -275,7 +227,6 @@ const CAMERA_PRIORITY = ["gen4", "gen2", "tripod", "badcam", "gen1"];
  * resolves heading, and determines LoadAsPanoId flag by comparing to default coverage.
  */
 export async function lookupStreetView(
-	g: Google,
 	lat: number,
 	lng: number,
 	zoom: number,
@@ -297,20 +248,20 @@ export async function lookupStreetView(
 			: "allow";
 
 	const [iRes, aRes, oRes, sRes] = await Promise.all([
-		fetchPanoData(g, { location: click, radius }),
-		fetchPanoData(g, {
+		fetchPanoData({ location: click, radius }),
+		fetchPanoData({
 			location: click,
 			radius,
-			sources: [g.maps.StreetViewSource.GOOGLE],
-			preference: g.maps.StreetViewPreference.NEAREST,
+			sources: [google.maps.StreetViewSource.GOOGLE],
+			preference: google.maps.StreetViewPreference.NEAREST,
 		}),
-		photometaSnap(click, radius, g),
+		photometaSnap(click, radius),
 		userUploaded === "allow"
-			? fetchPanoData(g, {
+			? fetchPanoData({
 					location: click,
 					radius,
 					sources: ["unofficial" as unknown as google.maps.StreetViewSource],
-					preference: g.maps.StreetViewPreference.NEAREST,
+					preference: google.maps.StreetViewPreference.NEAREST,
 				})
 			: null,
 	]);
@@ -335,7 +286,7 @@ export async function lookupStreetView(
 	const official = candidates.find((c) => !isUnofficial(c));
 	if (official?.time?.length) {
 		const fetches = await Promise.allSettled(
-			official.time.map((t) => fetchPanoData(g, { pano: t.pano })),
+			official.time.map((t) => fetchPanoData({ pano: t.pano })),
 		);
 		for (const r of fetches) {
 			if (r.status === "fulfilled") push(r.value);
@@ -380,7 +331,7 @@ export async function lookupStreetView(
 	const chosen = filtered[0];
 	if (!chosen) return null;
 
-	const verify = await fetchPanoData(g, { location: panoLatLng(chosen), radius: 50 });
+	const verify = await fetchPanoData({ location: panoLatLng(chosen), radius: 50 });
 	const isDefault = verify !== null && samePano(chosen, verify);
 
 	const pos = chosen.location.latLng;
@@ -405,7 +356,6 @@ export async function lookupStreetView(
  * Returns an array of locations along the road, up to `maxSteps`.
  */
 export async function followLinkedPanos(
-	g: Google,
 	startPanoId: string,
 	heading: number,
 	maxSteps = 50,
@@ -416,15 +366,14 @@ export async function followLinkedPanos(
 	let currentHeading = heading;
 
 	for (let i = 0; i < maxSteps; i++) {
-		const data = await fetchPanoData(g, { pano: currentPanoId });
+		const [data] = await fetchSvMetadata([currentPanoId]);
 		const links = data?.links;
 		if (!links || links.length === 0) break;
 
 		let best: { pano: string; heading: number } | null = null;
 		let bestDelta = Infinity;
 		for (const link of links) {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- opensv internal property names
-			const pid = link.pano ?? (link as any).Ub ?? (link as any).description;
+			const pid = link.pano;
 			const lh = link.heading ?? 0;
 			if (!pid || visited.has(pid)) continue;
 			const delta = Math.abs(normalizeHeading(lh - currentHeading));
@@ -436,7 +385,7 @@ export async function followLinkedPanos(
 		if (!best || bestDelta > 90) break;
 
 		visited.add(best.pano);
-		const nextData = await fetchPanoData(g, { pano: best.pano });
+		const [nextData] = await fetchSvMetadata([best.pano]);
 		if (!nextData) break;
 
 		const pos = nextData.location.latLng;

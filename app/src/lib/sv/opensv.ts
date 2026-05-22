@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { schemeBase } from "@/lib/util/util";
+
 let loaded = false;
 let loading: Promise<void> | null = null;
 
@@ -15,13 +17,15 @@ HTMLCanvasElement.prototype.getContext = function (
 	return origGetContext.call(this, type, attrs);
 } as typeof origGetContext;
 
+export let google: typeof globalThis.google;
+
 export function loadOpenSV(): Promise<void> {
 	if (loaded) return Promise.resolve();
 	if (loading) return loading;
 	loading = (async () => {
 		const res = await fetch("/opensv/opensv.js");
 		let src = await res.text();
-		src = src.replace(/https:\/\/lh[3-6]\.ggpht\.com\/jsapi2\/a\/b\/c\//g, "/svtile/");
+		src = src.replace(/https:\/\/lh[3-6]\.ggpht\.com\/jsapi2\/a\/b\/c\//g, schemeBase("svtile"));
 		const blob = new Blob([src], { type: "application/javascript" });
 		const url = URL.createObjectURL(blob);
 		await new Promise<void>((resolve, reject) => {
@@ -30,6 +34,7 @@ export function loadOpenSV(): Promise<void> {
 			script.onload = () => {
 				URL.revokeObjectURL(url);
 				loaded = true;
+				google = (window as any).google;
 				resolve();
 			};
 			script.onerror = reject;
@@ -37,8 +42,4 @@ export function loadOpenSV(): Promise<void> {
 		});
 	})();
 	return loading;
-}
-
-export function getGoogle(): typeof google {
-	return (window as any).google;
 }

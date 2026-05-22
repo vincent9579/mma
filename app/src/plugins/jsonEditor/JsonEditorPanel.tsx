@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import type { Location, Tag } from "@/types";
 
 function tagIdsToNames(tagIds: number[], tags: Record<string, Tag>): string[] {
@@ -8,7 +8,7 @@ function tagIdsToNames(tagIds: number[], tags: Record<string, Tag>): string[] {
 
 async function resolveTagNames(names: string[]): Promise<number[]> {
 	if (names.length === 0) return [];
-	const resolved = await invoke<Tag[]>("store_resolve_tag_names", { names });
+	const resolved = await cmd.storeResolveTagNames(names);
 	for (const t of resolved) MMA.addTag(t);
 	return resolved.map((t) => t.id);
 }

@@ -1,3 +1,10 @@
+import type { Location_Serialize, Tag as _Tag, EditorImportResult_Serialize, EditorImportPreview } from "@/bindings.gen";
+
+export type Location = Location_Serialize;
+export type Tag = _Tag;
+export type ImportResult = EditorImportResult_Serialize;
+export type ImportPreview = EditorImportPreview;
+
 export const enum LocationFlag {
 	None = 0,
 	LoadAsPanoId = 1,
@@ -9,21 +16,6 @@ export const enum PanoType {
 	Official = 2,
 	Unknown = 3,
 	UserUploaded = 10,
-}
-
-export interface Location {
-	id: number;
-	lat: number;
-	lng: number;
-	heading: number;
-	pitch: number;
-	zoom: number;
-	panoId: string | null;
-	flags: number;
-	tags: number[];
-	extra?: Record<string, unknown>;
-	createdAt?: string;
-	modifiedAt?: string;
 }
 
 export const LOCATION_CORE_KEYS = new Set([
@@ -66,64 +58,7 @@ export function createLocation(
 	};
 }
 
-export interface Tag {
-	id: number;
-	name: string;
-	color: string;
-	visible: boolean;
-	order?: number;
-}
-
-export interface ExtraFieldDef {
-	type: "string" | "number" | "date" | "month" | "enum";
-	label?: string;
-	values?: string[];
-	labels?: Record<string, string>;
-}
-
-export interface MapSettings {
-	pointAlongRoad: boolean;
-	preferDirection: number | null;
-	preferOfficial: boolean;
-	preferHigherQuality: boolean;
-	onlyOfficial: boolean;
-	cameraTypes: string[] | null;
-	defaultPanoId: boolean;
-	exportZoom: boolean;
-	exportUnpanned: boolean;
-	enrichMetadata: boolean;
-	enrichFields?: string[];
-}
-
-export interface MapMeta {
-	id: string;
-	name: string;
-	description: string;
-	folder: string | null;
-	locationCount: number;
-	tags: Record<string, Tag>;
-	labels: string[];
-	settings: MapSettings;
-	scoreBounds: "auto" | [number, number, number, number];
-	extra?: { fields?: Record<string, ExtraFieldDef> };
-	createdAt: string;
-	updatedAt: string;
-	lastOpenedAt: string | null;
-}
-
-export interface MapData {
-	meta: MapMeta;
-}
-
-export interface ImportResult {
-	locationCount: number;
-	tags: { id: number; name: string; color: string }[];
-	delta: import("@/lib/render/CellManager").CellDelta;
-	warnings: string[];
-	tagCounts: Record<number, number>;
-	canUndo: boolean;
-	canRedo: boolean;
-}
+export type { ExtraFieldDef, MapSettings, MapMeta, MapData, MapExtra, ScoreBounds } from "@/bindings.gen";
 
 export type SortMode = "name" | "created" | "opened" | "amount";
 export type TagSortMode = "default" | "name" | "amount";
@@ -135,15 +70,4 @@ export interface DuplicateGroup {
 	locations: Location[];
 }
 
-export interface CommitInfo {
-	id: string;
-	mapId: string;
-	parentId: string | null;
-	message: string | null;
-	treeHash: string | null;
-	added: number;
-	removed: number;
-	modified: number;
-	locationCount: number;
-	createdAt: string;
-}
+export type { CommitInfo } from "@/bindings.gen";

@@ -1,48 +1,19 @@
-export interface CellDelta {
-	added: CellRenderEntry[];
-	updated: CellPatchEntry[];
-	removed: CellRemoval[];
-	colorPatches: CellColorPatch[];
-	fullReset?: boolean;
-}
+import type {
+	RenderDelta_Serialize,
+	RenderEntry,
+	CellRemoval as _CellRemoval,
+	ColorPatchEntry,
+} from "@/bindings.gen";
 
-export interface CellRenderEntry {
-	cell: string;
-	id: number;
-	lng: number;
-	lat: number;
-	heading: number;
-	r: number;
-	g: number;
-	b: number;
-	a: number;
-}
-
-export interface CellPatchEntry {
-	cell: string;
-	cellIndex: number;
-	lng?: number;
-	lat?: number;
-	heading?: number;
-}
-
-export interface CellRemoval {
-	cell: string;
-	cellIndex: number;
-	id: number;
-}
-
-export interface CellColorPatch {
-	cell: string;
-	cellIndex: number;
-	r: number;
-	g: number;
-	b: number;
-	a: number;
-}
+export type RenderDelta = RenderDelta_Serialize;
 
 const MIN_CAPACITY = 256;
 
+/**
+ * Typed-array backed buffer for one geohash cell's marker data.
+ * Grows by doubling. Removals use swap-remove (O(1), order not preserved).
+ * Versioned per-attribute so deck.gl can skip unchanged layers.
+ */
 export class CellBuffer {
 	ids: number[] = [];
 	idToIndex = new Map<number, number>();
@@ -61,7 +32,8 @@ export class CellBuffer {
 		this.angles = new Float32Array(capacity);
 	}
 
-	append(entry: CellRenderEntry) {
+	/** Append a marker, growing the buffer if needed. */
+	append(entry: RenderEntry) {
 		this.ensureCapacity(this.count + 1);
 		const i = this.count;
 		this.positions[i * 2] = entry.lng;
@@ -78,6 +50,7 @@ export class CellBuffer {
 		this.colorVersion++;
 	}
 
+	/** O(1) removal by swapping with the last element. Mirrors Rust's cell_remove_render. */
 	swapRemove(index: number) {
 		const last = this.count - 1;
 		if (last < 0) return;
@@ -136,11 +109,18 @@ export class CellBuffer {
 	}
 }
 
+/**
+ * Owns all marker render data as 32 geohash-cell CellBuffers plus a selection overlay.
+ * Initialized from a binary blob built by Rust (`initFromBinary`), then kept in sync
+ * via incremental deltas (`applyDelta`) and selection bitmasks (`applySelectionBitmasks`).
+ * deck.gl layers read the typed arrays directly — no JSON serialization in the render loop.
+ */
 export class CellManager {
 	cells = new Map<string, CellBuffer>();
 	totalCount = 0;
 	version = 0;
 
+	/** Parse the full render binary from Rust. Replaces all cells and the selection overlay. */
 	initFromBinary(buf: ArrayBuffer) {
 		this.cells.clear();
 		this.totalCount = 0;
@@ -210,7 +190,8 @@ export class CellManager {
 		this.version++;
 	}
 
-	applyDelta(delta: CellDelta): Set<string> {
+	/** Apply an incremental delta (adds, swap-removes, position patches, color patches). Returns affected cell keys. */
+	applyDelta(delta: RenderDelta): Set<string> {
 		const affected = new Set<string>();
 
 		for (const rem of delta.removed) {
@@ -258,6 +239,7 @@ export class CellManager {
 		return affected;
 	}
 
+	/** Map a deck.gl pick (cell + index) back to a location ID. */
 	resolvePickFromCell(cellKey: string, cellIndex: number): number | null {
 		const cb = this.cells.get(cellKey);
 		if (!cb || cellIndex < 0 || cellIndex >= cb.count) return null;
@@ -271,7 +253,8 @@ export class CellManager {
 	selOverlayCount = 0;
 	selOverlayVersion = 0;
 
-	buildSelectionOverlay(colorPatches: CellColorPatch[], _angles?: boolean) {
+	/** Build a selection overlay from explicit color patches (used by non-bitmask code paths). */
+	buildSelectionOverlay(colorPatches: ColorPatchEntry[], _angles?: boolean) {
 		this.selOverlayCount = colorPatches.length;
 		if (colorPatches.length === 0) {
 			this.selOverlayIds = [];
@@ -299,6 +282,11 @@ export class CellManager {
 		this.selOverlayVersion++;
 	}
 
+	/**
+	 * Decode per-cell bitmasks from Rust into a colored selection overlay.
+	 * Selected locations are hidden in their main cell (alpha=0) and drawn in the overlay with
+	 * the selection's color. Later selections overdraw earlier ones. Returns the set of selected IDs.
+	 */
 	applySelectionBitmasks(
 		selColors: [number, number, number][],
 		cellEntries: { cellChar: string; locCount: number; masks: Uint8Array[] }[],

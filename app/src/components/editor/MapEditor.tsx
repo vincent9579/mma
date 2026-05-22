@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { createLocation, type ImportResult, type Tag } from "@/types";
+import { cmd } from "@/lib/commands";
+import { createLocation } from "@/types";
 import {
 	useCurrentMap,
 	useWorkArea,
@@ -14,7 +14,7 @@ import {
 	setUndoRedoState,
 	refreshAfterMutation,
 	scheduleSave,
-	emitRenderDelta,
+	renderDeltaBus,
 } from "@/store/useMapStore";
 import { activatePlugins, deactivatePlugins } from "@/plugins/registry";
 import { getGoogleMap as getGoogleMapInstance } from "@/lib/map/mapState";
@@ -34,6 +34,8 @@ import { parseMapsUrl } from "@/lib/data/importExport";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiBackburger, mdiPencil } from "@mdi/js";
 import { PluginSidebarHost } from "@/components/editor/PluginSidebarHost";
+import SameLocation from "@/components/editor/SameLocation.add";
+import { log } from "@/lib/util/log"
 
 function usePasteHandler() {
 	useEffect(() => {
@@ -48,9 +50,7 @@ function usePasteHandler() {
 				if (parsed) {
 					let tagIds: number[] = [];
 					if (parsed.tags.length > 0) {
-						const resolved = await invoke<Tag[]>("store_resolve_tag_names", {
-							names: parsed.tags,
-						});
+						const resolved = await cmd.storeResolveTagNames(parsed.tags);
 						addTags(resolved);
 						tagIds = resolved.map((t) => t.id);
 					}
@@ -70,18 +70,19 @@ function usePasteHandler() {
 			}
 
 			try {
-				const r = await invoke<ImportResult>("store_import_paste", { text });
+				const [r, singleId] = await cmd.storeImportPaste(text);
 				if (r.locationCount > 0) {
 					addTags(r.tags.map((t) => ({ id: t.id, name: t.name, color: t.color, visible: true })));
 					addLocationCount(r.locationCount);
 					setTagCounts(r.tagCounts);
 					setUndoRedoState(r.canUndo, r.canRedo);
-					emitRenderDelta(r.delta);
+					renderDeltaBus.emit(r.delta);
 					refreshAfterMutation();
 					scheduleSave();
+					if (singleId != null) setActiveLocation(singleId);
 				}
 			} catch {
-				// ignored
+				log.warn('Couldn\'t import locations via paste.')
 			}
 		}
 		document.body.addEventListener("paste", onPaste);
@@ -276,6 +277,7 @@ export function MapEditor() {
 			</section>
 			{workArea === "overview" && <MapOverview />}
 			{workArea === "location" && <LocationPreview />}
+			{workArea === "duplicates" && <SameLocation />}
 			{workArea === "plugin" && <PluginSidebarHost />}
 			<CommandPalette />
 		</div>

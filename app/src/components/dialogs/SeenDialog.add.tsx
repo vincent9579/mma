@@ -37,18 +37,18 @@ function SeenEntryCard({
 			</div>
 			<div className="seen-entry__info">
 				<span className="seen-entry__location">
-					{entry.country_code && (
+					{entry.countryCode && (
 						<img
 							height={12}
 							width={16}
-							src={`/flags/${entry.country_code.toUpperCase()}.svg`}
-							alt={entry.country_code}
+							src={`/flags/${entry.countryCode.toUpperCase()}.svg`}
+							alt={entry.countryCode}
 							style={{ borderRadius: "2px", verticalAlign: "middle", marginRight: 4 }}
 						/>
 					)}
 					{entry.address || `${entry.lat.toFixed(4)}, ${entry.lng.toFixed(4)}`}
 				</span>
-				<span className="seen-entry__time">{formatDateTime(entry.entered_at)}</span>
+				<span className="seen-entry__time">{formatDateTime(entry.enteredAt)}</span>
 			</div>
 		</button>
 	);

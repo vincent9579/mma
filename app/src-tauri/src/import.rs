@@ -24,7 +24,7 @@ const DEFAULT_SETTINGS: &str = r#"{"pointAlongRoad":true,"preferDirection":null,
 // Types returned to JS
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportPreviewEntry {
     pub name: String,
@@ -34,7 +34,7 @@ pub struct ImportPreviewEntry {
     pub warnings: Vec<String>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportedMapInfo {
     pub id: String,
@@ -64,28 +64,41 @@ use crate::util::color_for_name;
 // ---------------------------------------------------------------------------
 
 fn parse_csv(text: &str) -> ParsedMap {
-    let mut lines = text.lines();
-    let header = match lines.next() {
+    let warn = |w: &str| ParsedMap { name: String::new(), folder: None, locations: Vec::new(), tags: Vec::new(), fields: None, warnings: vec![w.into()] };
+
+    let first = match text.lines().next() {
         Some(h) => h,
-        None => return ParsedMap { name: String::new(), folder: None, locations: Vec::new(), tags: Vec::new(), fields: None, warnings: vec!["Empty CSV".into()] },
+        None => return warn("Empty CSV"),
     };
-    let cols: Vec<&str> = header.split(',').map(|h| h.trim()).collect();
+    let cols: Vec<&str> = first.split(',').map(|h| h.trim()).collect();
     let lower: Vec<String> = cols.iter().map(|h| h.to_lowercase()).collect();
 
-    let lat_idx = lower.iter().position(|h| h == "lat" || h == "latitude");
-    let lng_idx = lower.iter().position(|h| h == "lng" || h == "longitude" || h == "lon");
-    let (lat_idx, lng_idx) = match (lat_idx, lng_idx) {
-        (Some(la), Some(ln)) => (la, ln),
-        _ => return ParsedMap { name: String::new(), folder: None, locations: Vec::new(), tags: Vec::new(), fields: None, warnings: vec!["CSV missing lat/lng columns".into()] },
-    };
-    let heading_idx = lower.iter().position(|h| h == "heading");
-    let pitch_idx = lower.iter().position(|h| h == "pitch");
-    let zoom_idx = lower.iter().position(|h| h == "zoom");
-    let pano_idx = lower.iter().position(|h| h == "pano" || h == "panoid" || h == "pano_id");
+    let lat_named = lower.iter().position(|h| h == "lat" || h == "latitude");
+    let lng_named = lower.iter().position(|h| h == "lng" || h == "longitude" || h == "lon");
+
+    // The first line is a header only if it names lat/lng columns. Otherwise, accept a
+    // bare positional `lat,lng` row (headerless) as data — matching the original importer.
+    let (lat_idx, lng_idx, heading_idx, pitch_idx, zoom_idx, pano_idx, has_header) =
+        if let (Some(la), Some(ln)) = (lat_named, lng_named) {
+            (
+                la, ln,
+                lower.iter().position(|h| h == "heading"),
+                lower.iter().position(|h| h == "pitch"),
+                lower.iter().position(|h| h == "zoom"),
+                lower.iter().position(|h| h == "pano" || h == "panoid" || h == "pano_id"),
+                true,
+            )
+        } else {
+            let is_num = |s: &&str| s.parse::<f64>().map(f64::is_finite).unwrap_or(false);
+            if !(cols.first().is_some_and(is_num) && cols.get(1).is_some_and(is_num)) {
+                return warn("CSV missing lat/lng columns");
+            }
+            (0, 1, None, None, None, None, false)
+        };
 
     let now = chrono_now();
     let mut locations = Vec::new();
-    for line in lines {
+    for line in text.lines().skip(if has_header { 1 } else { 0 }) {
         let fields: Vec<&str> = line.split(',').map(|f| f.trim()).collect();
         let lat: f64 = match fields.get(lat_idx).and_then(|s| s.parse::<f64>().ok()) {
             Some(v) if v.is_finite() => v,
@@ -646,6 +659,7 @@ fn write_map_to_db(conn: &Connection, app: &tauri::AppHandle, mut map: ParsedMap
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[specta::specta]
 pub async fn bulk_import_preview(path: String) -> Result<Vec<ImportPreviewEntry>, String> {
     tokio::task::spawn_blocking(move || {
         let entries = if path.ends_with(".zip") {
@@ -673,7 +687,7 @@ pub async fn bulk_import_preview(path: String) -> Result<Vec<ImportPreviewEntry>
     }).await.map_err(|e| e.to_string())?
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportProgress {
     pub current: u32,
@@ -682,10 +696,11 @@ pub struct ImportProgress {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn bulk_import_confirm(
     app: tauri::AppHandle,
     path: String,
-    selected_indices: Vec<usize>,
+    selected_indices: Vec<u32>,
 ) -> Result<Vec<ImportedMapInfo>, String> {
     let main_path = fast_io::db_path(&app)?;
     let app_handle = app.clone();
@@ -706,10 +721,10 @@ pub async fn bulk_import_confirm(
             }
         };
 
-        let selected_set: std::collections::HashSet<usize> = selected_indices.into_iter().collect();
+        let selected_set: std::collections::HashSet<u32> = selected_indices.into_iter().collect();
         let parsed_maps: Vec<ParsedMap> = all_maps.into_iter()
             .enumerate()
-            .filter(|(i, _)| selected_set.contains(i))
+            .filter(|(i, _)| selected_set.contains(&(*i as u32)))
             .map(|(_, m)| m)
             .collect();
         let total = parsed_maps.len() as u32;
@@ -740,14 +755,14 @@ pub async fn bulk_import_confirm(
 // ---------------------------------------------------------------------------
 
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct FieldCount {
     pub key: String,
     pub count: u32,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorImportPreview {
     pub location_count: u32,
@@ -759,6 +774,7 @@ pub struct EditorImportPreview {
 static EDITOR_IMPORT_CACHE: Mutex<Option<ParsedMap>> = Mutex::new(None);
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_import_preview(path: String) -> Result<EditorImportPreview, String> {
     let t0 = std::time::Instant::now();
     let mut buf = std::fs::read(&path).map_err(|e| e.to_string())?;
@@ -795,7 +811,7 @@ pub fn store_import_preview(path: String) -> Result<EditorImportPreview, String>
     Ok(preview)
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorImportResult {
     pub location_count: u32,
@@ -807,17 +823,48 @@ pub struct EditorImportResult {
     pub can_redo: bool,
 }
 
+fn reconcile_tags(
+    store: &mut crate::location_store::Store,
+    parsed: &mut ParsedMap,
+    existing_tags: &HashMap<u32, Tag>,
+) -> HashMap<u32, u32> {
+    let mut name_to_id: HashMap<String, u32> = HashMap::new();
+    for (_, tag) in existing_tags {
+        name_to_id.insert(tag.name.to_lowercase(), tag.id);
+    }
+
+    let mut remap: HashMap<u32, u32> = HashMap::new();
+    parsed.tags.retain_mut(|tag| {
+        if let Some(&existing_id) = name_to_id.get(&tag.name.to_lowercase()) {
+            remap.insert(tag.id, existing_id);
+            false
+        } else {
+            let new_id = store.alloc_tag_id();
+            remap.insert(tag.id, new_id);
+            name_to_id.insert(tag.name.to_lowercase(), new_id);
+            tag.id = new_id;
+            true
+        }
+    });
+    remap
+}
+
 fn add_parsed_to_store(
     app: &tauri::AppHandle,
     store: &mut crate::location_store::Store,
     parsed: &mut ParsedMap,
 ) -> Result<(), String> {
-    let mut tag_id_remap: HashMap<u32, u32> = HashMap::new();
-    for tag in &mut parsed.tags {
-        let new_id = store.alloc_tag_id();
-        tag_id_remap.insert(tag.id, new_id);
-        tag.id = new_id;
-    }
+    let existing_tags = if let Some(map_id) = &store.map_id {
+        if let Ok(conn) = fast_io::open_db(app) {
+            crate::location_store::read_tags_json(&conn, map_id)
+        } else {
+            HashMap::new()
+        }
+    } else {
+        HashMap::new()
+    };
+
+    let tag_id_remap = reconcile_tags(store, parsed, &existing_tags);
 
     for loc in &mut parsed.locations {
         loc.id = store.alloc_id();
@@ -826,9 +873,8 @@ fn add_parsed_to_store(
 
     if parsed.locations.len() <= 100_000 {
         for loc in &parsed.locations {
-            let gh = crate::location_store::encode_geohash(loc.lat, loc.lng);
-            let cell = &gh[..1];
-            store.cell_add_render(cell, loc.id);
+            let ci = crate::location_store::render_cell_idx(loc.lat, loc.lng);
+            store.cell_add_render(ci, loc.id);
             store.overlay_add(loc.clone());
             for &tag in &loc.tags { *store.tag_counts.entry(tag).or_default() += 1; }
         }
@@ -857,9 +903,8 @@ fn add_parsed_to_store(
 
         for loc in &parsed.locations {
             for &tag in &loc.tags { *store.tag_counts.entry(tag).or_default() += 1; }
-            let gh = crate::location_store::encode_geohash(loc.lat, loc.lng);
-            let cell = &gh[..1];
-            store.cell_add_render(cell, loc.id);
+            let ci = crate::location_store::render_cell_idx(loc.lat, loc.lng);
+            store.cell_add_render(ci, loc.id);
         }
         store.alive_count += parsed.locations.len();
 
@@ -882,6 +927,7 @@ fn add_parsed_to_store(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_import_file(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::location_store::StoreState>,
@@ -927,12 +973,15 @@ pub fn store_import_file(
     })
 }
 
+/// Parse raw text (JSON or CSV) as locations and import into the open map.
+/// Handles tag reconciliation, ID allocation, and render delta in one shot.
 #[tauri::command]
+#[specta::specta]
 pub fn store_import_paste(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::location_store::StoreState>,
     text: String,
-) -> Result<EditorImportResult, String> {
+) -> Result<(EditorImportResult, Option<u32>), String> {
     let t0 = std::time::Instant::now();
     let mut buf = text.into_bytes();
     let mut parsed = parse_file(&mut buf);
@@ -947,8 +996,10 @@ pub fn store_import_paste(
     log::debug!("[paste-import] total={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
 
     let loc_count = parsed.locations.len();
+    // Single-location paste → return its id so the caller can open it; bulk → None.
+    let single_id = if loc_count == 1 { parsed.locations.first().map(|l| l.id) } else { None };
 
-    Ok(EditorImportResult {
+    Ok((EditorImportResult {
         location_count: loc_count as u32,
         tags: parsed.tags,
         // TODO: compute targeted delta from imported locations instead of full_reset
@@ -957,7 +1008,7 @@ pub fn store_import_paste(
         tag_counts: store.tag_counts.clone(),
         can_undo: !store.undo_stack.is_empty(),
         can_redo: !store.redo_stack.is_empty(),
-    })
+    }, single_id))
 }
 
 #[cfg(test)]

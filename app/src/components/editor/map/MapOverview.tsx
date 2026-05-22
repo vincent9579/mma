@@ -26,8 +26,8 @@ import {
 	decomposeChild,
 	removeChildFromSelection,
 } from "@/store/useMapStore";
-import { invoke } from "@tauri-apps/api/core";
-import type { Tag } from "@/types";
+import { cmd } from "@/lib/commands";
+
 import { RgbColorPicker } from "react-colorful";
 import type { Selection, FilterOp } from "@/store/selections";
 import { selectionDisplayName } from "@/store/selections";
@@ -51,9 +51,8 @@ async function fitSelectionBounds(map: google.maps.Map, selection: Selection) {
 		map.fitBounds(bounds, 100);
 		return;
 	}
-	if (selection.count === 0) return;
-	const { invoke } = await import("@tauri-apps/api/core");
-	const ids: number[] = await invoke("store_resolve_selection", { props: selection.props });
+	if ((selection.count ?? 0) === 0) return;
+	const ids = await cmd.storeResolveSelection(selection.props);
 	const { fetchLocationsByIds } = await import("@/store/useMapStore");
 	const locs = await fetchLocationsByIds(ids);
 	const bounds = new google.maps.LatLngBounds();
@@ -258,7 +257,7 @@ function SelectionRow({
 				{isDropTarget && dropZone === "on" && (
 					<span className="selection-row__drop-hint">{drag?.altKey ? "OR" : "AND"}</span>
 				)}
-				<span className="selection-row__size">{fmt.format(selection.count)}</span>
+				<span className="selection-row__size">{fmt.format(selection.count ?? 0)}</span>
 				<span className="selection-row__actions">
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger asChild>
@@ -293,12 +292,9 @@ function SelectionRow({
 										</DropdownMenu.Item>
 										<DropdownMenu.Item
 											className="context-menu__item"
-											disabled={selection.count === 0}
+											disabled={(selection.count ?? 0) === 0}
 											onSelect={async () => {
-												const { invoke } = await import("@tauri-apps/api/core");
-												const ids: number[] = await invoke("store_resolve_selection", {
-													props: selection.props,
-												});
+												const ids = await cmd.storeResolveSelection(selection.props);
 												beginReview(ids);
 											}}
 										>
@@ -492,7 +488,7 @@ function useEnumValues(
 			setValues([]);
 			return;
 		}
-		invoke<string[]>("store_extra_field_values", { field: fieldKey }).then(setValues);
+		cmd.storeExtraFieldValues(fieldKey).then(setValues);
 	}, [fieldKey, def]);
 	return values;
 }
@@ -658,7 +654,7 @@ export function MapOverview() {
 		e.preventDefault();
 		const name = bulkTagInput.trim();
 		if (!name || selected.size === 0) return;
-		const [resolved] = await invoke<Tag[]>("store_resolve_tag_names", { names: [name] });
+		const [resolved] = await cmd.storeResolveTagNames([name]);
 		addTags([resolved]);
 		bulkAddTag(resolved.id);
 		setBulkTagInput("");

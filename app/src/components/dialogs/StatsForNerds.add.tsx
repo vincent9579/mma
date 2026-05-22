@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { getDb } from "@/lib/storage/db";
-import { getGoogle } from "@/lib/sv/opensv";
+import { cmd } from "@/lib/commands";
+import { google } from "@/lib/sv/opensv";
 import { getDirtyCount } from "@/store/useMapStore";
 
 declare const __APP_VERSION__: string;
@@ -14,7 +14,7 @@ interface Stats {
 	commits: number;
 	pendingSaves: number;
 	dbSize: string;
-	walMode: string;
+	journalMode: string;
 	foreignKeys: string;
 	opensvVersion: string;
 	webglRenderer: string;
@@ -27,35 +27,15 @@ interface Stats {
 }
 
 async function gatherStats(): Promise<Stats> {
-	const db = getDb();
-	const g = getGoogle();
+	const dbStats = await cmd.storeDbStats();
 
-	const [[{ count: maps }], [{ count: locations }], tagRows, [{ count: commits }]] =
-		await Promise.all([
-			db.select<[{ count: number }]>("SELECT COUNT(*) as count FROM maps"),
-			db.select<[{ count: number }]>("SELECT COALESCE(SUM(location_count), 0) as count FROM maps"),
-			db.select<{ tags: string }[]>("SELECT tags FROM maps"),
-			db.select<[{ count: number }]>("SELECT COUNT(*) as count FROM commits"),
-		]);
-	const tags = tagRows.reduce((sum, r) => sum + Object.keys(JSON.parse(r.tags || "{}")).length, 0);
-
-	const [journalMode] = await db.select<[{ journal_mode: string }]>("PRAGMA journal_mode");
-	const [fk] = await db.select<[{ foreign_keys: number }]>("PRAGMA foreign_keys");
-
-	let dbSize = "unknown";
-	try {
-		const [{ page_count }] = await db.select<[{ page_count: number }]>("PRAGMA page_count");
-		const [{ page_size }] = await db.select<[{ page_size: number }]>("PRAGMA page_size");
-		const bytes = page_count * page_size;
-		dbSize =
-			bytes < 1024 * 1024
-				? `${(bytes / 1024).toFixed(1)} KB`
-				: bytes < 1024 * 1024 * 1024
-					? `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-					: `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-	} catch {
-		// ignored
-	}
+	const bytes = dbStats.dbSizeBytes;
+	const dbSize =
+		bytes < 1024 * 1024
+			? `${(bytes / 1024).toFixed(1)} KB`
+			: bytes < 1024 * 1024 * 1024
+				? `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+				: `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 
 	const perfMem = (
 		performance as unknown as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }
@@ -91,22 +71,22 @@ async function gatherStats(): Promise<Stats> {
 	return {
 		appVersion: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev",
 		buildMode: import.meta.env.MODE,
-		maps,
-		locations,
-		tags,
-		commits,
+		maps: dbStats.maps,
+		locations: dbStats.locations,
+		tags: dbStats.tags,
+		commits: dbStats.commits,
 		pendingSaves: await getDirtyCount(),
 		dbSize,
-		walMode: journalMode?.journal_mode ?? "unknown",
-		foreignKeys: fk?.foreign_keys ? "ON" : "OFF",
-		opensvVersion: g?.maps?.version ?? "not loaded",
+		journalMode: dbStats.journalMode,
+		foreignKeys: dbStats.foreignKeys ? "ON" : "OFF",
+		opensvVersion: google?.maps?.version ?? "not loaded",
 		webglRenderer,
 		userAgent: navigator.userAgent,
 		viewport: `${window.innerWidth}x${window.innerHeight}`,
 		devicePixelRatio: window.devicePixelRatio,
 		memory: mem,
 		uptime,
-		panoSingleton: !!getGoogle()?.maps?.StreetViewPanorama,
+		panoSingleton: !!google?.maps?.StreetViewPanorama,
 	};
 }
 
@@ -196,7 +176,7 @@ export function StatsForNerds({ onClose }: { onClose: () => void }) {
 									["Commits", stats.commits],
 									["Pending saves", stats.pendingSaves],
 									["DB size", stats.dbSize],
-									["Journal mode", stats.walMode],
+									["Journal mode", stats.journalMode],
 									["Foreign keys", stats.foreignKeys],
 									["opensv", stats.opensvVersion],
 									["WebGL", stats.webglRenderer],

@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { useCurrentMap, checkoutCommit } from "@/store/useMapStore";
-import * as vcs from "@/lib/storage/vcs";
-import type { CommitInfo } from "@/types";
+import { cmd } from "@/lib/commands";
+import type { CommitInfo } from "@/bindings.gen";
 
 const fmt = new Intl.NumberFormat("en");
 const dateFmt = new Intl.DateTimeFormat("en", {
@@ -43,7 +43,7 @@ export function VersionHistory({ onClose }: { onClose: () => void }) {
 
 	useEffect(() => {
 		if (!map) return;
-		vcs.listCommits(map.meta.id).then((c) => {
+		cmd.storeListCommits(map.meta.id).then((c) => {
 			setCommits(c);
 			setLoading(false);
 		});
@@ -52,7 +52,7 @@ export function VersionHistory({ onClose }: { onClose: () => void }) {
 	if (!map || loading) return null;
 
 	const handleRestore = async (commit: CommitInfo, isLatest: boolean) => {
-		const label = vcs.shortHash(commit.id);
+		const label = commit.id.slice(0, 7);
 		const action = isLatest ? "Discard uncommitted changes?" : `Restore to ${label}?`;
 		if (!confirm(`${action} Current state will be saved as a new commit.`)) return;
 		setRestoring(commit.id);
@@ -103,7 +103,7 @@ export function VersionHistory({ onClose }: { onClose: () => void }) {
 													color: "var(--stone-9)",
 												}}
 											>
-												{vcs.shortHash(c.id)}
+												{c.id.slice(0, 7)}
 											</td>
 											<td
 												style={{

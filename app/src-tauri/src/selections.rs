@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::types::Location;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "type")]
 pub enum SelectionProps {
     Locations { locations: Vec<u32>, name: Option<String> },
@@ -22,28 +22,29 @@ pub enum SelectionProps {
     Intersection { selections: Vec<Selection> },
     Union { selections: Vec<Selection> },
     Invert { selections: Vec<Selection> },
-    Filter { field: String, op: String, value: serde_json::Value, value2: Option<serde_json::Value> },
+    Filter { field: String, op: String, #[specta(type = specta_typescript::Any)] value: serde_json::Value, #[specta(type = Option<specta_typescript::Any>)] value2: Option<serde_json::Value> },
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PolygonGeometry {
     pub coordinates: Vec<Vec<[f64; 2]>>,
+    #[serde(default)]
     pub extra_polygons: Option<Vec<Vec<Vec<[f64; 2]>>>>,
+    #[serde(default)]
+    #[specta(type = Option<specta_typescript::Any>)]
     pub properties: Option<serde_json::Value>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Selection {
     pub key: String,
     pub color: [u8; 3],
     pub props: SelectionProps,
-    #[serde(default)]
-    pub locations: Vec<u32>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionSummary {
     pub key: String,
@@ -57,6 +58,8 @@ pub struct SelectionSummary {
 // LocView: unified view over Arrow batch + overlay
 // ---------------------------------------------------------------------------
 
+/// Unified read-only view over Arrow batch + overlay (dead, patches, adds).
+/// Caches column downcast refs on construction to avoid repeated downcasts.
 pub struct LocView<'a> {
     batch: Option<&'a RecordBatch>,
     dead: &'a HashSet<u32>,
@@ -107,6 +110,9 @@ impl<'a> LocView<'a> {
         self.batch_rows + self.adds.len()
     }
 
+    pub fn batch_rows(&self) -> usize { self.batch_rows }
+    pub fn adds(&self) -> &[Location] { self.adds }
+
     pub fn batch_id(&self, i: usize) -> u32 { self.ids.unwrap().value(i) }
 
     #[inline]
@@ -127,6 +133,7 @@ impl<'a> LocView<'a> {
         self.batch_id(i)
     }
 
+    /// Map each selected location ID to its selection index (last writer wins). O(S * N).
     pub fn collect_id_to_selection(&self, masks: &[Vec<bool>]) -> HashMap<u32, usize> {
         let mut id_to_sel: HashMap<u32, usize> = HashMap::new();
         for (si, mask) in masks.iter().enumerate() {
@@ -144,6 +151,7 @@ impl<'a> LocView<'a> {
         id_to_sel
     }
 
+    /// Collect all selected IDs and their colors (last selection wins). O(S * N).
     pub fn collect_selected_ids(&self, masks: &[Vec<bool>], colors: &[[u8; 3]]) -> (HashSet<u32>, HashMap<u32, [u8; 3]>) {
         let mut all_selected = HashSet::new();
         let mut color_map = HashMap::new();
@@ -166,6 +174,23 @@ impl<'a> LocView<'a> {
         (all_selected, color_map)
     }
 
+    /// Build a bool mask over all locations (batch + adds) using per-row predicates.
+    /// Batch rows are scanned in parallel with rayon. O(N) with parallel speedup.
+    pub fn resolve_mask(
+        &self,
+        batch_test: impl Fn(usize) -> bool + Sync + Send,
+        add_test: impl Fn(usize, &Location) -> bool,
+    ) -> Vec<bool> {
+        let mut mask: Vec<bool> = (0..self.batch_rows)
+            .into_par_iter()
+            .with_min_len(CHUNK_SIZE)
+            .map(|i| self.is_alive(i) && batch_test(i))
+            .collect();
+        mask.extend(self.adds.iter().enumerate().map(|(j, loc)| add_test(j, loc)));
+        mask
+    }
+
+    /// Map each LocView index to its render index (or -1 if not rendered). O(N).
     pub fn build_render_lookup(&self, render_id_to_index: &HashMap<u32, usize>) -> Vec<i32> {
         let n = self.batch_rows + self.adds.len();
         let mut lookup = vec![-1i32; n];
@@ -195,7 +220,6 @@ const INFORMATIONAL: u32 = 2;
 // Per-row test function for batch rows -- returns true if the row matches the selection.
 // Must be safe to call from multiple threads (reads only shared Arrow columns + overlay refs).
 fn test_batch_row(view: &LocView, i: usize, props: &SelectionProps) -> bool {
-    if !view.is_alive(i) { return false; }
     match props {
         SelectionProps::Everything => true,
         SelectionProps::Locations { locations, .. }
@@ -249,7 +273,7 @@ fn test_batch_row(view: &LocView, i: usize, props: &SelectionProps) -> bool {
     }
 }
 
-fn test_add_row(loc: &Location, props: &SelectionProps) -> bool {
+pub(crate) fn test_add_row(loc: &Location, props: &SelectionProps) -> bool {
     match props {
         SelectionProps::Everything => true,
         SelectionProps::Locations { locations, .. }
@@ -275,6 +299,8 @@ fn test_add_row(loc: &Location, props: &SelectionProps) -> bool {
 
 const CHUNK_SIZE: usize = 64 * 1024;
 
+/// Resolve a selection into a bool mask. O(N) for simple selections (parallel),
+/// O(N^2) for Duplicates (grid-accelerated), O(S*N) for composites (S children).
 pub fn resolve_bitmask(view: &LocView, props: &SelectionProps) -> Vec<bool> {
     let n = view.batch_rows + view.adds.len();
 
@@ -283,12 +309,7 @@ pub fn resolve_bitmask(view: &LocView, props: &SelectionProps) -> Vec<bool> {
         | SelectionProps::Manual { locations }
         | SelectionProps::ValidationState { locations, .. } => {
             let set: HashSet<u32> = locations.iter().copied().collect();
-            let mut mask: Vec<bool> = (0..view.batch_rows)
-                .into_par_iter()
-                .map(|i| view.is_alive(i) && set.contains(&view.id_at(i)))
-                .collect();
-            mask.extend(view.adds.iter().map(|loc| set.contains(&loc.id)));
-            return mask;
+            return view.resolve_mask(|i| set.contains(&view.id_at(i)), |_, loc| set.contains(&loc.id));
         }
         SelectionProps::Duplicates { distance } => {
             let mut mask = vec![false; n];
@@ -321,27 +342,12 @@ pub fn resolve_bitmask(view: &LocView, props: &SelectionProps) -> Vec<bool> {
                 return mask;
             }
             let inner = resolve_bitmask(view, &selections[0].props);
-            let mut mask: Vec<bool> = (0..view.batch_rows)
-                .into_par_iter()
-                .map(|i| view.is_alive(i) && !inner[i])
-                .collect();
-            mask.extend(view.adds.iter().enumerate().map(|(j, _)| !inner[view.batch_rows + j]));
-            return mask;
+            return view.resolve_mask(|i| !inner[i], |j, _| !inner[view.batch_rows + j]);
         }
         _ => {}
     }
 
-    // Parallel scan over batch rows
-    let mut mask: Vec<bool> = (0..view.batch_rows)
-        .into_par_iter()
-        .with_min_len(CHUNK_SIZE)
-        .map(|i| test_batch_row(view, i, props))
-        .collect();
-
-    // Sequential scan over overlay adds (usually small)
-    mask.extend(view.adds.iter().map(|loc| test_add_row(loc, props)));
-
-    mask
+    view.resolve_mask(|i| test_batch_row(view, i, props), |_, loc| test_add_row(loc, props))
 }
 
 pub fn mask_to_ids(view: &LocView, mask: &[bool]) -> Vec<u32> {
@@ -359,6 +365,7 @@ pub fn mask_to_ids(view: &LocView, mask: &[bool]) -> Vec<u32> {
     ids
 }
 
+/// Resolve a selection to a Vec of matching location IDs. O(N) + allocation.
 pub fn resolve(view: &LocView, props: &SelectionProps) -> Vec<u32> {
     let mask = resolve_bitmask(view, props);
     mask_to_ids(view, &mask)
@@ -402,6 +409,8 @@ fn point_in_geometry(lng: f64, lat: f64, geom: &PolygonGeometry) -> bool {
 
 // --- Duplicates (bitmask version) ---
 
+/// Grid-accelerated spatial duplicate detection. O(N) average with uniform distribution,
+/// O(N^2) worst case if all points fall in one grid cell.
 fn find_duplicates_bitmask(view: &LocView, distance_m: f64, mask: &mut [bool]) {
     let cell_deg = distance_m / 111_000.0 * 1.5;
 
@@ -455,7 +464,7 @@ fn find_duplicates_bitmask(view: &LocView, distance_m: f64, mask: &mut [bool]) {
     }
 }
 
-fn haversine_m(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
+pub(crate) fn haversine_m(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
     let r = 6_371_000.0;
     let dlat = (lat2 - lat1).to_radians();
     let dlng = (lng2 - lng1).to_radians();

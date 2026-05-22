@@ -8,7 +8,7 @@ import {
 	useMemo,
 	useSyncExternalStore,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { LocationFlag, hasLoadAsPanoId, createLocation } from "@/types";
 import type { Location, Tag } from "@/types";
 import {
@@ -29,7 +29,7 @@ import {
 	reviewPrev,
 	reviewDelete,
 } from "@/store/useMapStore";
-import { loadOpenSV, getGoogle } from "@/lib/sv/opensv";
+import { loadOpenSV, google } from "@/lib/sv/opensv";
 import { fetchSvMetadata } from "@/lib/sv/svMeta";
 import { useHotkey, parseHotkey, matchesKey, isEditableElement } from "@/lib/hooks/useHotkey";
 import { useBinding, getBinding } from "@/lib/util/hotkeys.add";
@@ -44,13 +44,13 @@ import {
 	type PanoTime,
 	type ResolvedPano,
 	parsePanoDate,
-	fetchPanoData,
-	extractPanoDates,
 	resolvePano,
+	fetchPanoData,
 	followLinkedPanos,
 	downloadPanoTile,
 	showToast,
 } from "@/lib/sv/lookup.add";
+import { isOfficialPano } from "@/lib/sv/panoId";
 import { enrich } from "@/lib/sv/enrich.add";
 import {
 	buildTileUrl,
@@ -241,8 +241,8 @@ function PanoDatePicker({
 								<Select.ItemText>
 									<span className="pano-option__name">
 										Default
-										{(defaultEntry?.date ?? currentPanoDate ?? sorted[sorted.length - 1]?.date)
-											? ` (${dateFmt.format((defaultEntry?.date ?? currentPanoDate ?? sorted[sorted.length - 1]?.date)!)})`
+										{(defaultEntry?.date ?? sorted[sorted.length - 1]?.date)
+											? ` (${dateFmt.format((defaultEntry?.date ?? sorted[sorted.length - 1]?.date)!)})`
 											: ""}
 									</span>
 								</Select.ItemText>
@@ -278,8 +278,8 @@ const DARK_MODE_STYLES: MapStyle[] = [
 	{ featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
 ];
 
-function buildMiniMapType(g: Google): google.maps.ImageMapType {
-	const tileSize = new g.maps.Size(256, 256);
+function buildMiniMapType(): google.maps.ImageMapType {
+	const tileSize = new google.maps.Size(256, 256);
 	const basemap = (() => {
 		try {
 			return JSON.parse(localStorage.getItem("basemap") ?? '"map"');
@@ -317,7 +317,7 @@ function buildMiniMapType(g: Google): google.maps.ImageMapType {
 
 	if (basemap === "satellite") {
 		const cfg = createSatelliteTileConfig();
-		return new g.maps.ImageMapType({
+		return new google.maps.ImageMapType({
 			getTileUrl: (c: TileCoord, z: number) => buildTileUrl(cfg, c.x, c.y, z),
 			tileSize,
 			minZoom: 0,
@@ -325,7 +325,7 @@ function buildMiniMapType(g: Google): google.maps.ImageMapType {
 		});
 	}
 	if (basemap === "osm") {
-		return new g.maps.ImageMapType({
+		return new google.maps.ImageMapType({
 			getTileUrl: (_c: TileCoord, z: number) =>
 				`https://tile.openstreetmap.org/${z}/${_c.x}/${_c.y}.png`,
 			tileSize,
@@ -335,7 +335,7 @@ function buildMiniMapType(g: Google): google.maps.ImageMapType {
 	}
 	if (terrain) {
 		const cfg = createTerrainBasemapTileConfig(extraStyles);
-		return new g.maps.ImageMapType({
+		return new google.maps.ImageMapType({
 			getTileUrl: (c: TileCoord, z: number) => buildTileUrl(cfg, c.x, c.y, z),
 			tileSize,
 			minZoom: 0,
@@ -343,7 +343,7 @@ function buildMiniMapType(g: Google): google.maps.ImageMapType {
 		});
 	}
 	const cfg = createRoadmapTileConfig(extraStyles);
-	return new g.maps.ImageMapType({
+	return new google.maps.ImageMapType({
 		getTileUrl: (c: TileCoord, z: number) => buildTileUrl(cfg, c.x, c.y, z),
 		tileSize,
 		minZoom: 0,
@@ -351,11 +351,11 @@ function buildMiniMapType(g: Google): google.maps.ImageMapType {
 	});
 }
 
-function createDotOverlay(g: Google, map: google.maps.Map, pos: { lat: number; lng: number }) {
-	const overlay = new g.maps.OverlayView();
+function createDotOverlay(map: google.maps.Map, pos: { lat: number; lng: number }) {
+	const overlay = new google.maps.OverlayView();
 	const div = document.createElement("div");
 	div.className = "fullscreen-minimap__marker";
-	let position = new g.maps.LatLng(pos.lat, pos.lng);
+	let position = new google.maps.LatLng(pos.lat, pos.lng);
 
 	overlay.onAdd = () => {
 		overlay.getPanes()!.overlayMouseTarget.appendChild(div);
@@ -376,7 +376,7 @@ function createDotOverlay(g: Google, map: google.maps.Map, pos: { lat: number; l
 
 	return {
 		setPosition(p: { lat: number; lng: number }) {
-			position = new g.maps.LatLng(p.lat, p.lng);
+			position = new google.maps.LatLng(p.lat, p.lng);
 			overlay.draw();
 		},
 		remove() {
@@ -402,10 +402,9 @@ function FullscreenMiniMap({
 	} | null>(null);
 
 	useEffect(() => {
-		const g = getGoogle();
-		if (!containerRef.current || !g?.maps) return;
-		const customType = buildMiniMapType(g);
-		const map = new g.maps.Map(containerRef.current, {
+		if (!containerRef.current || !google?.maps) return;
+		const customType = buildMiniMapType();
+		const map = new google.maps.Map(containerRef.current, {
 			center: { lat, lng },
 			zoom: 14,
 			disableDefaultUI: true,
@@ -416,7 +415,7 @@ function FullscreenMiniMap({
 		map.mapTypes.set("custom", customType);
 		map.setMapTypeId("custom");
 		mapRef.current = map;
-		dotRef.current = createDotOverlay(g, map, { lat, lng });
+		dotRef.current = createDotOverlay(map, { lat, lng });
 		return () => {
 			dotRef.current?.remove();
 			dotRef.current = null;
@@ -434,7 +433,7 @@ function FullscreenMiniMap({
 			dotRef.current?.setPosition(ll);
 		});
 		return () => {
-			getGoogle()?.maps?.event?.removeListener(listener);
+			google?.maps?.event?.removeListener(listener);
 		};
 	}, [panorama]);
 
@@ -462,7 +461,7 @@ function FullscreenTagBar({
 		e.preventDefault();
 		const name = input.trim();
 		if (!name) return;
-		const [resolved] = await invoke<Tag[]>("store_resolve_tag_names", { names: [name] });
+		const [resolved] = await cmd.storeResolveTagNames([name]);
 		addTags([resolved]);
 		if (!pendingTags.includes(resolved.id)) {
 			onChangeTags([...pendingTags, resolved.id]);
@@ -548,9 +547,9 @@ let singletonPano: google.maps.StreetViewPanorama | null = null;
 (window as any).__mma_pano = () => singletonPano;
 
 export function loadSeenPano(entry: SeenEntry) {
-	seenSkipNext(entry.pano_id);
+	seenSkipNext(entry.panoId);
 
-	const existing = entry.location_id;
+	const existing = entry.locationId;
 
 	if (existing) {
 		const active = getActiveLocation();
@@ -559,16 +558,14 @@ export function loadSeenPano(entry: SeenEntry) {
 			return;
 		}
 	} else {
-		// CRITICAL: seen table doesn't store tags/flags/extra — cross-map or deleted-location
-		// entries recreate a bare location. Original metadata is lost.
 		const loc = createLocation({
 			lat: entry.lat,
 			lng: entry.lng,
 			heading: entry.heading,
 			pitch: entry.pitch,
 			zoom: entry.zoom,
-			panoId: entry.pano_id,
-			extra: entry.country_code ? { countryCode: entry.country_code } : undefined,
+			panoId: entry.panoId,
+			extra: entry.countryCode ? { countryCode: entry.countryCode } : undefined,
 		});
 		addLocations([loc]).then(() => setActiveLocation(loc.id));
 		return;
@@ -576,7 +573,7 @@ export function loadSeenPano(entry: SeenEntry) {
 
 	if (!singletonPano) return;
 	const pano = singletonPano;
-	pano.setPano(entry.pano_id);
+	pano.setPano(entry.panoId);
 	pano.setPov({ heading: entry.heading, pitch: entry.pitch });
 	pano.setZoom(entry.zoom);
 }
@@ -617,11 +614,10 @@ const singletonDiv = (() => {
 
 function getPanorama(): google.maps.StreetViewPanorama | null {
 	if (singletonPano) return singletonPano;
-	const g = getGoogle();
-	if (!g?.maps) return null;
+	if (!google?.maps) return null;
 	const s = getSettings();
 	const noMove = s.defaultMovementMode !== "moving";
-	singletonPano = new g.maps.StreetViewPanorama(singletonDiv, {
+	singletonPano = new google.maps.StreetViewPanorama(singletonDiv, {
 		disableDefaultUI: true,
 		showRoadLabels: s.showRoadLabels,
 		linksControl: noMove ? false : s.showLinksControl,
@@ -743,8 +739,7 @@ export function LocationPreview() {
 
 		loadOpenSV().then(async () => {
 			if (cancelled) return;
-			const g = getGoogle();
-			if (!g?.maps) return;
+			if (!google?.maps) return;
 			const pano = getPanorama();
 			if (!pano) return;
 
@@ -753,18 +748,15 @@ export function LocationPreview() {
 			statusListener = pano.addListener("status_changed", () => {
 				if (cancelled || pano.getStatus() !== "OK") return;
 				const panoId = pano.getPano();
-				if (!panoId) return;
+				if (!panoId) return; // ?
 				const pos = pano.getPosition();
-				const imgDateStr =
-					(pano as unknown as { imageDate?: string }).imageDate ??
-					(pano as unknown as { getImageDate?: () => string }).getImageDate?.();
 				setCurrentPano((prev) => {
 					if (prev?.panoId === panoId) return prev;
 					return {
 						panoId,
 						lat: pos?.lat() ?? 0,
 						lng: pos?.lng() ?? 0,
-						imageDate: imgDateStr ? parsePanoDate(imgDateStr) : null,
+						imageDate: prev?.imageDate ?? null,
 					};
 				});
 				if (pos) {
@@ -796,7 +788,7 @@ export function LocationPreview() {
 			setPanoDates([]);
 			resetTrail(location.lng, location.lat);
 
-			const result = await resolvePano(g, location);
+			const result = await resolvePano(location);
 			if (cancelled) return;
 			applyResolved(pano, result, location);
 			google.maps.event.trigger(pano, "resize");
@@ -811,11 +803,12 @@ export function LocationPreview() {
 			// Covers the case where setPano() with the same ID doesn't trigger status_changed.
 			if (result.pano?.location) {
 				const loc = result.pano.location;
+				const imgDate = result.pano.imageDate ? parsePanoDate(result.pano.imageDate) : null;
 				setCurrentPano({
 					panoId: loc.pano,
 					lat: loc.latLng.lat(),
 					lng: loc.latLng.lng(),
-					imageDate: result.pano.imageDate ? parsePanoDate(result.pano.imageDate) : null,
+					imageDate: imgDate,
 				});
 			}
 			setPanoReady(true);
@@ -825,9 +818,8 @@ export function LocationPreview() {
 		return () => {
 			cancelled = true;
 			clearTrail();
-			const g = getGoogle();
-			if (statusListener) g?.maps?.event?.removeListener(statusListener);
-			if (lockListener) g?.maps?.event?.removeListener(lockListener);
+			if (statusListener) google?.maps?.event?.removeListener(statusListener);
+			if (lockListener) google?.maps?.event?.removeListener(lockListener);
 			const pano = singletonPano;
 			if (pano) {
 				seenFlush(() => ({
@@ -839,35 +831,61 @@ export function LocationPreview() {
 		};
 	}, [location?.id]);
 
+	// Reactive: fetch dates + metadata whenever the current pano changes.
+	// Like the original, two getPanorama calls provide the date list:
+	//   - by-ID: time entries for the pinned pano
+	//   - by-location: time entries for the default coverage ("nearby" dates)
+	// The date picker shows the merged, deduplicated union (keyed by pano ID).
+	// A separate GetMetadata RPC enriches the current pano (altitude, camera type).
 	useEffect(() => {
 		if (!currentPano) {
 			setPanoDates([]);
 			return;
 		}
 		let cancelled = false;
-		const g = getGoogle();
-		if (!g) return;
-		fetchPanoData(g, { pano: currentPano.panoId }).then((data) => {
-			if (!cancelled) setPanoDates(extractPanoDates(data));
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [location?.id, currentPano?.panoId]);
 
-	// Reactive: fetch metadata (altitude, cameraType, etc.) whenever the current pano changes
-	useEffect(() => {
-		if (!currentPano) return;
-		let cancelled = false;
+		function extractTimes(data: google.maps.StreetViewPanoramaData | null): PanoTime[] {
+			const raw = ((data as unknown as { time?: { pano: string; AA?: Date }[] })?.time) ?? [];
+			return raw.flatMap((t) =>
+				t.pano && t.AA instanceof Date ? [{ pano: t.pano, date: t.AA }] : [],
+			);
+		}
+
+		const byPano = fetchPanoData({ pano: currentPano.panoId });
+		const byLoc = fetchPanoData({ location: { lat: currentPano.lat, lng: currentPano.lng }, radius: 50 });
+
+		Promise.all([byPano, byLoc]).then(([panoData, locData]) => {
+			if (cancelled) return;
+			const merged = new Map<string, PanoTime>();
+			for (const t of extractTimes(locData)) merged.set(t.pano, t);
+			for (const t of extractTimes(panoData)) merged.set(t.pano, t);
+
+			// Like the original: if all entries are unofficial, do an extra
+			// official-only lookup to get the full multi-year coverage history.
+			const allUnofficial = merged.size > 0 && [...merged.keys()].every((p) => !isOfficialPano(p));
+			if (allUnofficial && !cancelled) {
+				fetchPanoData({
+					location: { lat: currentPano.lat, lng: currentPano.lng },
+					radius: 25,
+					sources: [google.maps.StreetViewSource.GOOGLE],
+				}).then((officialData) => {
+					if (cancelled) return;
+					for (const t of extractTimes(officialData)) merged.set(t.pano, t);
+					setPanoDates(Array.from(merged.values()));
+				});
+			} else {
+				setPanoDates(Array.from(merged.values()));
+			}
+		});
+
 		fetchSvMetadata([currentPano.panoId]).then(([data]) => {
 			if (cancelled || !data) return;
 			setAltitude(data.extra?.altitude ?? 0);
 			const loc = getActiveLocation();
 			if (loc) enrich(loc, data);
 		});
-		return () => {
-			cancelled = true;
-		};
+
+		return () => { cancelled = true; };
 	}, [location?.id, currentPano?.panoId]);
 
 	useEffect(() => {
@@ -942,9 +960,8 @@ export function LocationPreview() {
 
 	const handleReturnToSpawn = useCallback(async () => {
 		if (!location || !singletonPano) return;
-		const g = getGoogle();
-		if (!g) return;
-		const result = await resolvePano(g, location);
+		if (!google) return;
+		const result = await resolvePano(location);
 		applyResolved(singletonPano, result, location);
 		google.maps.event.trigger(singletonPano, "resize");
 		updateLocation(location.id, { flags: location.flags & ~LocationFlag.LoadAsPanoId });
@@ -1044,11 +1061,9 @@ export function LocationPreview() {
 		const panoId = singletonPano.getPano();
 		const heading = singletonPano.getPov().heading;
 		if (!panoId) return;
-		const g = getGoogle();
-		if (!g) return;
 		const container = fullscreenContainerRef.current ?? panoContainerRef.current?.parentElement;
 		if (container) showToast(container, "Following road...");
-		followLinkedPanos(g, panoId, heading)
+		followLinkedPanos(panoId, heading)
 			.then((locs) => {
 				if (locs.length > 0) addLocations(locs);
 				if (container) showToast(container, `Added ${locs.length} locations`);
@@ -1127,8 +1142,7 @@ export function LocationPreview() {
 			if (nav.held.has("panoLookDown")) dp -= speed;
 
 			if (dh || dp) {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- opensv undocumented API
-				(singletonPano as any).setOptions({
+				singletonPano.setOptions({
 					pov: {
 						heading: (pov.heading + dh + 360) % 360,
 						pitch: Math.max(-90, Math.min(90, pov.pitch + dp)),
@@ -1249,7 +1263,7 @@ export function LocationPreview() {
 		e.preventDefault();
 		const name = tagInput.trim();
 		if (!name) return;
-		const [resolved] = await invoke<Tag[]>("store_resolve_tag_names", { names: [name] });
+		const [resolved] = await cmd.storeResolveTagNames([name]);
 		addTags([resolved]);
 		if (!pendingTags.includes(resolved.id)) {
 			setPendingTags([...pendingTags, resolved.id]);

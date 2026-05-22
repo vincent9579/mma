@@ -8,7 +8,7 @@ use arrow::array::{
 use arrow::compute::concat_batches;
 use arrow::datatypes::SchemaRef;
 use rayon::prelude::*;
-use tauri::{ipc::Response, Manager};
+use tauri::Manager;
 
 use crate::arrow_bridge;
 use crate::fast_io;
@@ -20,6 +20,7 @@ const RENDER_PRECISION: usize = 1;
 const MAX_UNDO_ENTRIES: usize = 1000;
 const BASE32: &[u8] = b"0123456789bcdefghjkmnpqrstuvwxyz";
 
+/// Encode (lat, lng) into a base-32 geohash string. O(GEOHASH_PRECISION) — constant.
 pub(crate) fn encode_geohash(lat: f64, lng: f64) -> String {
     let (mut min_lat, mut max_lat) = (-90.0, 90.0);
     let (mut min_lng, mut max_lng) = (-180.0, 180.0);
@@ -47,7 +48,7 @@ fn render_cell_key(gh: &str) -> &str {
 }
 
 
-fn render_cell_idx(lat: f64, lng: f64) -> u8 {
+pub(crate) fn render_cell_idx(lat: f64, lng: f64) -> u8 {
     let (mut min_lat, mut max_lat) = (-90.0, 90.0);
     let (mut min_lng, mut max_lng) = (-180.0, 180.0);
     let mut ch: u8 = 0;
@@ -69,6 +70,11 @@ fn cell_key_from_idx(idx: u8) -> String {
     String::from(BASE32[idx as usize] as char)
 }
 
+fn cell_idx_from_key(key: &str) -> Option<u8> {
+    let b = *key.as_bytes().first()?;
+    BASE32.iter().position(|&c| c == b).map(|i| i as u8)
+}
+
 // ---------------------------------------------------------------------------
 // Column accessors — typed downcasts from a RecordBatch
 // ---------------------------------------------------------------------------
@@ -82,6 +88,20 @@ fn col_tags(b: &RecordBatch) -> &ListArray { b.column(8).as_any().downcast_ref()
 fn col_extra(b: &RecordBatch) -> &StringArray { b.column(9).as_any().downcast_ref().unwrap() }
 
 fn num_rows(store: &Store) -> usize { store.batch.as_ref().map_or(0, |b| b.num_rows()) }
+
+/// Binary search for a location ID in a sorted batch. O(log n).
+fn batch_row_for_id(batch: &RecordBatch, id: u32) -> Option<usize> {
+    let ids = col_id(batch);
+    let (mut lo, mut hi) = (0usize, batch.num_rows());
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let mid_id = ids.value(mid);
+        if mid_id < id { lo = mid + 1; }
+        else if mid_id > id { hi = mid; }
+        else { return Some(mid); }
+    }
+    None
+}
 
 fn schema() -> SchemaRef { Arc::new(arrow_bridge::location_schema()) }
 
@@ -100,14 +120,14 @@ pub(crate) struct CellRender {
 
 pub struct Store {
     pub(crate) map_id: Option<String>,
-    // Arrow batch = immutable base snapshot, loaded from disk
+    // Arrow batch = immutable base snapshot, loaded from disk.
+    // batch is declared before mmap_handle so it drops first (columns reference the mmap).
     pub(crate) batch: Option<RecordBatch>,
+    mmap_handle: Option<fast_io::MmapHandle>,
     // Overlay: mutations accumulate here, merged into batch on save/close
     pub(crate) overlay_adds: Vec<Location>,
     overlay_dead: HashSet<u32>,
     overlay_patches: HashMap<u32, Location>,
-    // Indexes (cover batch + overlay)
-    pub(crate) id_to_index: HashMap<u32, usize>,
     pub(crate) geohash_index: HashMap<String, Vec<usize>>,
     dirty_geohashes: HashSet<String>,
     pub(crate) dirty: bool,
@@ -115,10 +135,11 @@ pub struct Store {
     next_id: u32,
     next_tag_id: u32,
     version: u64,
-    // Per-cell render tracking
-    pub(crate) render_cells: HashMap<String, CellRender>,
-    pub(crate) id_to_cell: HashMap<u32, String>,
+    // Per-cell render tracking (32 cells = geohash precision 1, BASE32)
+    pub(crate) render_cells: [Option<CellRender>; 32],
+    pub(crate) id_to_cell_idx: Vec<u8>,
     pub selections: Vec<Selection>,
+    pub(crate) selection_loc_sets: Vec<HashSet<u32>>,
     pub selection_version: u64,
     selected_ids: HashSet<u32>,
     selected_colors: HashMap<u32, [u8; 3]>,
@@ -140,10 +161,10 @@ impl Store {
         Self {
             map_id: None,
             batch: None,
+            mmap_handle: None,
             overlay_adds: Vec::new(),
             overlay_dead: HashSet::new(),
             overlay_patches: HashMap::new(),
-            id_to_index: HashMap::new(),
             geohash_index: HashMap::new(),
             dirty_geohashes: HashSet::new(),
             dirty: false,
@@ -151,9 +172,10 @@ impl Store {
             next_id: 1,
             next_tag_id: 1,
             version: 0,
-            render_cells: HashMap::new(),
-            id_to_cell: HashMap::new(),
+            render_cells: [const { None }; 32],
+            id_to_cell_idx: Vec::new(),
             selections: Vec::new(),
+            selection_loc_sets: Vec::new(),
             selection_version: 0,
             selected_ids: HashSet::new(),
             selected_colors: HashMap::new(),
@@ -180,47 +202,336 @@ impl Store {
         }
     }
 
-    pub(crate) fn finish_mutation(&mut self, delta: RenderDelta) -> MutationResult {
+    /// Bump version, derive the render delta + selection sync from the semantic
+    /// changeset, and return the full mutation result. The changeset is the single
+    /// source of truth; the render delta and selection sync are two projections of it.
+    pub(crate) fn finish_mutation(&mut self, changes: ChangeSet) -> MutationResult {
         self.bump();
+        let delta = self.derive_render_delta(&changes);
+        let selection_sync = if self.selections.is_empty() {
+            None
+        } else {
+            let total = changes.added.len() + changes.removed.len() + changes.updated.len();
+            // test_add_row can't evaluate relational selections (a row's membership
+            // depends on other rows), so those must always re-resolve in full.
+            if changes.full_reset || total > 100 || self.selections_need_full_resolve() {
+                Some(self.refresh_and_sync_selections())
+            } else {
+                Some(self.incremental_selection_update(&changes))
+            }
+        };
         MutationResult {
             status: self.store_status(),
             delta,
+            selection_sync,
         }
+    }
+
+    fn base_color(&self, id: u32) -> (u8, u8, u8, u8) {
+        // Selected markers are hidden in the base layer (drawn by the selection overlay).
+        if self.selected_ids.contains(&id) { (0, 0, 0, 0) } else { (42, 42, 42, 255) }
+    }
+
+    fn selections_need_full_resolve(&self) -> bool {
+        self.selections.iter().any(|s| matches!(s.props,
+            SelectionProps::Duplicates { .. }
+            | SelectionProps::Intersection { .. }
+            | SelectionProps::Union { .. }
+            | SelectionProps::Invert { .. }))
+    }
+
+    /// Project the changeset onto render cells, returning the render delta and keeping
+    /// `render_cells` / `id_to_cell_idx` in sync. This is the single place cell
+    /// membership is mutated for adds / removes / moves.
+    fn derive_render_delta(&mut self, changes: &ChangeSet) -> RenderDelta {
+        let mut delta = RenderDelta { full_reset: changes.full_reset, ..Default::default() };
+
+        for &id in &changes.removed {
+            if let Some(removal) = self.cell_remove_render(id) {
+                delta.removed.push(removal);
+            }
+        }
+
+        for loc in &changes.added {
+            let ci = render_cell_idx(loc.lat, loc.lng);
+            let (r, g, b, a) = self.base_color(loc.id);
+            self.cell_add_render(ci, loc.id);
+            delta.added.push(RenderEntry {
+                cell: cell_key_from_idx(ci), id: loc.id,
+                lng: loc.lng as f32, lat: loc.lat as f32, heading: loc.heading as f32,
+                r, g, b, a,
+            });
+        }
+
+        for (old, new) in &changes.updated {
+            let pos_changed = old.lat != new.lat || old.lng != new.lng;
+            let heading_changed = old.heading != new.heading;
+            if pos_changed {
+                let new_ci = render_cell_idx(new.lat, new.lng);
+                let old_ci = self.id_to_cell_idx.get(new.id as usize).copied().unwrap_or(255);
+                if old_ci != new_ci {
+                    if let Some(removal) = self.cell_remove_render(new.id) {
+                        delta.removed.push(removal);
+                    }
+                    let (r, g, b, a) = self.base_color(new.id);
+                    self.cell_add_render(new_ci, new.id);
+                    delta.added.push(RenderEntry {
+                        cell: cell_key_from_idx(new_ci), id: new.id,
+                        lng: new.lng as f32, lat: new.lat as f32, heading: new.heading as f32,
+                        r, g, b, a,
+                    });
+                    continue;
+                }
+            }
+            if pos_changed || heading_changed {
+                if let Some((cell, ci)) = self.cell_lookup(new.id) {
+                    delta.updated.push(RenderPatchEntry {
+                        cell, cell_index: ci,
+                        lng: if pos_changed { Some(new.lng as f32) } else { None },
+                        lat: if pos_changed { Some(new.lat as f32) } else { None },
+                        heading: if heading_changed { Some(new.heading as f32) } else { None },
+                    });
+                }
+            }
+        }
+
+        delta
+    }
+
+    fn incremental_selection_update(&mut self, changes: &ChangeSet) -> SelectionSync {
+        // Removed and updated rows leave their current selection sets; updated rows are
+        // then re-tested below (an update is remove-then-add for selection membership).
+        let drop_ids: HashSet<u32> = changes.removed.iter().copied()
+            .chain(changes.updated.iter().map(|(_, n)| n.id))
+            .collect();
+        if !drop_ids.is_empty() {
+            for set in &mut self.selection_loc_sets {
+                for id in &drop_ids { set.remove(id); }
+            }
+            for id in &drop_ids {
+                self.selected_ids.remove(id);
+                self.selected_colors.remove(id);
+            }
+        }
+
+        // Re-test added + updated(new) rows against every selection.
+        let test_locs: Vec<&Location> = changes.added.iter()
+            .chain(changes.updated.iter().map(|(_, n)| n))
+            .collect();
+        let sel_props: Vec<SelectionProps> = self.selections.iter().map(|s| s.props.clone()).collect();
+        for (si, props) in sel_props.iter().enumerate() {
+            let color = self.selections[si].color;
+            for loc in &test_locs {
+                if selections::test_add_row(loc, props) {
+                    self.selection_loc_sets[si].insert(loc.id);
+                    self.selected_ids.insert(loc.id);
+                    self.selected_colors.insert(loc.id, color);
+                }
+            }
+        }
+
+        let counts: Vec<usize> = self.selection_loc_sets.iter().map(|s| s.len()).collect();
+        let selected_count = self.selected_ids.len();
+        self.selection_version += 1;
+
+        // Build bitmask for ONLY changed cells, patch into existing file
+        let changed_ids: HashSet<u32> = drop_ids.iter().copied()
+            .chain(changes.added.iter().map(|l| l.id))
+            .collect();
+
+        // Find affected cells
+        let mut affected_count = 0usize;
+        for opt in &self.render_cells {
+            if let Some(cr) = opt {
+                if cr.id_order.iter().any(|id| changed_ids.contains(id)) {
+                    affected_count += 1;
+                }
+            }
+        }
+
+        if affected_count == 0 {
+            return SelectionSync { counts, patch_file: None, selected_count };
+        }
+
+        let num_sels = self.selections.len();
+        let mut buf: Vec<u8> = Vec::new();
+        buf.push(num_sels as u8);
+        for sel in &self.selections {
+            buf.extend_from_slice(&sel.color);
+        }
+        let num_cells = self.render_cells.iter().filter(|o| o.is_some()).count();
+        buf.push(num_cells as u8);
+        for (ci, opt) in self.render_cells.iter().enumerate() {
+            let cr = match opt { Some(cr) => cr, None => continue };
+            buf.push(BASE32[ci]);
+            let n = cr.id_order.len();
+            buf.extend_from_slice(&(n as u32).to_le_bytes());
+            let mask_bytes = n.div_ceil(8);
+            for si in 0..num_sels {
+                let mut bitmask = vec![0u8; mask_bytes];
+                for (li, &id) in cr.id_order.iter().enumerate() {
+                    if self.selection_loc_sets[si].contains(&id) {
+                        bitmask[li / 8] |= 1 << (li % 8);
+                    }
+                }
+                buf.extend_from_slice(&bitmask);
+            }
+        }
+
+        let patch_file = if num_cells > 0 {
+            let path = std::env::temp_dir().join("mma_sel_patches.bin");
+            let _ = std::fs::write(&path, &buf);
+            Some(path.to_string_lossy().into_owned())
+        } else {
+            None
+        };
+
+        log::debug!("[sel-incr] total={}ms sels={} selected={} cells={} affected={} buf={}",
+            std::time::Instant::now().duration_since(std::time::Instant::now()).as_millis(),
+            num_sels, selected_count, num_cells, affected_count, buf.len());
+
+        SelectionSync { counts, patch_file, selected_count }
+    }
+
+    /// Full selection re-resolve: recomputes bitmasks for all selections from scratch.
+    /// O(S * N) where S = selection count, N = alive locations.
+    pub(crate) fn refresh_and_sync_selections(&mut self) -> SelectionSync {
+        let props: Vec<SelectionProps> = self.selections.iter().map(|s| s.props.clone()).collect();
+        let masks: Vec<Vec<bool>> = {
+            let view = self.loc_view();
+            props.iter().map(|p| selections::resolve_bitmask(&view, p)).collect()
+        };
+
+        let num_sels = masks.len();
+        let batch_len = self.batch.as_ref().map_or(0, |b| b.num_rows());
+        self.selection_loc_sets = vec![HashSet::new(); num_sels];
+        for si in 0..num_sels {
+            let mask = &masks[si];
+            if let Some(ref b) = self.batch {
+                let id_col = col_id(b);
+                for i in 0..b.num_rows() {
+                    if self.overlay_dead.contains(&id_col.value(i)) { continue; }
+                    if i < mask.len() && mask[i] {
+                        self.selection_loc_sets[si].insert(id_col.value(i));
+                    }
+                }
+            }
+            for (j, loc) in self.overlay_adds.iter().enumerate() {
+                let mi = batch_len + j;
+                if mi < mask.len() && mask[mi] {
+                    self.selection_loc_sets[si].insert(loc.id);
+                }
+            }
+        }
+
+        self.rebuild_selection_render_state()
+    }
+
+    fn rebuild_selection_render_state(&mut self) -> SelectionSync {
+        let t0 = std::time::Instant::now();
+        let counts: Vec<usize> = self.selection_loc_sets.iter().map(|s| s.len()).collect();
+        let mut all_selected = HashSet::new();
+        let mut color_map = HashMap::new();
+        for (si, set) in self.selection_loc_sets.iter().enumerate() {
+            let color = self.selections[si].color;
+            for &id in set {
+                all_selected.insert(id);
+                color_map.insert(id, color);
+            }
+        }
+        let selected_count = all_selected.len();
+        self.selected_ids = all_selected;
+        self.selected_colors = color_map;
+        self.selection_version += 1;
+        let t1 = t0.elapsed().as_millis();
+
+        let num_sels = self.selections.len();
+        let mut buf: Vec<u8> = Vec::new();
+        buf.push(num_sels as u8);
+        for sel in &self.selections {
+            buf.extend_from_slice(&sel.color);
+        }
+        let num_cells = self.render_cells.iter().filter(|o| o.is_some()).count();
+        buf.push(num_cells as u8);
+        for (ci, opt) in self.render_cells.iter().enumerate() {
+            let cr = match opt { Some(cr) => cr, None => continue };
+            buf.push(BASE32[ci]);
+            let n = cr.id_order.len();
+            buf.extend_from_slice(&(n as u32).to_le_bytes());
+            let mask_bytes = n.div_ceil(8);
+            for si in 0..num_sels {
+                let mut bitmask = vec![0u8; mask_bytes];
+                for (li, &id) in cr.id_order.iter().enumerate() {
+                    if self.selection_loc_sets[si].contains(&id) {
+                        bitmask[li / 8] |= 1 << (li % 8);
+                    }
+                }
+                buf.extend_from_slice(&bitmask);
+            }
+        }
+
+        let patch_file = if num_cells > 0 {
+            let path = std::env::temp_dir().join("mma_sel_patches.bin");
+            let _ = std::fs::write(&path, &buf);
+            Some(path.to_string_lossy().into_owned())
+        } else {
+            None
+        };
+
+        log::debug!("[sel-rebuild] id_maps={}ms bitmask={}ms total={}ms sels={} selected={} cells={} buf={}",
+            t1, t0.elapsed().as_millis() - t1, t0.elapsed().as_millis(),
+            num_sels, selected_count, num_cells, buf.len());
+
+        SelectionSync { counts, patch_file, selected_count }
     }
 
     pub(crate) fn mark_dirty(&mut self, lat: f64, lng: f64) {
         self.dirty_geohashes.insert(encode_geohash(lat, lng));
     }
 
-    pub(crate) fn add_tag_counts(&mut self, locs: &[Location]) {
-        for loc in locs {
-            for &tag in &loc.tags { *self.tag_counts.entry(tag).or_default() += 1; }
-        }
-    }
-
-    pub(crate) fn remove_tag_counts(&mut self, locs: &[Location]) {
+    /// Adjust tag counts by `delta` (+1 for adds, -1 for removes). O(L * T) where L = locs, T = avg tags per loc.
+    pub(crate) fn update_tag_counts(&mut self, locs: &[Location], delta: isize) {
         for loc in locs {
             for &tag in &loc.tags {
-                if let Some(c) = self.tag_counts.get_mut(&tag) { *c = c.saturating_sub(1); }
+                if delta < 0 {
+                    if let Some(c) = self.tag_counts.get_mut(&tag) {
+                        *c = c.saturating_sub((-delta) as usize);
+                    }
+                } else {
+                    *self.tag_counts.entry(tag).or_default() += delta as usize;
+                }
             }
         }
     }
 
-    pub(crate) fn cell_add_render(&mut self, cell: &str, id: u32) -> usize {
-        let cr = self.render_cells.entry(cell.to_string()).or_insert_with(|| CellRender {
+    pub(crate) fn add_tag_counts(&mut self, locs: &[Location]) { self.update_tag_counts(locs, 1); }
+    pub(crate) fn remove_tag_counts(&mut self, locs: &[Location]) { self.update_tag_counts(locs, -1); }
+
+    fn ensure_id_to_cell_capacity(&mut self, id: u32) {
+        let needed = id as usize + 1;
+        if self.id_to_cell_idx.len() < needed {
+            self.id_to_cell_idx.resize(needed, 255u8);
+        }
+    }
+
+    pub(crate) fn cell_add_render(&mut self, cell_idx: u8, id: u32) -> usize {
+        let cr = self.render_cells[cell_idx as usize].get_or_insert_with(|| CellRender {
             id_order: Vec::new(),
             id_to_index: HashMap::new(),
         });
         let idx = cr.id_order.len();
         cr.id_to_index.insert(id, idx);
         cr.id_order.push(id);
-        self.id_to_cell.insert(id, cell.to_string());
+        self.ensure_id_to_cell_capacity(id);
+        self.id_to_cell_idx[id as usize] = cell_idx;
         idx
     }
 
     fn cell_remove_render(&mut self, id: u32) -> Option<CellRemoval> {
-        let cell = self.id_to_cell.remove(&id)?;
-        let cr = self.render_cells.get_mut(&cell)?;
+        let ci = *self.id_to_cell_idx.get(id as usize)?;
+        if ci == 255 { return None; }
+        self.id_to_cell_idx[id as usize] = 255;
+        let cr = self.render_cells[ci as usize].as_mut()?;
         let idx = cr.id_to_index.remove(&id)?;
         let last = cr.id_order.len() - 1;
         if idx != last {
@@ -229,14 +540,15 @@ impl Store {
             cr.id_to_index.insert(moved_id, idx);
         }
         cr.id_order.pop();
-        Some(CellRemoval { cell, cell_index: idx, id })
+        Some(CellRemoval { cell: cell_key_from_idx(ci), cell_index: idx, id })
     }
 
     fn cell_lookup(&self, id: u32) -> Option<(String, usize)> {
-        let cell = self.id_to_cell.get(&id)?;
-        let cr = self.render_cells.get(cell)?;
+        let ci = *self.id_to_cell_idx.get(id as usize)?;
+        if ci == 255 { return None; }
+        let cr = self.render_cells[ci as usize].as_ref()?;
         let idx = *cr.id_to_index.get(&id)?;
-        Some((cell.clone(), idx))
+        Some((cell_key_from_idx(ci), idx))
     }
 
     pub(crate) fn alloc_id(&mut self) -> u32 {
@@ -251,6 +563,7 @@ impl Store {
         id
     }
 
+    /// Push an edit onto the undo stack, capping at MAX_UNDO_ENTRIES. O(1) amortized.
     pub(crate) fn push_undo(&mut self, entry: EditEntry) {
         self.undo_stack.push(entry);
         if self.undo_stack.len() > MAX_UNDO_ENTRIES {
@@ -262,14 +575,15 @@ impl Store {
         self.batch.as_ref().expect("no map open")
     }
 
+    /// Look up a location by ID across patches, overlay_adds (binary search), and batch.
     fn get_loc_by_id(&self, id: u32) -> Option<Location> {
         if self.overlay_dead.contains(&id) { return None; }
         if let Some(patched) = self.overlay_patches.get(&id) { return Some(patched.clone()); }
-        for loc in &self.overlay_adds {
-            if loc.id == id { return Some(loc.clone()); }
+        if let Ok(i) = self.overlay_adds.binary_search_by_key(&id, |l| l.id) {
+            return Some(self.overlay_adds[i].clone());
         }
-        if let (Some(b), Some(&idx)) = (&self.batch, self.id_to_index.get(&id)) {
-            if idx < b.num_rows() {
+        if let Some(ref b) = self.batch {
+            if let Some(idx) = batch_row_for_id(b, id) {
                 return Some(arrow_bridge::row_to_location(b, idx));
             }
         }
@@ -284,7 +598,7 @@ impl Store {
         loc
     }
     
-    /// Collect all alive locations (batch + overlay) as Vec for serialization.
+    /// Collect all alive locations (batch + overlay) into a Vec. O(N) time and space.
     pub(crate) fn collect_all_locations(&self) -> Vec<Location> {
         let mut locs = Vec::new();
         if let Some(ref b) = self.batch {
@@ -311,19 +625,26 @@ impl Store {
         )
     }
 
+    /// Insert or restore a location in the overlay. O(1) amortized.
     pub(crate) fn overlay_add(&mut self, loc: Location) {
         self.mark_dirty(loc.lat, loc.lng);
         self.dirty = true;
         self.alive_count += 1;
-        if self.id_to_index.contains_key(&loc.id) {
+        let in_batch = self.batch.as_ref().and_then(|b| batch_row_for_id(b, loc.id)).is_some();
+        if in_batch {
             self.overlay_dead.remove(&loc.id);
             self.overlay_patches.insert(loc.id, loc);
         } else {
             self.overlay_dead.remove(&loc.id);
-            self.overlay_adds.push(loc);
+            // Keep overlay_adds sorted by id (invariant asserted in bake_overlay). A normal add has a
+            // monotonic new id so this inserts at the end (cheap, like push); undo re-adds an old id,
+            // which a plain push would append out of order — partition_point puts it in its sorted slot.
+            let pos = self.overlay_adds.partition_point(|l| l.id < loc.id);
+            self.overlay_adds.insert(pos, loc);
         }
     }
 
+    /// Mark locations as dead in the overlay. O(L) for L locations removed.
     fn overlay_remove(&mut self, locs: &[Location]) {
         let remove_set: HashSet<u32> = locs.iter().map(|l| l.id).collect();
         for loc in locs {
@@ -355,7 +676,7 @@ impl Store {
         if let Some(ref v) = patch.modified_at { loc.modified_at = v.clone(); }
         self.mark_dirty(loc.lat, loc.lng);
         // If it's in overlay_adds, update in place
-        if let Some(pos) = self.overlay_adds.iter().position(|l| l.id == id) {
+        if let Ok(pos) = self.overlay_adds.binary_search_by_key(&id, |l| l.id) {
             self.overlay_adds[pos] = loc;
         } else {
             self.overlay_patches.insert(id, loc);
@@ -370,7 +691,8 @@ impl Store {
         self.dirty = false;
     }
 
-    /// Bake overlay into the batch — called on save/close.
+    /// Merge overlay (adds, patches, dead) into the Arrow batch. O(N) where N = batch rows.
+    /// Expensive at 10M+ rows — prefer delta saves; full bake only on commit.
     pub(crate) fn bake_overlay(&mut self) {
         if !self.dirty { return; }
         let _t = std::time::Instant::now();
@@ -405,27 +727,19 @@ impl Store {
             }
         }
 
-        // Step 2: apply patches -- remove patched rows, concat replacement batch
+        // Step 2: apply patches in place (preserves row order for sorted ID invariant)
         if !self.overlay_patches.is_empty() {
             let ids = col_id(&batch);
-            let keep: Vec<u32> = (0..batch.num_rows())
-                .filter(|&i| !self.overlay_patches.contains_key(&ids.value(i)))
-                .map(|i| i as u32)
-                .collect();
-            if keep.len() < batch.num_rows() {
-                let patched_locs: Vec<Location> = self.overlay_patches.values().cloned().collect();
-                let take_idx = arrow::array::UInt32Array::from(keep);
-                let filtered = RecordBatch::try_new(
-                    batch.schema(),
-                    batch.columns().iter().map(|col| {
-                        arrow::compute::take(col.as_ref(), &take_idx, None).unwrap()
-                    }).collect(),
-                ).unwrap();
-                drop(batch);
-                let patch_batch = arrow_bridge::locations_to_batch(&patched_locs);
-                let s = schema();
-                batch = arrow::compute::concat_batches(&s, &[filtered, patch_batch])
-                    .expect("concat failed");
+            let has_any = (0..batch.num_rows()).any(|i| self.overlay_patches.contains_key(&ids.value(i)));
+            if has_any {
+                let all: Vec<Location> = (0..batch.num_rows()).map(|i| {
+                    let id = ids.value(i);
+                    match self.overlay_patches.get(&id) {
+                        Some(p) => p.clone(),
+                        None => arrow_bridge::row_to_location(&batch, i),
+                    }
+                }).collect();
+                batch = arrow_bridge::locations_to_batch(&all);
             }
         }
 
@@ -438,20 +752,22 @@ impl Store {
         }
 
         log::debug!("[bake_overlay] total={}ms rows={}", _t.elapsed().as_millis(), batch.num_rows());
+        assert!({
+            let ids = col_id(&batch);
+            (1..batch.num_rows()).all(|i| ids.value(i - 1) < ids.value(i))
+        }, "batch IDs must be strictly sorted after bake");
         self.batch = Some(batch);
         self.clear_overlay();
         self.rebuild_index();
     }
 
+    /// Rebuild geohash_index from the batch. O(N).
     pub(crate) fn rebuild_index(&mut self) {
-        self.id_to_index.clear();
         self.geohash_index.clear();
         if let Some(ref b) = self.batch {
-            let ids = col_id(b);
             let lats = col_lat(b);
             let lngs = col_lng(b);
             for i in 0..b.num_rows() {
-                self.id_to_index.insert(ids.value(i), i);
                 let gh = encode_geohash(lats.value(i), lngs.value(i));
                 self.geohash_index.entry(gh).or_default().push(i);
             }
@@ -465,7 +781,7 @@ pub type StoreState = Mutex<Store>;
 // Helpers
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreStatus {
     pub version: u64,
@@ -475,13 +791,13 @@ pub struct StoreStatus {
     pub tag_counts: HashMap<u32, usize>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveResult {
     pub saved_chunks: usize,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SummaryResult {
     pub location_count: usize,
@@ -489,7 +805,7 @@ pub struct SummaryResult {
     pub dirty_count: usize,
 }
 
-#[derive(serde::Serialize, Default)]
+#[derive(serde::Serialize, Default, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderDelta {
     pub added: Vec<RenderEntry>,
@@ -500,7 +816,20 @@ pub struct RenderDelta {
     pub full_reset: bool,
 }
 
-#[derive(serde::Serialize)]
+/// Semantic description of what a mutation changed, independent of any consumer.
+/// `finish_mutation` derives both the render delta and the selection sync from it —
+/// one source of truth, two projections. `updated` carries `(old, new)` so the
+/// render side can detect cell moves / pos-heading patches and the selection side
+/// can re-test membership.
+#[derive(Default)]
+pub struct ChangeSet {
+    pub added: Vec<Location>,
+    pub removed: Vec<u32>,
+    pub updated: Vec<(Location, Location)>,
+    pub full_reset: bool,
+}
+
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderEntry {
     pub cell: String,
@@ -511,7 +840,7 @@ pub struct RenderEntry {
     pub r: u8, pub g: u8, pub b: u8, pub a: u8,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPatchEntry {
     pub cell: String,
@@ -521,7 +850,7 @@ pub struct RenderPatchEntry {
     pub heading: Option<f32>,
 }
 
-#[derive(serde::Serialize, Default)]
+#[derive(serde::Serialize, Default, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CellRemoval {
     pub cell: String,
@@ -529,7 +858,7 @@ pub struct CellRemoval {
     pub id: u32,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ColorPatchEntry {
     pub cell: String,
@@ -537,12 +866,21 @@ pub struct ColorPatchEntry {
     pub r: u8, pub g: u8, pub b: u8, pub a: u8,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionSync {
+    pub counts: Vec<usize>,
+    pub patch_file: Option<String>,
+    pub selected_count: usize,
+}
+
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MutationResult {
     #[serde(flatten)]
     pub status: StoreStatus,
     pub delta: RenderDelta,
+    pub selection_sync: Option<SelectionSync>,
 }
 
 /// Deserialize a present-but-null JSON field as `Some(None)` instead of `None`.
@@ -557,8 +895,8 @@ where
     Ok(Some(Option::deserialize(deserializer)?))
 }
 
-#[derive(Default, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, serde::Deserialize, specta::Type)]
+#[serde(default, rename_all = "camelCase")]
 pub struct LocationPatch {
     pub lat: Option<f64>,
     pub lng: Option<f64>,
@@ -566,13 +904,16 @@ pub struct LocationPatch {
     pub pitch: Option<f64>,
     pub zoom: Option<f64>,
     #[serde(default, deserialize_with = "nullable")]
+    #[specta(type = Option<Option<String>>)]
     pub pano_id: Option<Option<String>>,
     pub flags: Option<u32>,
     pub tags: Option<Vec<u32>>,
     #[serde(default, deserialize_with = "nullable")]
+    #[specta(type = Option<Option<specta_typescript::Any>>)]
     pub extra: Option<Option<serde_json::Map<String, serde_json::Value>>>,
     pub created_at: Option<String>,
     #[serde(default, deserialize_with = "nullable")]
+    #[specta(type = Option<Option<String>>)]
     pub modified_at: Option<Option<String>>,
 }
 
@@ -582,7 +923,10 @@ pub struct LocationPatch {
 // Commands
 // ---------------------------------------------------------------------------
 
+/// Load a map's Arrow data from disk, rebuild all indexes, and return initial state
+/// (tag counts, undo/redo availability). Must be called before any other store commands.
 #[tauri::command]
+#[specta::specta]
 pub async fn store_open_map(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -595,18 +939,25 @@ pub async fn store_open_map(
         use std::time::Instant;
         let t_total = Instant::now();
 
-        let batch = {
+        let (batch, mmap_handle) = {
             let t0 = Instant::now();
             let path = fast_io::arrow_path(&app2, &map_id2)?;
-            let mut batch = if path.exists() {
-                fast_io::read_arrow_ipc(&path)?
-            } else {
-                RecordBatch::new_empty(schema())
-            };
-            log::debug!("[store_open] arrow_read={}ms rows={}", t0.elapsed().as_millis(), batch.num_rows());
-
             let delta_path = fast_io::arrow_delta_path(&app2, &map_id2)?;
-            if delta_path.exists() {
+            let has_delta = delta_path.exists();
+
+            if !path.exists() {
+                log::debug!("[store_open] no arrow file, empty batch");
+                (RecordBatch::new_empty(schema()), None)
+            } else if !has_delta {
+                // Fast path: mmap directly, no copying
+                let (batch, handle) = fast_io::read_arrow_ipc_mmap(&path)?;
+                log::debug!("[store_open] mmap_read={}ms rows={}", t0.elapsed().as_millis(), batch.num_rows());
+                (batch, Some(handle))
+            } else {
+                // Delta exists: heap read + merge + checkpoint, then mmap the result
+                let mut batch = fast_io::read_arrow_ipc(&path)?;
+                log::debug!("[store_open] arrow_read={}ms rows={}", t0.elapsed().as_millis(), batch.num_rows());
+
                 let t_d = Instant::now();
                 if let Ok(data) = std::fs::read(&delta_path) {
                     if let Ok(delta) = rmp_serde::from_slice::<DeltaOverlay>(&data) {
@@ -643,9 +994,7 @@ pub async fn store_open_map(
                             let add_batch = arrow_bridge::locations_to_batch(&delta.adds);
                             batch = concat_batches(&schema(), &[batch, add_batch]).map_err(|e| e.to_string())?;
                         }
-                        // Checkpoint: write merged batch to Arrow IPC so the delta can be discarded
-                        let checkpoint_path = fast_io::arrow_path(&app2, &map_id2)?;
-                        fast_io::write_arrow_ipc(&checkpoint_path, &batch)?;
+                        fast_io::write_arrow_ipc(&path, &batch)?;
                         let _ = std::fs::remove_file(&delta_path);
                         log::debug!("[store_open] delta checkpointed to Arrow IPC");
                     } else {
@@ -653,22 +1002,49 @@ pub async fn store_open_map(
                     }
                 }
                 log::debug!("[store_open] delta_merge={}ms rows={}", t_d.elapsed().as_millis(), batch.num_rows());
+
+                // Drop the heap batch and mmap the checkpointed file instead
+                drop(batch);
+                let (batch, handle) = fast_io::read_arrow_ipc_mmap(&path)?;
+                log::debug!("[store_open] post-delta mmap={}ms rows={}", t0.elapsed().as_millis(), batch.num_rows());
+                (batch, Some(handle))
             }
-            batch
+        };
+
+        // Ensure sorted ID invariant (one-time migration for pre-Phase2 files)
+        let (batch, mmap_handle) = {
+            let ids = col_id(&batch);
+            let sorted = (1..batch.num_rows()).all(|i| ids.value(i - 1) < ids.value(i));
+            if sorted || batch.num_rows() == 0 {
+                (batch, mmap_handle)
+            } else {
+                log::info!("[store_open] migrating unsorted Arrow file to sorted ID order");
+                let sort_idx = arrow::compute::sort_to_indices(ids, None, None)
+                    .map_err(|e| e.to_string())?;
+                let sorted_batch = RecordBatch::try_new(
+                    batch.schema(),
+                    batch.columns().iter().map(|col| {
+                        arrow::compute::take(col.as_ref(), &sort_idx, None).unwrap()
+                    }).collect(),
+                ).unwrap();
+                drop(batch);
+                drop(mmap_handle);
+                let path = fast_io::arrow_path(&app2, &map_id2)?;
+                fast_io::write_arrow_ipc(&path, &sorted_batch)?;
+                drop(sorted_batch);
+                let (b, h) = fast_io::read_arrow_ipc_mmap(&path)?;
+                log::info!("[store_open] migration complete, re-mmap'd sorted file");
+                (b, Some(h))
+            }
         };
 
         let t3 = Instant::now();
-        let ids = col_id(&batch);
         let lats = col_lat(&batch);
         let lngs = col_lng(&batch);
         let n = batch.num_rows();
-        let mut id_to_index: HashMap<u32, usize> = HashMap::with_capacity(n);
         let mut geohash_index: HashMap<String, Vec<usize>> = HashMap::new();
-        let mut max_id: u32 = 0;
+        let max_id = if n > 0 { col_id(&batch).value(n - 1) } else { 0 };
         for i in 0..n {
-            let id = ids.value(i);
-            id_to_index.insert(id, i);
-            if id > max_id { max_id = id; }
             let gh = encode_geohash(lats.value(i), lngs.value(i));
             geohash_index.entry(gh).or_default().push(i);
         }
@@ -677,16 +1053,16 @@ pub async fn store_open_map(
         let (undo, redo) = load_edit_history_inner(&app2, &map_id2)?;
 
         log::debug!("[store_open] TOTAL={}ms", t_total.elapsed().as_millis());
-        Ok::<_, String>((batch, id_to_index, geohash_index, max_id, undo, redo))
+        Ok::<_, String>((batch, mmap_handle, geohash_index, max_id, undo, redo))
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    let (batch, id_to_index, geohash_index, max_id, undo, redo) = result;
+    let (batch, mmap_handle, geohash_index, max_id, undo, redo) = result;
 
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let count = batch.num_rows();
-    let version = store.bump();
+    store.bump();
     store.map_id = Some(map_id.clone());
     store.next_id = max_id + 1;
     // Build tag counts from batch
@@ -706,6 +1082,7 @@ pub async fn store_open_map(
         }
     }
     store.batch = Some(batch);
+    store.mmap_handle = mmap_handle;
     store.clear_overlay();
     store.alive_count = count;
     store.tag_counts = tc;
@@ -716,11 +1093,11 @@ pub async fn store_open_map(
         let tags = read_tags_json(&conn, &map_id);
         tags.keys().max().copied().unwrap_or(0) + 1
     };
-    store.id_to_index = id_to_index;
     store.geohash_index = geohash_index;
     store.dirty_geohashes.clear();
     store.committed_blobs.clear();
     store.selections.clear();
+    store.selection_loc_sets.clear();
     store.selected_ids.clear();
     store.selected_colors.clear();
     store.active_id = None;
@@ -732,6 +1109,7 @@ pub async fn store_open_map(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_close_map(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -740,6 +1118,8 @@ pub fn store_close_map(
     if let Some(ref map_id) = store.map_id.clone() {
         if store.dirty {
             store.bake_overlay();
+            // Drop mmap before writing (Windows holds exclusive file lock)
+            store.mmap_handle = None;
             if let Some(ref batch) = store.batch {
                 let path = fast_io::arrow_path(&app, map_id)?;
                 fast_io::write_arrow_ipc(&path, batch)?;
@@ -755,13 +1135,13 @@ pub fn store_close_map(
     }
     store.map_id = None;
     store.batch = None;
+    store.mmap_handle = None;
     store.clear_overlay();
     store.alive_count = 0;
-    store.id_to_index.clear();
     store.geohash_index.clear();
     store.dirty_geohashes.clear();
-    store.render_cells.clear();
-    store.id_to_cell.clear();
+    store.render_cells = [const { None }; 32];
+    store.id_to_cell_idx.clear();
     store.selected_ids.clear();
     store.selected_colors.clear();
     store.active_id = None;
@@ -771,6 +1151,7 @@ pub fn store_close_map(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_add_locations(
     state: tauri::State<'_, StoreState>,
     mut locations: Vec<Location>,
@@ -778,34 +1159,25 @@ pub fn store_add_locations(
     let _t = std::time::Instant::now();
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let _lock = _t.elapsed().as_millis();
-    // Assign IDs from the store's allocator
     for loc in &mut locations {
         loc.id = store.alloc_id();
     }
     store.push_undo(EditEntry { created: locations.clone(), removed: Vec::new() });
     store.redo_stack.clear();
-    let mut added = Vec::with_capacity(locations.len());
     for loc in &locations {
         store.mark_dirty(loc.lat, loc.lng);
-        let gh = encode_geohash(loc.lat, loc.lng);
-        let cell = render_cell_key(&gh).to_string();
-        store.cell_add_render(&cell, loc.id);
-        added.push(RenderEntry {
-            cell,
-            id: loc.id,
-            lng: loc.lng as f32, lat: loc.lat as f32, heading: loc.heading as f32,
-            r: 42, g: 42, b: 42, a: 255,
-        });
     }
     store.add_tag_counts(&locations);
+    let added = locations.clone();
     for loc in locations {
         store.overlay_add(loc);
     }
     log::debug!("[cmd] store_add_locations lock={}ms total={}ms", _lock, _t.elapsed().as_millis());
-    Ok(store.finish_mutation(RenderDelta { added, ..Default::default() }))
+    Ok(store.finish_mutation(ChangeSet { added, ..Default::default() }))
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_remove_locations(
     state: tauri::State<'_, StoreState>,
     ids: Vec<u32>,
@@ -813,7 +1185,6 @@ pub fn store_remove_locations(
     let _t = std::time::Instant::now();
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let mut removed_locs = Vec::new();
-    let mut removals = Vec::new();
     for &id in &ids {
         if let Some(loc) = store.get_loc_by_id(id) {
             removed_locs.push(loc);
@@ -822,57 +1193,16 @@ pub fn store_remove_locations(
     store.remove_tag_counts(&removed_locs);
     store.overlay_remove(&removed_locs);
 
-    for &id in &ids {
-        if let Some(removal) = store.cell_remove_render(id) {
-            removals.push(removal);
-        }
-    }
+    let removed_ids: Vec<u32> = removed_locs.iter().map(|l| l.id).collect();
     store.push_undo(EditEntry { created: Vec::new(), removed: removed_locs });
     store.redo_stack.clear();
 
     log::debug!("[cmd] store_remove_locations total={}ms ids={}", _t.elapsed().as_millis(), ids.len());
-    Ok(store.finish_mutation(RenderDelta { removed: removals, ..Default::default() }))
-}
-
-fn build_update_delta(store: &mut Store, id: u32, new_loc: &Location, patch: &LocationPatch) -> RenderDelta {
-    let mut delta = RenderDelta::default();
-    let pos_changed = patch.lat.is_some() || patch.lng.is_some();
-    let heading_changed = patch.heading.is_some();
-
-    if pos_changed {
-        let gh = encode_geohash(new_loc.lat, new_loc.lng);
-        let new_cell = render_cell_key(&gh).to_string();
-        let old_cell = store.id_to_cell.get(&id).cloned();
-        if old_cell.as_deref() != Some(new_cell.as_str()) {
-            if let Some(removal) = store.cell_remove_render(id) {
-                delta.removed.push(removal);
-            }
-            store.cell_add_render(&new_cell, id);
-            delta.added.push(RenderEntry {
-                cell: new_cell,
-                id,
-                lng: new_loc.lng as f32, lat: new_loc.lat as f32, heading: new_loc.heading as f32,
-                r: 42, g: 42, b: 42, a: 255,
-            });
-            return delta;
-        }
-    }
-
-    if let Some((cell, ci)) = store.cell_lookup(id) {
-        if pos_changed || heading_changed {
-            delta.updated.push(RenderPatchEntry {
-                cell,
-                cell_index: ci,
-                lng: if pos_changed { Some(new_loc.lng as f32) } else { None },
-                lat: if pos_changed { Some(new_loc.lat as f32) } else { None },
-                heading: if heading_changed { Some(new_loc.heading as f32) } else { None },
-            });
-        }
-    }
-    delta
+    Ok(store.finish_mutation(ChangeSet { removed: removed_ids, ..Default::default() }))
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_update_locations(
     state: tauri::State<'_, StoreState>,
     updates: Vec<(u32, LocationPatch)>,
@@ -881,30 +1211,25 @@ pub fn store_update_locations(
     let record_undo = record_undo.unwrap_or(true);
     let _t = std::time::Instant::now();
     let mut store = state.lock().map_err(|e| e.to_string())?;
-    let mut old_locs = Vec::new();
-    let mut new_locs = Vec::new();
-    let mut delta = RenderDelta::default();
+    let mut updated: Vec<(Location, Location)> = Vec::new();
     let any_tags = updates.iter().any(|(_, p)| p.tags.is_some());
     for (id, patch) in &updates {
         if let Some(old) = store.get_loc_by_id(*id) {
-            old_locs.push(old);
             store.overlay_update(*id, patch);
             let new_loc = store.get_loc_by_id(*id).unwrap();
-            new_locs.push(new_loc.clone());
-            let d = build_update_delta(&mut store, *id, &new_loc, patch);
-            delta.added.extend(d.added);
-            delta.removed.extend(d.removed);
-            delta.updated.extend(d.updated);
+            updated.push((old, new_loc));
         }
     }
     if any_tags {
+        let old_locs: Vec<Location> = updated.iter().map(|(o, _)| o.clone()).collect();
+        let new_locs: Vec<Location> = updated.iter().map(|(_, n)| n.clone()).collect();
         store.remove_tag_counts(&old_locs);
         store.add_tag_counts(&new_locs);
     }
     if record_undo {
-        let (changed_old, changed_new): (Vec<_>, Vec<_>) = old_locs.into_iter()
-            .zip(new_locs)
+        let (changed_old, changed_new): (Vec<_>, Vec<_>) = updated.iter()
             .filter(|(o, n)| o != n)
+            .map(|(o, n)| (o.clone(), n.clone()))
             .unzip();
         if !changed_old.is_empty() {
             store.push_undo(EditEntry { created: changed_new, removed: changed_old });
@@ -912,10 +1237,12 @@ pub fn store_update_locations(
         }
     }
     log::debug!("[cmd] store_update_locations n={} undo={} total={}ms", updates.len(), record_undo, _t.elapsed().as_millis());
-    Ok(store.finish_mutation(delta))
+    Ok(store.finish_mutation(ChangeSet { updated, ..Default::default() }))
 }
 
+/// Remove the given tag IDs from every location that has them. Returns a MutationResult.
 #[tauri::command]
+#[specta::specta]
 pub fn store_strip_tags(
     state: tauri::State<'_, StoreState>,
     tag_ids: Vec<u32>,
@@ -932,37 +1259,38 @@ pub fn store_strip_tags(
     drop(view);
     let affected_ids: HashSet<u32> = affected_ids.into_iter().collect();
     if affected_ids.is_empty() {
-        return Ok(store.finish_mutation(RenderDelta::default()));
+        return Ok(store.finish_mutation(ChangeSet::default()));
     }
-    let mut old_locs = Vec::new();
-    let mut new_locs = Vec::new();
+    let mut updated: Vec<(Location, Location)> = Vec::new();
     for &id in &affected_ids {
         if let Some(old) = store.get_loc_by_id(id) {
             let mut new_loc = old.clone();
             new_loc.tags.retain(|t| !tag_set.contains(t));
-            old_locs.push(old);
-            new_locs.push(new_loc);
+            updated.push((old, new_loc));
         }
     }
+    let old_locs: Vec<Location> = updated.iter().map(|(o, _)| o.clone()).collect();
     store.remove_tag_counts(&old_locs);
-    for new_loc in &new_locs {
+    for (_, new_loc) in &updated {
         let patch = LocationPatch { tags: Some(new_loc.tags.clone()), ..Default::default() };
         store.overlay_update(new_loc.id, &patch);
     }
+    let new_locs: Vec<Location> = updated.iter().map(|(_, n)| n.clone()).collect();
     store.add_tag_counts(&new_locs);
-    let (changed_old, changed_new): (Vec<_>, Vec<_>) = old_locs.into_iter()
-        .zip(new_locs)
+    let (changed_old, changed_new): (Vec<_>, Vec<_>) = updated.iter()
         .filter(|(o, n)| o != n)
+        .map(|(o, n)| (o.clone(), n.clone()))
         .unzip();
     if !changed_old.is_empty() {
         store.push_undo(EditEntry { created: changed_new, removed: changed_old });
         store.redo_stack.clear();
     }
     log::debug!("[cmd] store_strip_tags n={} total={}ms", affected_ids.len(), _t.elapsed().as_millis());
-    Ok(store.finish_mutation(RenderDelta::default()))
+    Ok(store.finish_mutation(ChangeSet { updated, ..Default::default() }))
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_set_active(
     state: tauri::State<'_, StoreState>,
     id: Option<u32>,
@@ -973,18 +1301,41 @@ pub fn store_set_active(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_location(
     state: tauri::State<'_, StoreState>,
     id: u32,
-) -> Result<Location, String> {
+) -> Result<Option<Location>, String> {
     let _t = std::time::Instant::now();
     let store = state.lock().map_err(|e| e.to_string())?;
-    let r = store.get_loc_by_id(id).ok_or_else(|| "location not found".to_string());
+    let r = Ok(store.get_loc_by_id(id));
     log::debug!("[cmd] store_get_location lock={}ms total={}ms", _t.elapsed().as_millis(), _t.elapsed().as_millis());
     r
 }
 
+/// Write a single location as JSON to a temp file and return the path.
+/// Faster than invoke for the response payload (~10ms less IPC overhead).
 #[tauri::command]
+#[specta::specta]
+pub fn store_get_location_file(
+    state: tauri::State<'_, StoreState>,
+    id: u32,
+) -> Result<Option<String>, String> {
+    let _t = std::time::Instant::now();
+    let store = state.lock().map_err(|e| e.to_string())?;
+    let loc = match store.get_loc_by_id(id) {
+        Some(l) => l,
+        None => return Ok(None),
+    };
+    let json = serde_json::to_vec(&loc).map_err(|e| e.to_string())?;
+    let path = std::env::temp_dir().join(format!("mma_loc_{id}.json"));
+    std::fs::write(&path, &json).map_err(|e| e.to_string())?;
+    log::debug!("[cmd] store_get_location_file total={}ms bytes={}", _t.elapsed().as_millis(), json.len());
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn store_get_locations_by_ids(
     state: tauri::State<'_, StoreState>,
     ids: Vec<u32>,
@@ -1000,6 +1351,7 @@ pub fn store_get_locations_by_ids(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_all_locations(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1020,14 +1372,17 @@ struct DeltaOverlay {
     patches: Vec<Location>,
 }
 
+/// Delta-only autosave: writes only dirty geohash chunks to disk (~17ms).
+/// Does NOT bake the overlay — call `store_bake_and_save` for a full merge.
 #[tauri::command]
+#[specta::specta]
 pub async fn store_save_dirty(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
 ) -> Result<SaveResult, String> {
     let _t = std::time::Instant::now();
     log::debug!("[cmd] store_save_dirty ENTER");
-    let (map_id, delta_data, alive, undo_bytes, redo_bytes) = {
+    let (map_id, delta_data, alive) = {
         let store = state.lock().map_err(|e| e.to_string())?;
         let map_id = store.map_id.clone().ok_or("no map open")?;
         if !store.dirty {
@@ -1039,9 +1394,7 @@ pub async fn store_save_dirty(
             patches: store.overlay_patches.values().cloned().collect(),
         };
         let data = rmp_serde::to_vec_named(&overlay).map_err(|e| e.to_string())?;
-        let ub = rmp_serde::to_vec_named(&store.undo_stack).unwrap_or_default();
-        let rb = rmp_serde::to_vec_named(&store.redo_stack).unwrap_or_default();
-        (map_id, data, store.alive_count, ub, rb)
+        (map_id, data, store.alive_count)
     };
 
     let size = delta_data.len();
@@ -1056,10 +1409,6 @@ pub async fn store_save_dirty(
         let conn = fast_io::open_db(&app2)?;
         conn.execute("UPDATE maps SET location_count = ?1 WHERE id = ?2",
             rusqlite::params![alive, &map_id2]).map_err(|e| e.to_string())?;
-        conn.execute(
-            "INSERT OR REPLACE INTO edit_history (map_id, undo_stack, redo_stack) VALUES (?1, ?2, ?3)",
-            rusqlite::params![map_id2, undo_bytes, redo_bytes],
-        ).map_err(|e| e.to_string())?;
         Ok::<_, String>(())
     })
     .await
@@ -1070,6 +1419,7 @@ pub async fn store_save_dirty(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_summary(
     state: tauri::State<'_, StoreState>,
 ) -> Result<SummaryResult, String> {
@@ -1129,7 +1479,10 @@ fn save_arrow_inner(store: &Store, app: &tauri::AppHandle, map_id: &str) -> Resu
 // VCS: snapshot / restore Arrow files
 // ---------------------------------------------------------------------------
 
+/// Merge the overlay into the Arrow batch, then write the full file to disk.
+/// Expensive at 10M+ rows — only called on commit, not on autosave.
 #[tauri::command]
+#[specta::specta]
 pub fn store_bake_and_save(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1137,7 +1490,16 @@ pub fn store_bake_and_save(
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let map_id = store.map_id.clone().ok_or("no map open")?;
     store.bake_overlay();
+    // Drop mmap before writing (Windows holds exclusive file lock)
+    store.mmap_handle = None;
     save_arrow_inner(&store, &app, &map_id)?;
+    // Re-mmap the written file
+    let path = fast_io::arrow_path(&app, &map_id)?;
+    if path.exists() {
+        let (batch, handle) = fast_io::read_arrow_ipc_mmap(&path)?;
+        store.batch = Some(batch);
+        store.mmap_handle = Some(handle);
+    }
     let count = store.batch.as_ref().map_or(0, |b| b.num_rows());
     let conn = fast_io::open_db(&app)?;
     conn.execute("UPDATE maps SET location_count = ?1 WHERE id = ?2", rusqlite::params![count, map_id])
@@ -1145,7 +1507,7 @@ pub fn store_bake_and_save(
     Ok(())
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitBlobEntry {
     pub geohash: String,
@@ -1153,10 +1515,9 @@ pub struct CommitBlobEntry {
     pub location_count: u32,
 }
 
-#[tauri::command]
-pub fn store_snapshot_commit(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, StoreState>,
+pub(crate) fn snapshot_inner(
+    app: &tauri::AppHandle,
+    state: &StoreState,
 ) -> Result<Vec<CommitBlobEntry>, String> {
     let _t = std::time::Instant::now();
     let mut store = state.lock().map_err(|e| e.to_string())?;
@@ -1192,7 +1553,7 @@ pub fn store_snapshot_commit(
                 arrow::compute::take(col.as_ref(), &take_idx, None).unwrap()
             }).collect();
             let cell_batch = RecordBatch::try_new(schema.clone(), columns).unwrap();
-            let (hash, count) = fast_io::write_blob(&app, &cell_batch)
+            let (hash, count) = fast_io::write_blob(app, &cell_batch)
                 .expect("blob write failed");
             entries.push(CommitBlobEntry {
                 geohash: gh.clone(),
@@ -1205,7 +1566,7 @@ pub fn store_snapshot_commit(
             .map(|e| (e.geohash.clone(), (e.blob_hash.clone(), e.location_count)))
             .collect();
         store.dirty_geohashes.clear();
-        log::debug!("[cmd] store_snapshot_commit (full) total={}ms cells={}", _t.elapsed().as_millis(), entries.len());
+        log::debug!("[cmd] snapshot_inner (full) total={}ms cells={}", _t.elapsed().as_millis(), entries.len());
         Ok(entries)
     } else {
         let dirty_cells: Vec<String> = dirty.iter().cloned().collect();
@@ -1223,7 +1584,7 @@ pub fn store_snapshot_commit(
                 arrow::compute::take(col.as_ref(), &take_idx, None).unwrap()
             }).collect();
             let cell_batch = RecordBatch::try_new(schema.clone(), columns).unwrap();
-            let (hash, count) = fast_io::write_blob(&app, &cell_batch)
+            let (hash, count) = fast_io::write_blob(app, &cell_batch)
                 .expect("blob write failed");
             dirty_entries.push(CommitBlobEntry {
                 geohash: gh.clone(),
@@ -1253,23 +1614,31 @@ pub fn store_snapshot_commit(
             })
             .collect();
 
-        log::debug!("[cmd] store_snapshot_commit (incremental) total={}ms dirty={} total_cells={}",
+        log::debug!("[cmd] snapshot_inner (incremental) total={}ms dirty={} total_cells={}",
             _t.elapsed().as_millis(), dirty_cells.len(), entries.len());
         Ok(entries)
     }
 }
 
 #[tauri::command]
-pub fn store_restore_commit(
+#[specta::specta]
+pub fn store_snapshot_commit(
     app: tauri::AppHandle,
-    map_id: String,
+    state: tauri::State<'_, StoreState>,
+) -> Result<Vec<CommitBlobEntry>, String> {
+    snapshot_inner(&app, &state)
+}
+
+pub(crate) fn restore_inner(
+    app: &tauri::AppHandle,
+    map_id: &str,
     blobs: Vec<CommitBlobEntry>,
 ) -> Result<(), String> {
     let _t = std::time::Instant::now();
     let s = schema();
     let batches: Result<Vec<RecordBatch>, String> = blobs
         .par_iter()
-        .map(|entry| fast_io::read_blob(&app, &entry.blob_hash))
+        .map(|entry| fast_io::read_blob(app, &entry.blob_hash))
         .collect();
     let batches = batches?;
     let batch = if batches.is_empty() {
@@ -1277,26 +1646,41 @@ pub fn store_restore_commit(
     } else {
         concat_batches(&s, &batches).map_err(|e| e.to_string())?
     };
-    let path = fast_io::arrow_path(&app, &map_id)?;
+    let path = fast_io::arrow_path(app, map_id)?;
     fast_io::write_arrow_ipc(&path, &batch)?;
-    let delta = fast_io::arrow_delta_path(&app, &map_id)?;
+    let delta = fast_io::arrow_delta_path(app, map_id)?;
     let _ = std::fs::remove_file(delta);
-    log::debug!("[cmd] store_restore_commit total={}ms rows={}", _t.elapsed().as_millis(), batch.num_rows());
+    log::debug!("[cmd] restore_inner total={}ms rows={}", _t.elapsed().as_millis(), batch.num_rows());
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn store_restore_commit(
+    app: tauri::AppHandle,
+    map_id: String,
+    blobs: Vec<CommitBlobEntry>,
+) -> Result<(), String> {
+    restore_inner(&app, &map_id, blobs)
 }
 
 // ---------------------------------------------------------------------------
 // Render buffer
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, serde::Deserialize, specta::Type)]
+#[serde(default, rename_all = "camelCase")]
 pub struct RenderRequest {
-    pub west: f64, pub south: f64, pub east: f64, pub north: f64,
+    pub west: f64,
+    pub south: f64,
+    pub east: f64,
+    pub north: f64,
     pub selected_ids: Option<Vec<u32>>,
     pub marker_style: String,
 }
 
+/// Build the full render binary: single linear pass over all alive locations, partitioned into
+/// 32 geohash cells. Also rebuilds render_cells index and selection overlay. O(N).
 fn build_cell_render_buffers(store: &mut Store, req: &RenderRequest) -> Vec<u8> {
     let _t = std::time::Instant::now();
     let b = match &store.batch {
@@ -1388,22 +1772,22 @@ fn build_cell_render_buffers(store: &mut Store, req: &RenderRequest) -> Vec<u8> 
     }
 
     // Rebuild per-cell render tracking
-    store.render_cells.clear();
-    store.id_to_cell.clear();
+    store.render_cells = [const { None }; 32];
+    store.id_to_cell_idx.clear();
     let mut total_count = 0usize;
     let mut non_empty = 0u32;
     for ci in 0..32 {
         let out = match &cells[ci] { Some(o) => o, None => continue };
-        let key = cell_key_from_idx(ci as u8);
         let mut cr = CellRender { id_order: Vec::with_capacity(out.ids.len()), id_to_index: HashMap::new() };
         for (i, &id) in out.ids.iter().enumerate() {
             cr.id_to_index.insert(id, i);
             cr.id_order.push(id);
-            store.id_to_cell.insert(id, key.clone());
+            store.ensure_id_to_cell_capacity(id);
+            store.id_to_cell_idx[id as usize] = ci as u8;
         }
         total_count += out.ids.len();
         non_empty += 1;
-        store.render_cells.insert(key, cr);
+        store.render_cells[ci] = Some(cr);
     }
 
     // Serialize: u32 cell_count, per cell: [1 byte geohash char][u32 count][positions][colors][angles]
@@ -1435,17 +1819,10 @@ fn build_cell_render_buffers(store: &mut Store, req: &RenderRequest) -> Vec<u8> 
     buf
 }
 
+/// Full render rebuild: single-pass over all alive locations, writes binary to a temp file.
+/// Returns the file path for JS to fetch via `mma-buf://`. Only called on map open or full reset.
 #[tauri::command]
-pub fn store_fill_render_attrs(
-    state: tauri::State<'_, StoreState>,
-    req: RenderRequest,
-) -> Result<Response, String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let buf = build_cell_render_buffers(&mut store, &req);
-    Ok(Response::new(buf))
-}
-
-#[tauri::command]
+#[specta::specta]
 pub async fn store_fill_render_file(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1467,14 +1844,16 @@ pub async fn store_fill_render_file(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_resolve_pick(
     state: tauri::State<'_, StoreState>,
     cell: String,
-    cell_index: usize,
+    cell_index: u32,
 ) -> Result<Option<u32>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
-    Ok(store.render_cells.get(&cell)
-        .and_then(|cr| cr.id_order.get(cell_index).copied()))
+    let ci = cell_idx_from_key(&cell).ok_or("invalid cell key")?;
+    Ok(store.render_cells[ci as usize].as_ref()
+        .and_then(|cr| cr.id_order.get(cell_index as usize).copied()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1482,32 +1861,35 @@ pub fn store_resolve_pick(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_undo(state: tauri::State<'_, StoreState>) -> Result<MutationResult, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let _t = std::time::Instant::now();
     let entry = store.undo_stack.pop().ok_or("nothing to undo")?;
     log::debug!("[UNDO] stack_depth={} created={} removed={}",
         store.undo_stack.len(), entry.created.len(), entry.removed.len());
-    let delta = apply_edit_reverse(&mut store, &entry);
-    log::debug!("[UNDO] apply_edit={}ms delta: +{} -{}", _t.elapsed().as_millis(), delta.added.len(), delta.removed.len());
+    let changes = apply_edit_reverse(&mut store, &entry);
+    log::debug!("[UNDO] apply_edit={}ms changes: +{} ~{} -{}", _t.elapsed().as_millis(), changes.added.len(), changes.updated.len(), changes.removed.len());
     store.redo_stack.push(entry);
-    Ok(store.finish_mutation(delta))
+    Ok(store.finish_mutation(changes))
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_redo(state: tauri::State<'_, StoreState>) -> Result<MutationResult, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let _t = std::time::Instant::now();
     let entry = store.redo_stack.pop().ok_or("nothing to redo")?;
     log::debug!("[REDO] stack_depth={} created={} removed={}",
         store.redo_stack.len(), entry.created.len(), entry.removed.len());
-    let delta = apply_edit_forward(&mut store, &entry);
-    log::debug!("[REDO] apply_edit={}ms delta: +{} -{}", _t.elapsed().as_millis(), delta.added.len(), delta.removed.len());
+    let changes = apply_edit_forward(&mut store, &entry);
+    log::debug!("[REDO] apply_edit={}ms changes: +{} ~{} -{}", _t.elapsed().as_millis(), changes.added.len(), changes.updated.len(), changes.removed.len());
     store.push_undo(entry);
-    Ok(store.finish_mutation(delta))
+    Ok(store.finish_mutation(changes))
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_commit_diff(state: tauri::State<'_, StoreState>) -> Result<(u32, u32, u32), String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     let mut added = HashSet::new();
@@ -1527,6 +1909,7 @@ pub fn store_commit_diff(state: tauri::State<'_, StoreState>) -> Result<(u32, u3
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_reset_undo(state: tauri::State<'_, StoreState>) -> Result<(), String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     store.undo_stack.clear();
@@ -1535,83 +1918,51 @@ pub fn store_reset_undo(state: tauri::State<'_, StoreState>) -> Result<(), Strin
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_can_undo_redo(state: tauri::State<'_, StoreState>) -> Result<(bool, bool), String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     Ok((!store.undo_stack.is_empty(), !store.redo_stack.is_empty()))
 }
 
-fn apply_edit(store: &mut Store, remove: &[Location], create: &[Location]) -> RenderDelta {
+/// Core edit primitive: atomically remove then create locations, updating tags, overlay, and
+/// render cells. Undo/redo swap the arguments. O(R + C) where R = removed, C = created.
+fn apply_edit(store: &mut Store, remove: &[Location], create: &[Location]) -> ChangeSet {
     let t0 = std::time::Instant::now();
-    let mut delta = RenderDelta::default();
-    let remove_ids: HashSet<u32> = remove.iter().map(|l| l.id).collect();
     let create_ids: HashSet<u32> = create.iter().map(|l| l.id).collect();
-    let t1 = t0.elapsed();
-
-    store.remove_tag_counts(remove);
-    let t2 = t0.elapsed();
-
-    store.overlay_remove(remove);
-    let t3 = t0.elapsed();
-
-    for id in &remove_ids {
-        if !create_ids.contains(id) {
-            if let Some(removal) = store.cell_remove_render(*id) {
-                delta.removed.push(removal);
-            }
-        }
-    }
-    let t4 = t0.elapsed();
-
     let remove_by_id: HashMap<u32, &Location> = remove.iter().map(|l| (l.id, l)).collect();
 
+    store.remove_tag_counts(remove);
+    store.overlay_remove(remove);
     store.add_tag_counts(create);
     for loc in create {
         store.overlay_add(loc.clone());
+    }
 
-        if remove_ids.contains(&loc.id) {
-            let render_changed = remove_by_id.get(&loc.id).map_or(true, |o|
-                o.lat != loc.lat || o.lng != loc.lng || o.heading != loc.heading
-            );
-            if render_changed {
-                if let Some(removal) = store.cell_remove_render(loc.id) {
-                    delta.removed.push(removal);
-                }
-                let gh = encode_geohash(loc.lat, loc.lng);
-                let cell = render_cell_key(&gh).to_string();
-                let is_selected = store.selected_ids.contains(&loc.id);
-                let (r, g, b, a) = if is_selected { (0, 0, 0, 0) } else { (42, 42, 42, 255) };
-                store.cell_add_render(&cell, loc.id);
-                delta.added.push(RenderEntry {
-                    cell, id: loc.id,
-                    lng: loc.lng as f32, lat: loc.lat as f32, heading: loc.heading as f32,
-                    r, g, b, a,
-                });
-            }
-        } else {
-            let gh = encode_geohash(loc.lat, loc.lng);
-            let cell = render_cell_key(&gh).to_string();
-            let is_selected = store.selected_ids.contains(&loc.id);
-            let (r, g, b, a) = if is_selected { (0, 0, 0, 0) } else { (42, 42, 42, 255) };
-            store.cell_add_render(&cell, loc.id);
-            delta.added.push(RenderEntry {
-                cell, id: loc.id,
-                lng: loc.lng as f32, lat: loc.lat as f32, heading: loc.heading as f32,
-                r, g, b, a,
-            });
+    // Categorize: same-id remove+create is an update; the rest are pure add/remove.
+    let mut changes = ChangeSet::default();
+    for loc in remove {
+        if !create_ids.contains(&loc.id) {
+            changes.removed.push(loc.id);
         }
     }
-    let t5 = t0.elapsed();
+    for loc in create {
+        if let Some(old) = remove_by_id.get(&loc.id) {
+            changes.updated.push(((*old).clone(), loc.clone()));
+        } else {
+            changes.added.push(loc.clone());
+        }
+    }
 
-    log::debug!("[apply_edit] hashsets={}ms tags_rm={}ms overlay_rm={}ms cell_rm={}ms create={}ms total={}ms",
-        t1.as_millis(), (t2-t1).as_millis(), (t3-t2).as_millis(), (t4-t3).as_millis(), (t5-t4).as_millis(), t5.as_millis());
-    delta
+    log::debug!("[apply_edit] +{} ~{} -{} in {}ms",
+        changes.added.len(), changes.updated.len(), changes.removed.len(), t0.elapsed().as_millis());
+    changes
 }
 
-fn apply_edit_forward(store: &mut Store, entry: &EditEntry) -> RenderDelta {
+fn apply_edit_forward(store: &mut Store, entry: &EditEntry) -> ChangeSet {
     apply_edit(store, &entry.removed, &entry.created)
 }
 
-fn apply_edit_reverse(store: &mut Store, entry: &EditEntry) -> RenderDelta {
+fn apply_edit_reverse(store: &mut Store, entry: &EditEntry) -> ChangeSet {
     apply_edit(store, &entry.created, &entry.removed)
 }
 
@@ -1620,15 +1971,17 @@ fn apply_edit_reverse(store: &mut Store, entry: &EditEntry) -> RenderDelta {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn store_tag_counts(state: tauri::State<'_, StoreState>) -> Result<HashMap<u32, usize>, String> {
+#[specta::specta]
+pub fn store_tag_counts(state: tauri::State<'_, StoreState>) -> Result<HashMap<u32, u32>, String> {
     let _t = std::time::Instant::now();
     let store = state.lock().map_err(|e| e.to_string())?;
-    let r = store.tag_counts.clone();
+    let r: HashMap<u32, u32> = store.tag_counts.iter().map(|(&k, &v)| (k, v as u32)).collect();
     log::debug!("[cmd] store_tag_counts total={}ms", _t.elapsed().as_millis());
     Ok(r)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_alloc_tag_id(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let id = store.next_tag_id;
@@ -1637,7 +1990,7 @@ pub fn store_alloc_tag_id(state: tauri::State<'_, StoreState>) -> Result<u32, St
 }
 
 
-fn read_tags_json(conn: &rusqlite::Connection, map_id: &str) -> HashMap<u32, Tag> {
+pub(crate) fn read_tags_json(conn: &rusqlite::Connection, map_id: &str) -> HashMap<u32, Tag> {
     let json: String = conn.query_row(
         "SELECT tags FROM maps WHERE id = ?1", [map_id], |row| row.get(0),
     ).unwrap_or_else(|_| "{}".into());
@@ -1654,6 +2007,7 @@ fn write_tags_json(conn: &rusqlite::Connection, map_id: &str, tags: &HashMap<u32
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_resolve_tag_names(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1696,6 +2050,7 @@ pub fn store_resolve_tag_names(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_bounds(state: tauri::State<'_, StoreState>) -> Result<Option<[f64; 4]>, String> {
     let _t = std::time::Instant::now();
     let store = state.lock().map_err(|e| e.to_string())?;
@@ -1736,12 +2091,15 @@ pub fn store_bounds(state: tauri::State<'_, StoreState>) -> Result<Option<[f64; 
 }
 
 #[tauri::command]
-pub fn store_location_count(state: tauri::State<'_, StoreState>) -> Result<usize, String> {
+#[specta::specta]
+pub fn store_location_count(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
-    Ok(store.alive_count)
+    Ok(store.alive_count as u32)
 }
 
+
 #[tauri::command]
+#[specta::specta]
 pub fn store_extra_field_values(state: tauri::State<'_, StoreState>, field: String) -> Result<Vec<String>, String> {
     let _t = std::time::Instant::now();
     let store = state.lock().map_err(|e| e.to_string())?;
@@ -1799,6 +2157,7 @@ pub fn store_extra_field_values(state: tauri::State<'_, StoreState>, field: Stri
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_has_location(state: tauri::State<'_, StoreState>, id: u32) -> Result<bool, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     Ok(store.get_loc_by_id(id).is_some())
@@ -1808,14 +2167,14 @@ pub fn store_has_location(state: tauri::State<'_, StoreState>, id: u32) -> Resul
 // Selections
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionInput {
     pub props: SelectionProps,
     pub color: [u8; 3],
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSelectionsResult {
     pub counts: Vec<usize>,
@@ -1823,7 +2182,14 @@ pub struct SyncSelectionsResult {
     pub selected_count: usize,
 }
 
+/// Replace all selections, resolve bitmasks against current data, and write a binary
+/// patch file for JS to apply to the render overlay. Returns per-selection counts.
+// TODO: selection resolution perf at 1M+ scale (~500ms currently)
+// - Inverted index (tag_id → HashSet<loc_id>) for O(1) tag/untagged/panoId lookups
+// - BitVec instead of HashSet for membership — 1M locs = 125KB, bitmask binary becomes a direct copy
+// - "select everything" shortcut — flag instead of 125KB of all-1 bits
 #[tauri::command]
+#[specta::specta]
 pub async fn store_sync_selections(
     app: tauri::AppHandle,
     state: tauri::State<'_, StoreState>,
@@ -1833,43 +2199,62 @@ pub async fn store_sync_selections(
     let (counts, buf, selected_count, num_cells) = {
         let mut store = state.lock().map_err(|e| e.to_string())?;
 
+        let num_sels = sels.len();
+
+        // 1. Resolve bitmasks (parallel via rayon inside resolve_bitmask)
         let view = store.loc_view();
         let masks: Vec<Vec<bool>> = sels.iter()
             .map(|sel| selections::resolve_bitmask(&view, &sel.props))
             .collect();
-        let counts: Vec<usize> = masks.iter()
-            .map(|m| m.iter().filter(|&&b| b).count())
-            .collect();
 
-        let id_to_sel = view.collect_id_to_selection(&masks);
-        let all_selected: HashSet<u32> = id_to_sel.keys().copied().collect();
+        // 2. Single pass: build per-selection HashSets + selected_ids + color_map from masks
+        let batch_rows = view.batch_rows();
+        let mut sel_sets: Vec<HashSet<u32>> = vec![HashSet::new(); num_sels];
+        let mut all_selected = HashSet::new();
+        let mut color_map = HashMap::new();
+        for si in 0..num_sels {
+            let mask = &masks[si];
+            let color = sels[si].color;
+            for i in 0..batch_rows {
+                if mask[i] && view.is_alive(i) {
+                    let id = view.id_at(i);
+                    sel_sets[si].insert(id);
+                    all_selected.insert(id);
+                    color_map.insert(id, color);
+                }
+            }
+            for (j, loc) in view.adds().iter().enumerate() {
+                if mask[batch_rows + j] {
+                    sel_sets[si].insert(loc.id);
+                    all_selected.insert(loc.id);
+                    color_map.insert(loc.id, color);
+                }
+            }
+        }
+        drop(view);
+
+        let counts: Vec<usize> = sel_sets.iter().map(|s| s.len()).collect();
         let selected_count = all_selected.len();
 
-        // Pack grouped bitmask binary:
-        // [u8 num_sels][per sel: u8 r, g, b]
-        // [u8 num_cells][per cell: u8 cell_char, u32 loc_count, per sel: ceil(loc_count/8) bitmask bytes]
-        let num_sels = sels.len();
+        // 3. Build bitmask binary using sel_sets (O(1) lookups, no intermediate maps)
         let mut buf: Vec<u8> = Vec::new();
         buf.push(num_sels as u8);
         for sel in &sels {
             buf.extend_from_slice(&sel.color);
         }
-
-        let num_cells = store.render_cells.len();
+        let num_cells = store.render_cells.iter().filter(|o| o.is_some()).count();
         buf.push(num_cells as u8);
-
-        for (cell_key, cr) in &store.render_cells {
-            buf.push(cell_key.as_bytes()[0]);
+        for (ci, opt) in store.render_cells.iter().enumerate() {
+            let cr = match opt { Some(cr) => cr, None => continue };
+            buf.push(BASE32[ci]);
             let n = cr.id_order.len();
             buf.extend_from_slice(&(n as u32).to_le_bytes());
             let mask_bytes = n.div_ceil(8);
             for si in 0..num_sels {
                 let mut bitmask = vec![0u8; mask_bytes];
                 for (li, &id) in cr.id_order.iter().enumerate() {
-                    if let Some(&sel_idx) = id_to_sel.get(&id) {
-                        if sel_idx == si {
-                            bitmask[li / 8] |= 1 << (li % 8);
-                        }
+                    if sel_sets[si].contains(&id) {
+                        bitmask[li / 8] |= 1 << (li % 8);
                     }
                 }
                 buf.extend_from_slice(&bitmask);
@@ -1877,13 +2262,18 @@ pub async fn store_sync_selections(
         }
 
         store.selected_ids = all_selected;
-        let mut color_map = HashMap::new();
-        for (&id, &si) in &id_to_sel {
-            color_map.insert(id, sels[si].color);
-        }
         store.selected_colors = color_map;
+        store.selections = sels.iter().enumerate().map(|(i, sel)| {
+            selections::Selection {
+                key: format!("sync:{i}"),
+                color: sel.color,
+                props: sel.props.clone(),
+            }
+        }).collect();
+        store.selection_loc_sets = sel_sets;
+        store.selection_version += 1;
 
-        let render_total: usize = store.render_cells.values().map(|cr| cr.id_order.len()).sum();
+        let render_total: usize = store.render_cells.iter().filter_map(|o| o.as_ref()).map(|cr| cr.id_order.len()).sum();
         log::debug!("[cmd] store_sync_selections total={}ms sels={} selected={} cells={} buf_size={} batch_rows={} overlay_adds={} dead={} alive={} render_total={} mask_len={} counts={:?}",
             _t.elapsed().as_millis(), sels.len(), selected_count, num_cells, buf.len(),
             store.batch.as_ref().map_or(0, |b| b.num_rows()), store.overlay_adds.len(),
@@ -1909,12 +2299,14 @@ pub async fn store_sync_selections(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_selected_ids_list(state: tauri::State<'_, StoreState>) -> Result<Vec<u32>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     Ok(store.selected_ids.iter().copied().collect())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_set_selected_ids(state: tauri::State<'_, StoreState>, ids: Vec<u32>) -> Result<(), String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     store.selected_ids = ids.into_iter().collect();
@@ -1922,17 +2314,78 @@ pub fn store_set_selected_ids(state: tauri::State<'_, StoreState>, ids: Vec<u32>
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_resolve_selection(state: tauri::State<'_, StoreState>, props: SelectionProps) -> Result<Vec<u32>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     let view = store.loc_view();
     Ok(selections::resolve(&view, &props))
 }
 
+/// Find all locations within `radius_m` metres of (`lat`, `lng`).
+///
+/// O(n) linear scan with a cheap bounding-box pre-filter (degree margin)
+/// that rejects 99.9%+ of points before haversine is called.
+/// At 1M locations this is sub-millisecond on a modern CPU.
+///
+// TODO: if this becomes a bottleneck, consider a persistent spatial index (R-tree or k-d tree)
+#[tauri::command]
+#[specta::specta]
+pub fn store_find_nearby(
+    state: tauri::State<'_, StoreState>,
+    lat: f64,
+    lng: f64,
+    radius_m: f64,
+) -> Result<Vec<Location>, String> {
+    let store = state.lock().map_err(|e| e.to_string())?;
+    let deg_margin = radius_m / 111_000.0 * 1.5;
+    let mut result = Vec::new();
+
+    if let Some(ref b) = store.batch {
+        let lats = b.column_by_name("lat").and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+        let lngs = b.column_by_name("lng").and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+        let ids = b.column_by_name("id").and_then(|c| c.as_any().downcast_ref::<UInt32Array>());
+        if let (Some(lats), Some(lngs), Some(ids)) = (lats, lngs, ids) {
+            for i in 0..b.num_rows() {
+                let id = ids.value(i);
+                if store.overlay_dead.contains(&id) { continue; }
+                if let Some(patched) = store.overlay_patches.get(&id) {
+                    if (patched.lat - lat).abs() <= deg_margin
+                        && (patched.lng - lng).abs() <= deg_margin
+                        && selections::haversine_m(lat, lng, patched.lat, patched.lng) <= radius_m
+                    {
+                        result.push(patched.clone());
+                    }
+                } else {
+                    let rlat = lats.value(i);
+                    let rlng = lngs.value(i);
+                    if (rlat - lat).abs() <= deg_margin
+                        && (rlng - lng).abs() <= deg_margin
+                        && selections::haversine_m(lat, lng, rlat, rlng) <= radius_m
+                    {
+                        result.push(arrow_bridge::row_to_location(b, i));
+                    }
+                }
+            }
+        }
+    }
+
+    for loc in &store.overlay_adds {
+        if (loc.lat - lat).abs() <= deg_margin
+            && (loc.lng - lng).abs() <= deg_margin
+            && selections::haversine_m(lat, lng, loc.lat, loc.lng) <= radius_m
+        {
+            result.push(loc.clone());
+        }
+    }
+
+    Ok(result)
+}
+
 // ---------------------------------------------------------------------------
 // Selection commands
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionResult {
     pub key: String,
@@ -1941,6 +2394,7 @@ pub struct SelectionResult {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_add_selection(state: tauri::State<'_, StoreState>, props: SelectionProps) -> Result<SelectionResult, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let view = store.loc_view();
@@ -1948,48 +2402,59 @@ pub fn store_add_selection(state: tauri::State<'_, StoreState>, props: Selection
     let key = selection_key(&props, &locations);
     let color = color_for_key(&key);
     let count = locations.len();
-    store.selections.push(Selection { key: key.clone(), color, props, locations });
+    store.selections.push(Selection { key: key.clone(), color, props });
+    store.selection_loc_sets.push(locations.into_iter().collect());
     store.selection_version += 1;
     Ok(SelectionResult { key, count, selection_version: store.selection_version })
 }
 
 #[tauri::command]
-pub fn store_remove_selection(state: tauri::State<'_, StoreState>, key: String) -> Result<u64, String> {
+#[specta::specta]
+pub fn store_remove_selection(state: tauri::State<'_, StoreState>, key: String) -> Result<u32, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
-    store.selections.retain(|s| s.key != key);
+    let idx = store.selections.iter().position(|s| s.key == key);
+    if let Some(i) = idx {
+        store.selections.remove(i);
+        store.selection_loc_sets.remove(i);
+    }
     store.selection_version += 1;
-    Ok(store.selection_version)
+    Ok(store.selection_version as u32)
 }
 
 #[tauri::command]
-pub fn store_reset_selections(state: tauri::State<'_, StoreState>) -> Result<u64, String> {
+#[specta::specta]
+pub fn store_reset_selections(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
     let mut store = state.lock().map_err(|e| e.to_string())?;
     store.selections.clear();
+    store.selection_loc_sets.clear();
     store.selection_version += 1;
-    Ok(store.selection_version)
+    Ok(store.selection_version as u32)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_selections(state: tauri::State<'_, StoreState>) -> Result<Vec<SelectionSummary>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
-    Ok(store.selections.iter().map(|s| SelectionSummary {
+    Ok(store.selections.iter().enumerate().map(|(i, s)| SelectionSummary {
         key: s.key.clone(),
         color: s.color,
         sel_type: selection_type_name(&s.props),
-        count: s.locations.len(),
+        count: store.selection_loc_sets.get(i).map_or(0, |s| s.len()),
     }).collect())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn store_get_selected_ids(state: tauri::State<'_, StoreState>) -> Result<Vec<u32>, String> {
     let store = state.lock().map_err(|e| e.to_string())?;
     let mut all = HashSet::new();
-    for sel in &store.selections { for &id in &sel.locations { all.insert(id); } }
+    for set in &store.selection_loc_sets { for &id in set { all.insert(id); } }
     Ok(all.into_iter().collect())
 }
 
 #[tauri::command]
-pub fn store_refresh_selections(state: tauri::State<'_, StoreState>) -> Result<u64, String> {
+#[specta::specta]
+pub fn store_refresh_selections(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
     let _t = std::time::Instant::now();
     let mut store = state.lock().map_err(|e| e.to_string())?;
     let resolved: Vec<Vec<u32>> = {
@@ -1997,12 +2462,10 @@ pub fn store_refresh_selections(state: tauri::State<'_, StoreState>) -> Result<u
         store.selections.iter().map(|s| selections::resolve(&view, &s.props)).collect()
     };
     let n = resolved.len();
-    for (i, ids) in resolved.into_iter().enumerate() {
-        store.selections[i].locations = ids;
-    }
+    store.selection_loc_sets = resolved.into_iter().map(|ids| ids.into_iter().collect()).collect();
     store.selection_version += 1;
     log::debug!("[cmd] store_refresh_selections total={}ms sels={}", _t.elapsed().as_millis(), n);
-    Ok(store.selection_version)
+    Ok(store.selection_version as u32)
 }
 
 // --- Helpers ---

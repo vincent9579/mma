@@ -6,6 +6,7 @@ import {
 	registerEnrichmentProvider,
 } from "@/lib/data/fieldDefs.add";
 import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { Command } from "@tauri-apps/plugin-shell";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import * as store from "@/store/useMapStore";
@@ -51,7 +52,7 @@ const mmaApi = {
 	// Selections
 	getSelections: () => store.getSelections(),
 	getSelectedLocationIds: () => store.getSelectedLocationIds(),
-	queryIds: (props: SelectionProps) => invoke<number[]>("store_resolve_selection", { props }),
+	queryIds: (props: SelectionProps) => cmd.storeResolveSelection(props),
 	getLocationsByIds: (ids: number[]) => store.fetchLocationsByIds(ids),
 
 	// Plugin mode
@@ -77,16 +78,16 @@ async function loadCorePlugins() {
 async function loadUserPlugins() {
 	let manifests: PluginManifest[];
 	try {
-		manifests = await invoke<PluginManifest[]>("list_user_plugins");
+		manifests = await cmd.listUserPlugins();
 	} catch {
 		return;
 	}
-	const appDataDir = await invoke<string>("get_app_data_dir");
+	const appDataDir = await cmd.getAppDataDir();
 	for (const m of manifests) {
 		try {
 			setPendingManifest(m);
 			const filePath = `${appDataDir}\\plugins\\${m.id}\\${m.main}`;
-			const code = await invoke<string>("read_file", { path: filePath });
+			const code = await cmd.readFile(filePath);
 			const blob = new Blob([code], { type: "application/javascript" });
 			await import(/* @vite-ignore */ URL.createObjectURL(blob));
 			setPendingManifest(null);

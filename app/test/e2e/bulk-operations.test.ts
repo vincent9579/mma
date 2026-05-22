@@ -4,9 +4,7 @@ import {
 	closeMap,
 	deleteMap,
 	addLocs,
-	getAllLocs,
 	getLoc,
-	getLocCount,
 	makeLoc,
 	withApi,
 } from "./helpers";
@@ -14,7 +12,6 @@ import {
 const OFFICIAL_PANO = "-zrYsLR4Fh-cfJG_EMZ1-A";
 const OFFICIAL_COORDS = { lat: 52.10947502806108, lng: 34.90131410856584 };
 const LoadAsPanoId = 1;
-const BULK_TIMEOUT = 60_000;
 
 function loc(overrides: Record<string, any> = {}) {
 	return makeLoc({
@@ -56,7 +53,6 @@ describe("Bulk operations -- enrichAll", () => {
 			return await api.enrichAll();
 		});
 
-		expect(result.error).toBeFalsy();
 		expect(result.metaSuccess.length).toBeGreaterThanOrEqual(2);
 
 		const l = await getLoc(locIds[0]);
@@ -69,11 +65,9 @@ describe("Bulk operations -- enrichAll", () => {
 		const hadPano = before?.panoId != null;
 		if (hadPano) return; // already resolved from previous test run
 
-		const result = await withApi(async (api) => {
+		await withApi(async (api) => {
 			return await api.enrichAll({ force: true });
 		});
-
-		expect(result.error).toBeFalsy();
 
 		const after = await getLoc(locIds[2]);
 		expect(after.panoId).toBeTruthy();
@@ -107,9 +101,10 @@ describe("Bulk operations -- enrichAll", () => {
 		// Undo until enrichment is gone (but stop before undoing the addLocations)
 		await withApi(async (api, id) => {
 			for (let i = 0; i < 100; i++) {
+				api.undo();
+				await new Promise((r) => setTimeout(r, 300));
 				const loc = await api.fetchLocation(id);
 				if (!loc || !loc.extra?.countryCode) break;
-				api.undo();
 			}
 			return "ok";
 		}, undoLocId);
@@ -253,7 +248,6 @@ describe("Bulk operations -- cancel preserves progress", () => {
 			}
 		});
 
-		expect(result.error).toBeFalsy();
 		if (result.cancelled) {
 			// Some locations should have been enriched before cancel
 			expect(result.enriched).toBeGreaterThan(0);

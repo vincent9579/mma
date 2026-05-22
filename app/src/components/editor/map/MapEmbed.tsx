@@ -1,11 +1,13 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { GoogleMapsOverlay } from "@deck.gl/google-maps";
-import type { PickingInfo, Layer } from "@deck.gl/core";
+import type { GoogleMapsOverlayProps } from "@deck.gl/google-maps";
+import type { PickingInfo, Layer, Position } from "@deck.gl/core";
+type OverlayEvent = { srcEvent?: { domEvent?: Event } };
 import { ScatterplotLayer, PolygonLayer, PathLayer, LineLayer } from "@deck.gl/layers";
 import SDFMarkerLayer from "@/lib/render/sdf-marker-layer/SDFMarkerLayer";
 import { lookupStreetView, svThumbnailUrl, showToast, svSearchRadius } from "@/lib/sv/lookup.add";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd, fetchViaFile } from "@/lib/commands";
 import { mmaBufUrl } from "@/lib/util/util";
 import { log } from "@/lib/util/log";
 import { useSetting } from "@/store/settings.add";
@@ -31,10 +33,10 @@ import {
 	addLocations,
 	getWorkArea,
 	getSelectedLocationIds,
-	onRenderDelta,
-	onSelectionBitmasks,
+	renderDeltaBus,
+	selBitmaskBus,
 } from "@/store/useMapStore";
-import { loadOpenSV, getGoogle } from "@/lib/sv/opensv";
+import { loadOpenSV, google } from "@/lib/sv/opensv";
 import { useTrailVersion, getTrail } from "@/lib/sv/svTrail.add";
 import {
 	setGoogleMap as setGoogleMapInstance,
@@ -157,17 +159,16 @@ const DARK_MODE_STYLES: MapStyle[] = [
 
 function waitForTileLoad(el: Element): Promise<void> {
 	return new Promise((resolve) => {
-		const g = getGoogle();
-		g.maps.event.addListenerOnce(el, "load", resolve);
+		google.maps.event.addListenerOnce(el, "load", resolve);
 	});
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- runtime-created class
 let StackedMapType: any = null;
 
-function initStackedMapType(g: Google) {
+function initStackedMapType() {
 	if (StackedMapType) return;
-	StackedMapType = class extends g.maps.ImageMapType {
+	StackedMapType = class extends google.maps.ImageMapType {
 		layers: google.maps.ImageMapType[];
 		constructor(layers: google.maps.ImageMapType[], opts: google.maps.ImageMapTypeOptions) {
 			super({ ...opts, getTileUrl: () => null });
@@ -179,7 +180,7 @@ function initStackedMapType(g: Google) {
 			const div = doc.createElement("div");
 			div.append(...tiles.filter(Boolean));
 			Promise.all(tiles.filter((t): t is Element => t != null).map(waitForTileLoad)).then(() => {
-				g.maps.event.trigger(div, "load");
+				google.maps.event.trigger(div, "load");
 			});
 			return div;
 		}
@@ -197,12 +198,11 @@ function initStackedMapType(g: Google) {
 }
 
 function createCompositeMapType(
-	g: Google,
 	layers: google.maps.ImageMapType[],
 ): google.maps.ImageMapType {
-	initStackedMapType(g);
+	initStackedMapType();
 	return new StackedMapType(layers, {
-		tileSize: new g.maps.Size(256, 256),
+		tileSize: new google.maps.Size(256, 256),
 		minZoom: 0,
 		maxZoom: 20,
 	});
@@ -427,19 +427,16 @@ export function MapEmbed() {
 				new PolygonLayer<number[][][]>({
 					id: `selectionPolygonFill:${sel.key}`,
 					data: allPolygons,
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- data is the polygon
-					getPolygon: (d) => d as any,
+					getPolygon: (d) => d,
 					getFillColor: fillColor,
 					stroked: false,
 					pickable: false,
 					opacity: 1,
 				}),
-				new PathLayer<number[][]>({
+				new PathLayer<Position[]>({
 					id: `selectionPolygonStroke:${sel.key}`,
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw coordinate rings
-					data: allPolygons.flatMap((p) => p) as any,
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- data is the path
-					getPath: (d) => d as any,
+					data: allPolygons.flatMap((p) => p) as Position[][],
+					getPath: (d) => d,
 					getColor: strokeColor,
 					getWidth: 4,
 					widthUnits: "pixels",
@@ -489,8 +486,7 @@ export function MapEmbed() {
 									getPosition: { value: cell.positions, size: 2 },
 									getFillColor: { value: cell.colors, size: 4 },
 								},
-								// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deck.gl binary data format
-							} as any,
+							},
 							getRadius: 6,
 							radiusUnits: "pixels",
 							radiusMinPixels: 3,
@@ -514,8 +510,7 @@ export function MapEmbed() {
 									getFillColor: { value: cell.colors, size: 4 },
 									getAngle: { value: cell.angles, size: 1 },
 								},
-								// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deck.gl binary data format
-							} as any,
+							},
 							shape: "arrow",
 							radiusPixels: 12,
 							opacity: markerVisibility === "transparent" ? 0.3 : 1,
@@ -538,8 +533,7 @@ export function MapEmbed() {
 									getPosition: { value: cell.positions, size: 2 },
 									getFillColor: { value: cell.colors, size: 4 },
 								},
-								// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deck.gl binary data format
-							} as any,
+							},
 							shape: "pin",
 							radiusPixels: 16,
 							opacity: markerVisibility === "transparent" ? 0.3 : 1,
@@ -555,8 +549,7 @@ export function MapEmbed() {
 			}
 		}
 
-		if (cm.selOverlayCount > 0) {
-			const selPickable = markerVisibility === "hidden";
+		if (cm.selOverlayCount > 0) {			
 			if (markerStyle === "circle") {
 				layers.push(
 					new ScatterplotLayer({
@@ -567,12 +560,14 @@ export function MapEmbed() {
 								getPosition: { value: cm.selOverlayPositions, size: 2 },
 								getFillColor: { value: cm.selOverlayColors, size: 4 },
 							},
-							// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deck.gl binary data format
-						} as any,
+						},
 						getRadius: 6,
 						radiusUnits: "pixels",
 						radiusMinPixels: 3,
-						pickable: selPickable,
+						// Selection overlay is drawn on top of the cell markers, so it must also be pickable on
+						// top — otherwise clicks fall through to the cell layer where selected markers have no
+						// z-priority, and an overlapping neighbor gets picked instead of the marker on top.
+						pickable: true,
 						updateTriggers: {
 							getFillColor: [cm.selOverlayVersion],
 							getPosition: [cm.selOverlayVersion],
@@ -590,11 +585,10 @@ export function MapEmbed() {
 								getFillColor: { value: cm.selOverlayColors, size: 4 },
 								getAngle: { value: cm.selOverlayAngles, size: 1 },
 							},
-							// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deck.gl binary data format
-						} as any,
+						},
 						shape: "arrow",
 						radiusPixels: 12,
-						pickable: selPickable,
+						pickable: true,
 						updateTriggers: {
 							getFillColor: [cm.selOverlayVersion],
 							getPosition: [cm.selOverlayVersion],
@@ -612,11 +606,10 @@ export function MapEmbed() {
 								getPosition: { value: cm.selOverlayPositions, size: 2 },
 								getFillColor: { value: cm.selOverlayColors, size: 4 },
 							},
-							// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deck.gl binary data format
-						} as any,
+						},
 						shape: "pin",
 						radiusPixels: 16,
-						pickable: selPickable,
+						pickable: true,
 						updateTriggers: {
 							getFillColor: [cm.selOverlayVersion],
 							getPosition: [cm.selOverlayVersion],
@@ -651,8 +644,7 @@ export function MapEmbed() {
 						data: [activeLoc],
 						getPosition: (d) => [d.lng, d.lat],
 						getRadius: 6,
-						// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deck.gl type gap
-						radiusUnits: "pixels" as any,
+						radiusUnits: "pixels",
 						radiusMinPixels: 3,
 						getFillColor: [200, 0, 0, 255],
 						pickable: true,
@@ -783,7 +775,7 @@ export function MapEmbed() {
 	}, []);
 
 	const handleClick = useCallback(
-		async (info: PickingInfo, event: { srcEvent?: { domEvent?: Event } }) => {
+		async (info: PickingInfo, event: OverlayEvent) => {
 			const domEvent = event?.srcEvent?.domEvent;
 
 			const resolvePickedLocationAsync = async (): Promise<Location | undefined> => {
@@ -793,26 +785,19 @@ export function MapEmbed() {
 				if (layerId?.startsWith("sel-overlay:")) {
 					const id = cellMgrRef.current.selOverlayIds[info.index];
 					if (id == null) return undefined;
-					const loc: Location | null = await invoke("store_get_location", {
-						id,
-					});
+					const loc = await fetchViaFile<Location>(cmd.storeGetLocationFile(id));
 					return loc ?? undefined;
 				}
 				if (!layerId?.startsWith("cell:")) return undefined;
 				const cellKey = layerId.split(":")[1];
 				const id = cellMgrRef.current.resolvePickFromCell(cellKey, info.index);
 				if (id == null) {
-					const rustId: number | null = await invoke("store_resolve_pick", {
-						cell: cellKey,
-						cellIndex: info.index,
-					});
+					const rustId: number | null = await cmd.storeResolvePick(cellKey, info.index);
 					if (rustId == null) return undefined;
-					const loc: Location | null = await invoke("store_get_location", {
-						id: rustId,
-					});
+					const loc = await fetchViaFile<Location>(cmd.storeGetLocationFile(rustId));
 					return loc ?? undefined;
 				}
-				const loc: Location | null = await invoke("store_get_location", { id });
+				const loc = await fetchViaFile<Location>(cmd.storeGetLocationFile(id));
 				return loc ?? undefined;
 			};
 
@@ -861,7 +846,7 @@ export function MapEmbed() {
 				if (!g) return;
 				const currentZoom = gMapRef.current?.getZoom() ?? 2;
 				const t0 = performance.now();
-				const loc = await lookupStreetView(g, lat, lng, currentZoom, svSettingsRef.current);
+				const loc = await lookupStreetView(lat, lng, currentZoom, svSettingsRef.current);
 				if (!loc) {
 					if (containerRef.current) {
 						showToast(containerRef.current, "No coverage found at this location.");
@@ -883,9 +868,7 @@ export function MapEmbed() {
 	);
 
 	const handleHover = useCallback(
-		(info: PickingInfo, event: { srcEvent?: { domEvent?: Event } }) => {
-			// Binary-attribute layers don't populate info.object; the layer id +
-			// a non-negative index is enough to know we're over a marker.
+		(info: PickingInfo, event: OverlayEvent) => {
 			const hasObject =
 				info.object != null ||
 				(isLocationLayer(info.layer?.id) === true &&
@@ -903,9 +886,7 @@ export function MapEmbed() {
 	const svLayerRef = useRef<google.maps.ImageMapType>(null);
 
 	const buildMapStack = useCallback(
-		(
-			g: Google,
-			opts: {
+		(opts: {
 				type: MapTypeKey;
 				labels: boolean;
 				terrain: boolean;
@@ -919,7 +900,7 @@ export function MapEmbed() {
 				customStyles?: MapStyle[];
 			},
 		) => {
-			const tileSize = new g.maps.Size(256, 256);
+			const tileSize = new google.maps.Size(256, 256);
 			const layers: google.maps.ImageMapType[] = [];
 
 			const extraStyles: MapStyle[] = [];
@@ -948,7 +929,7 @@ export function MapEmbed() {
 			if (opts.type === "satellite") {
 				const cfg = createSatelliteTileConfig();
 				layers.push(
-					new g.maps.ImageMapType({
+					new google.maps.ImageMapType({
 						getTileUrl: (coord: TileCoord, zoom: number) =>
 							buildTileUrl(cfg, coord.x, coord.y, zoom),
 						tileSize,
@@ -959,7 +940,7 @@ export function MapEmbed() {
 				if (opts.terrain) {
 					const tcfg = createTerrainOverlayTileConfig();
 					layers.push(
-						new g.maps.ImageMapType({
+						new google.maps.ImageMapType({
 							getTileUrl: (coord: TileCoord, zoom: number) =>
 								buildTileUrl(tcfg, coord.x, coord.y, zoom),
 							tileSize,
@@ -970,7 +951,7 @@ export function MapEmbed() {
 				}
 			} else if (opts.type === "osm") {
 				layers.push(
-					new g.maps.ImageMapType({
+					new google.maps.ImageMapType({
 						getTileUrl: (coord: TileCoord, zoom: number) =>
 							`https://tile.openstreetmap.org/${zoom}/${coord.x}/${coord.y}.png`,
 						tileSize,
@@ -990,7 +971,7 @@ export function MapEmbed() {
 						...extraStyles,
 					]);
 					layers.push(
-						new g.maps.ImageMapType({
+						new google.maps.ImageMapType({
 							getTileUrl: (coord: TileCoord, zoom: number) =>
 								buildTileUrl(cfg, coord.x, coord.y, zoom),
 							tileSize,
@@ -1001,7 +982,7 @@ export function MapEmbed() {
 				} else {
 					const cfg = createRoadmapTileConfig(extraStyles);
 					layers.push(
-						new g.maps.ImageMapType({
+						new google.maps.ImageMapType({
 							getTileUrl: (coord: TileCoord, zoom: number) =>
 								buildTileUrl(cfg, coord.x, coord.y, zoom),
 							tileSize,
@@ -1026,7 +1007,7 @@ export function MapEmbed() {
 						color: opts.color,
 						thickness: opts.thickness,
 					});
-			const svLayer = new g.maps.ImageMapType({
+			const svLayer = new google.maps.ImageMapType({
 				getTileUrl: (coord: TileCoord, zoom: number) => buildTileUrl(svCfg, coord.x, coord.y, zoom),
 				tileSize,
 				minZoom: 0,
@@ -1040,7 +1021,7 @@ export function MapEmbed() {
 			if (opts.labels && opts.type !== "osm") {
 				const labelCfg = createLabelsTileConfig(extraStyles);
 				layers.push(
-					new g.maps.ImageMapType({
+					new google.maps.ImageMapType({
 						getTileUrl: (coord: TileCoord, zoom: number) =>
 							buildTileUrl(labelCfg, coord.x, coord.y, zoom),
 						tileSize,
@@ -1050,7 +1031,7 @@ export function MapEmbed() {
 				);
 			}
 
-			return createCompositeMapType(g, layers);
+			return createCompositeMapType(layers);
 		},
 		[svOpacity],
 	);
@@ -1062,12 +1043,11 @@ export function MapEmbed() {
 
 		loadOpenSV().then(() => {
 			if (cancelled || !containerRef.current) return;
-			const g = getGoogle();
-			if (!g?.maps) return;
-			gRef.current = g;
+			if (!google?.maps) return;
+			gRef.current = google;
 
 			if (!gMapRef.current) {
-				gMapRef.current = new g.maps.Map(containerRef.current, {
+				gMapRef.current = new google.maps.Map(containerRef.current, {
 					center: { lat: 0, lng: 0 },
 					zoom: 2,
 					minZoom: 1,
@@ -1085,7 +1065,7 @@ export function MapEmbed() {
 				});
 
 				const custom = customStyles.find((s) => s.name === mapStyleName);
-				const stack = buildMapStack(g, {
+				const stack = buildMapStack({
 					type: mapType,
 					labels: showLabels,
 					terrain: showTerrain,
@@ -1126,7 +1106,7 @@ export function MapEmbed() {
 				});
 
 				if (map.meta.locationCount > 0) {
-					invoke("store_bounds").then((bounds: unknown) => {
+					cmd.storeBounds().then((bounds) => {
 						if (cancelled || !gMapRef.current || !bounds) return;
 						const [west, south, east, north] = bounds as [number, number, number, number];
 						const gm = gMapRef.current!;
@@ -1171,8 +1151,7 @@ export function MapEmbed() {
 		const listener = map.addListener("idle", load);
 		return () => {
 			cancelled = true;
-			const g = getGoogle();
-			if (g?.maps) g.maps.event.removeListener(listener);
+			if (google?.maps) google.maps.event.removeListener(listener);
 		};
 	}, [svPanoramas, mapZoom]);
 
@@ -1189,17 +1168,14 @@ export function MapEmbed() {
 		let cancelled = false;
 		const fetchRender = async () => {
 			const t0 = performance.now();
-			const reqPayload = {
-				req: {
+			try {
+				const filePath = await cmd.storeFillRenderFile({
 					west: -180,
 					south: -90,
 					east: 180,
 					north: 90,
 					markerStyle,
-				},
-			};
-			try {
-				const filePath: string = await invoke("store_fill_render_file", reqPayload);
+				});
 				const resp = await fetch(mmaBufUrl(filePath));
 				const buf = await resp.arrayBuffer();
 				const t1 = performance.now();
@@ -1222,7 +1198,7 @@ export function MapEmbed() {
 	}, [mapReady, fullResetCounter, markerStyle]);
 
 	useEffect(() => {
-		const unsub1 = onRenderDelta((delta) => {
+		const unsub1 = renderDeltaBus.on((delta) => {
 			if (delta.fullReset) {
 				setFullResetCounter((c) => c + 1);
 				return;
@@ -1251,7 +1227,7 @@ export function MapEmbed() {
 			);
 			if (affected.size > 0 || delta.colorPatches.length > 0) setRenderTick((t) => t + 1);
 		});
-		const unsub2 = onSelectionBitmasks((selColors, cellEntries, setIds) => {
+		const unsub2 = selBitmaskBus.on((selColors, cellEntries, setIds) => {
 			const t0 = performance.now();
 			const ids = cellMgrRef.current.applySelectionBitmasks(selColors, cellEntries);
 			setIds(ids);
@@ -1266,7 +1242,6 @@ export function MapEmbed() {
 		};
 	}, []);
 
-	// Viewport culling: re-cull cached buffer on pan/zoom (zero IPC)
 	useEffect(() => {
 		if (svPreview?.url) return () => URL.revokeObjectURL(svPreview.url);
 	}, [svPreview?.url]);
@@ -1277,8 +1252,7 @@ export function MapEmbed() {
 			return;
 		}
 		const map = gMapRef.current;
-		const g = getGoogle();
-		if (!g?.maps) return;
+		if (!google?.maps) return;
 
 		const moveListener = map.addListener("mousemove", async (e: google.maps.MapMouseEvent) => {
 			if (!e.latLng) return;
@@ -1294,13 +1268,13 @@ export function MapEmbed() {
 			await new Promise((r) => setTimeout(r, 300));
 			if (ac.signal.aborted) return;
 
-			const sv = new g.maps.StreetViewService();
+			const sv = new google.maps.StreetViewService();
 			sv.getPanorama(
 				{
 					location: { lat, lng },
 					radius: svSearchRadius(lat, zoom),
-					sources: [g.maps.StreetViewSource.GOOGLE],
-					preference: g.maps.StreetViewPreference.NEAREST,
+					sources: [google.maps.StreetViewSource.GOOGLE],
+					preference: google.maps.StreetViewPreference.NEAREST,
 				},
 				async (data: google.maps.StreetViewPanoramaData | null, status: string) => {
 					if (ac.signal.aborted || status !== "OK" || !data?.location?.pano) return;
@@ -1326,8 +1300,8 @@ export function MapEmbed() {
 		});
 
 		return () => {
-			g.maps.event.removeListener(moveListener);
-			g.maps.event.removeListener(outListener);
+			google.maps.event.removeListener(moveListener);
+			google.maps.event.removeListener(outListener);
 			previewAbortRef.current?.abort();
 			setSvPreview(null);
 		};
@@ -1337,10 +1311,9 @@ export function MapEmbed() {
 
 	useEffect(() => {
 		if (!gMapRef.current) return;
-		const g = getGoogle();
-		if (!g?.maps) return;
+		if (!google?.maps) return;
 		const custom = customStyles.find((s) => s.name === mapStyleName);
-		const stack = buildMapStack(g, {
+		const stack = buildMapStack({
 			type: mapType,
 			labels: showLabels,
 			terrain: showTerrain,
@@ -1372,20 +1345,13 @@ export function MapEmbed() {
 
 	const updateOverlay = useCallback(() => {
 		if (!overlayRef.current) return;
-		const t0 = performance.now();
 		const layers = buildLayers();
-		const t1 = performance.now();
 		overlayRef.current.setProps({
 			layers,
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deck.gl Mjolnir type mismatch
-			onClick: handleClick as any,
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deck.gl Mjolnir type mismatch
-			onHover: handleHover as any,
+			onClick: handleClick as GoogleMapsOverlayProps["onClick"],
+			onHover: handleHover as GoogleMapsOverlayProps["onHover"],
 			onError: (e: unknown) => log.error("[deck.gl overlay error]", e),
 		});
-		log.debug(
-			`[overlay] buildLayers=${(t1 - t0).toFixed(0)}ms setProps=${(performance.now() - t1).toFixed(0)}ms layers=${layers.length}`,
-		);
 	}, [buildLayers, handleClick, handleHover]);
 
 	useEffect(() => {
@@ -1416,9 +1382,8 @@ export function MapEmbed() {
 
 	const handleSearchResult = useCallback((lat: number, lng: number, _name: string) => {
 		if (!gMapRef.current) return;
-		const g = getGoogle();
-		if (!g?.maps) return;
-		const bounds = new g.maps.LatLngBounds(
+		if (!google?.maps) return;
+		const bounds = new google.maps.LatLngBounds(
 			{ lat: lat - 0.003, lng: lng - 0.003 },
 			{ lat: lat + 0.003, lng: lng + 0.003 },
 		);
@@ -1623,7 +1588,7 @@ export function MapEmbed() {
 							onDraw={(rings) => {
 								if (rings.length === 0) return;
 								if (tryInterceptDraw(rings)) return;
-								selectPolygon({ coordinates: rings });
+								selectPolygon({ coordinates: rings as [number, number][][] });
 							}}
 							freehandPathRef={freehandPathRef}
 							requestOverlayUpdate={updateOverlay}

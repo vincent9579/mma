@@ -1,7 +1,12 @@
-/** Acts as selection composition orchestrator for Rust-side resolution. */
+/** Pure selection transforms. These only manipulate the JS selection tree; Rust resolves the actual bitmasks. */
 
 import type { MapData } from "@/types";
 import { hslToRgb } from "@/lib/util/color";
+
+export type { SelectionProps, PolygonGeometry } from "@/bindings.gen";
+import type { Selection as BaseSelection, SelectionProps } from "@/bindings.gen";
+
+export type Selection = BaseSelection & { count?: number };
 
 export enum ValidationState {
 	Ok = 0,
@@ -13,47 +18,7 @@ export enum ValidationState {
 	GoodcamAvailable = 6,
 }
 
-export type SelectionType =
-	| "Locations"
-	| "Everything"
-	| "Polygon"
-	| "Tag"
-	| "Untagged"
-	| "Unpanned"
-	| "PanoIds"
-	| "NotPanoIds"
-	| "Duplicates"
-	| "Manual"
-	| "Intersection"
-	| "Union"
-	| "Invert"
-	| "ValidationState"
-	| "Filter";
-
-export interface PolygonGeometry {
-	// GeoJSON Polygon (rings) — outer + holes
-	coordinates: number[][][];
-	// Additional polygons for MultiPolygon geometry
-	extraPolygons?: number[][][][];
-	properties?: { name?: string; code?: string };
-}
-
-export type SelectionProps =
-	| { type: "Locations"; locations: number[]; name?: string }
-	| { type: "Everything" }
-	| { type: "Polygon"; polygon: PolygonGeometry; includeInformational: boolean }
-	| { type: "Tag"; tagId: number }
-	| { type: "Untagged" }
-	| { type: "Unpanned" }
-	| { type: "PanoIds" }
-	| { type: "NotPanoIds" }
-	| { type: "Manual"; locations: number[] }
-	| { type: "Duplicates"; distance: number }
-	| { type: "ValidationState"; locations: number[]; state: ValidationState }
-	| { type: "Intersection"; selections: Selection[] }
-	| { type: "Union"; selections: Selection[] }
-	| { type: "Invert"; selections: Selection[] }
-	| { type: "Filter"; field: string; op: FilterOp; value: unknown; value2?: unknown };
+export type SelectionType = SelectionProps["type"];
 
 export type FilterOp =
 	| "eq"
@@ -65,13 +30,6 @@ export type FilterOp =
 	| "between"
 	| "has"
 	| "nothas";
-
-export interface Selection {
-	key: string;
-	color: [number, number, number];
-	props: SelectionProps;
-	count: number;
-}
 
 export function colorForKey(key: string): [number, number, number] {
 	let t = 0;
@@ -136,6 +94,7 @@ function keyForProps(_map: MapData, props: SelectionProps, locations: number[]):
 	}
 }
 
+/** Create a Selection with a deterministic key and hashed color from its props. */
 export function buildSelection(map: MapData, props: SelectionProps): Selection {
 	const locations = resolveLocations(map, props);
 	const key = keyForProps(map, props, locations);
@@ -157,6 +116,7 @@ export function addSelection(
 	return dedupe([...current, buildSelection(map, props)]);
 }
 
+/** Remove a selection by key. Composites (Intersection/Union/Invert) unwrap their children back into the list. */
 export function removeSelection(current: Selection[], key: string): Selection[] {
 	return current.flatMap((s) => {
 		if (s.key !== key) return [s];
@@ -166,35 +126,27 @@ export function removeSelection(current: Selection[], key: string): Selection[] 
 	});
 }
 
-export function intersectSelections(
+/** Merge targeted selections into a single composite, flattening nested groups of the same type. */
+function composeSelectionGroup(
 	map: MapData,
 	current: Selection[],
 	keys: string[] | null,
+	type: "Intersection" | "Union",
 ): Selection[] {
 	if (current.length < 2) return current;
 	const targetKeys = keys ?? current.map((s) => s.key);
 	const targets: Selection[] = [];
 	const others: Selection[] = [];
 	for (const s of current) (targetKeys.includes(s.key) ? targets : others).push(s);
-	// flatten nested intersections
-	const flat = targets.flatMap((s) => (s.props.type === "Intersection" ? s.props.selections : [s]));
-	return [...others, buildSelection(map, { type: "Intersection", selections: dedupe(flat) })];
+	const flat = targets.flatMap((s) => (s.props.type === type ? s.props.selections : [s]));
+	return [...others, buildSelection(map, { type, selections: dedupe(flat) })];
 }
 
-export function unionSelections(
-	map: MapData,
-	current: Selection[],
-	keys: string[] | null,
-): Selection[] {
-	if (current.length < 2) return current;
-	const targetKeys = keys ?? current.map((s) => s.key);
-	const targets: Selection[] = [];
-	const others: Selection[] = [];
-	for (const s of current) (targetKeys.includes(s.key) ? targets : others).push(s);
-	const flat = targets.flatMap((s) => (s.props.type === "Union" ? s.props.selections : [s]));
-	return [...others, buildSelection(map, { type: "Union", selections: dedupe(flat) })];
-}
+export const intersectSelections = (map: MapData, current: Selection[], keys: string[] | null) => composeSelectionGroup(map, current, keys, "Intersection");
 
+export const unionSelections = (map: MapData, current: Selection[], keys: string[] | null) => composeSelectionGroup(map, current, keys, "Union");
+
+/** Invert targeted selections. Single target toggles in-place; multiple are wrapped in Union then Invert. */
 export function invertSelections(
 	map: MapData,
 	current: Selection[],
@@ -253,6 +205,7 @@ export function reorderSelections(
 	return without.toSpliced(toIdx, 0, item);
 }
 
+/** Drag-drop composition: merge drag into drop as a new composite, absorbing existing children of the same type. */
 export function composeSelections(
 	map: MapData,
 	current: Selection[],
@@ -323,6 +276,7 @@ function removeChildFromComposite(
 	return null;
 }
 
+/** Pull a child out of a composite back into the top-level list. Parent collapses if only one child remains. */
 export function decomposeChild(
 	map: MapData,
 	current: Selection[],
@@ -425,6 +379,7 @@ export function composeWithChild(
 	return current.filter((_, i) => i !== dragIdx).map((s) => (s.key === parentKey ? newParent : s));
 }
 
+/** Human-readable label for a selection, resolving tag names and filter ops. */
 export function selectionDisplayName(map: MapData, sel: Selection): string {
 	const p = sel.props;
 	switch (p.type) {
@@ -482,8 +437,8 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 				return s;
 			};
 			if (p.op === "between")
-				return `${fieldLabel} ${OP_LABELS[p.op]} ${fmtVal(p.value)}..${fmtVal(p.value2)}`;
-			return `${fieldLabel} ${OP_LABELS[p.op]} ${fmtVal(p.value)}`;
+				return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}..${fmtVal(p.value2)}`;
+			return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}`;
 		}
 	}
 }

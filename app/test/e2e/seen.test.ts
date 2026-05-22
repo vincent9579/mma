@@ -4,10 +4,14 @@ import {
 	closeMap,
 	deleteMap,
 	addLocs,
-	getLoc,
 	getLocCount,
 	withApi,
+	makeLoc,
+	openLocation,
+	closeLocation,
 } from "./helpers";
+import { LocationFlag } from "@/types";
+import type { SeenEntry } from "@/lib/seen/seen.add";
 
 const OFFICIAL_PANO = "-zrYsLR4Fh-cfJG_EMZ1-A";
 const OFFICIAL_COORDS = { lat: 52.10947502806108, lng: 34.90131410856584 };
@@ -15,37 +19,7 @@ const OFFICIAL_COORDS = { lat: 52.10947502806108, lng: 34.90131410856584 };
 const TREKKER_PANO = "5upMz1_zTGPdkIXG6_QM3g";
 const TREKKER_COORDS = { lat: 55.510656, lng: 157.636627 };
 
-const LoadAsPanoId = 1;
-
 const PANO_TIMEOUT = 30_000;
-
-function loc(overrides: Record<string, any> = {}) {
-	return {
-		lat: 0,
-		lng: 0,
-		heading: 0,
-		pitch: 0,
-		zoom: 0,
-		panoId: null,
-		flags: 0,
-		tags: [],
-		createdAt: new Date().toISOString(),
-		...overrides,
-	};
-}
-
-async function openLocation(id: number) {
-	await withApi((api, locId) => {
-		api.setActiveLocation(locId);
-	}, id);
-}
-
-async function closeLocation() {
-	await withApi((api) => {
-		api.setActiveLocation(null);
-	});
-	await browser.pause(300);
-}
 
 async function waitForPreview() {
 	const el = await browser.$(".location-preview");
@@ -63,7 +37,7 @@ async function waitForPanoReady() {
 	);
 }
 
-async function getSeenEntries(limit = 100): Promise<any[]> {
+async function getSeenEntries(limit = 100) {
 	return withApi(async (api, lim) => {
 		return await api.getSeenEntries(lim);
 	}, limit);
@@ -86,7 +60,6 @@ async function clearSeen() {
 
 describe("Seen -- recording consistency", () => {
 	let mapId: string;
-	let countBefore: number;
 	let seenOffId: number;
 	let seenTrekId: number;
 
@@ -96,19 +69,18 @@ describe("Seen -- recording consistency", () => {
 			api.setSetting("enableSeen", true);
 		});
 		mapId = await createAndOpenMap("E2E Seen Recording");
-		countBefore = await getSeenCount();
 		const ids = await addLocs([
-			loc({
+			makeLoc({
 				lat: OFFICIAL_COORDS.lat,
 				lng: OFFICIAL_COORDS.lng,
 				panoId: OFFICIAL_PANO,
-				flags: LoadAsPanoId,
+				flags: LocationFlag.LoadAsPanoId,
 			}),
-			loc({
+			makeLoc({
 				lat: TREKKER_COORDS.lat,
 				lng: TREKKER_COORDS.lng,
 				panoId: TREKKER_PANO,
-				flags: LoadAsPanoId,
+				flags: LocationFlag.LoadAsPanoId,
 			}),
 		]);
 		seenOffId = ids[0];
@@ -134,7 +106,7 @@ describe("Seen -- recording consistency", () => {
 		await browser.pause(500);
 
 		const entries = await getSeenEntries(10);
-		const recent = entries.find((e: any) => e.pano_id === OFFICIAL_PANO);
+		const recent = entries.find(e => e.panoId === OFFICIAL_PANO);
 		expect(recent).toBeTruthy();
 	});
 
@@ -146,11 +118,11 @@ describe("Seen -- recording consistency", () => {
 		await browser.pause(500);
 
 		const entries = await getSeenEntries(10);
-		const recent = entries.find((e: any) => e.pano_id === OFFICIAL_PANO);
+		const recent = entries.find(e => e.panoId === OFFICIAL_PANO);
 		expect(recent).toBeTruthy();
 		// lat/lng should be near the official coords, not some stale previous location
-		expect(Math.abs(recent.lat - OFFICIAL_COORDS.lat)).toBeLessThan(1);
-		expect(Math.abs(recent.lng - OFFICIAL_COORDS.lng)).toBeLessThan(1);
+		expect(Math.abs(recent!.lat - OFFICIAL_COORDS.lat)).toBeLessThan(1);
+		expect(Math.abs(recent!.lng - OFFICIAL_COORDS.lng)).toBeLessThan(1);
 	});
 
 	it("switching locations records distinct entries with correct pano_ids", async () => {
@@ -177,8 +149,8 @@ describe("Seen -- recording consistency", () => {
 			async () => {
 				const entries = await getSeenEntries(20);
 				return (
-					entries.some((e: any) => e.pano_id === OFFICIAL_PANO) &&
-					entries.some((e: any) => e.pano_id === TREKKER_PANO)
+					entries.some(e => e.panoId === OFFICIAL_PANO) &&
+					entries.some(e => e.panoId === TREKKER_PANO)
 				);
 			},
 			{ timeout: 10000, timeoutMsg: "Expected seen entries for both panos" },
@@ -188,25 +160,25 @@ describe("Seen -- recording consistency", () => {
 		expect(count).toBeGreaterThanOrEqual(2);
 
 		const entries = await getSeenEntries(20);
-		const offEntry = entries.find((e: any) => e.pano_id === OFFICIAL_PANO);
-		const trekEntry = entries.find((e: any) => e.pano_id === TREKKER_PANO);
+		const offEntry = entries.find(e => e.panoId === OFFICIAL_PANO);
+		const trekEntry = entries.find(e => e.panoId === TREKKER_PANO);
 
 		expect(offEntry).toBeTruthy();
 		expect(trekEntry).toBeTruthy();
 
 		// Each entry's lat/lng should match its own pano, not the other's
-		expect(Math.abs(offEntry.lat - OFFICIAL_COORDS.lat)).toBeLessThan(1);
-		expect(Math.abs(trekEntry.lat - TREKKER_COORDS.lat)).toBeLessThan(1);
+		expect(Math.abs(offEntry!.lat - OFFICIAL_COORDS.lat)).toBeLessThan(1);
+		expect(Math.abs(trekEntry!.lat - TREKKER_COORDS.lat)).toBeLessThan(1);
 	});
 
 	it("pano_id is never reused across entries with different coordinates", async () => {
 		const entries = await getSeenEntries(50);
-		const byPano = new Map<string, any[]>();
+		const byPano = new Map<string, SeenEntry[]>();
 		for (const e of entries) {
-			if (!byPano.has(e.pano_id)) byPano.set(e.pano_id, []);
-			byPano.get(e.pano_id)!.push(e);
+			if (!byPano.has(e.panoId)) byPano.set(e.panoId, []);
+			byPano.get(e.panoId)!.push(e);
 		}
-		for (const [panoId, group] of byPano) {
+		for (const [, group] of byPano) {
 			if (group.length < 2) continue;
 			// All entries with the same pano_id should have similar lat/lng
 			for (let i = 1; i < group.length; i++) {
@@ -230,11 +202,11 @@ describe("Seen -- loadSeenPano opens location viewer", () => {
 		});
 		mapId = await createAndOpenMap("E2E Seen Load");
 		const ids = await addLocs([
-			loc({
+			makeLoc({
 				lat: OFFICIAL_COORDS.lat,
 				lng: OFFICIAL_COORDS.lng,
 				panoId: OFFICIAL_PANO,
-				flags: LoadAsPanoId,
+				flags: LocationFlag.LoadAsPanoId,
 			}),
 		]);
 		seenLoad1Id = ids[0];
@@ -261,16 +233,16 @@ describe("Seen -- loadSeenPano opens location viewer", () => {
 			(api, pano, lat, lng, locId) => {
 				api.loadSeenPano({
 					id: 999,
-					pano_id: pano,
+					panoId: pano,
 					lat,
 					lng,
 					heading: 90,
 					pitch: 0,
 					zoom: 0,
-					entered_at: Date.now(),
-					map_id: null,
-					location_id: locId,
-					country_code: null,
+					enteredAt: Date.now(),
+					mapId: null,
+					locationId: locId,
+					countryCode: null,
 					address: null,
 					thumbnail: null,
 				});
@@ -297,16 +269,16 @@ describe("Seen -- loadSeenPano opens location viewer", () => {
 			(api, pano, lat, lng) => {
 				api.loadSeenPano({
 					id: 998,
-					pano_id: pano,
+					panoId: pano,
 					lat,
 					lng,
 					heading: 45,
 					pitch: 5,
 					zoom: 1,
-					entered_at: Date.now(),
-					map_id: null,
-					location_id: 999999,
-					country_code: "RU",
+					enteredAt: Date.now(),
+					mapId: null,
+					locationId: 999999,
+					countryCode: "RU",
 					address: null,
 					thumbnail: null,
 				});
@@ -336,11 +308,11 @@ describe("Seen -- enableSeen setting", () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E Seen Setting");
 		const ids = await addLocs([
-			loc({
+			makeLoc({
 				lat: OFFICIAL_COORDS.lat,
 				lng: OFFICIAL_COORDS.lng,
 				panoId: OFFICIAL_PANO,
-				flags: LoadAsPanoId,
+				flags: LocationFlag.LoadAsPanoId,
 			}),
 		]);
 		seenSetting1Id = ids[0];
@@ -395,17 +367,17 @@ describe("Seen -- clear", () => {
 		});
 		mapId = await createAndOpenMap("E2E Seen Clear");
 		const ids = await addLocs([
-			loc({
+			makeLoc({
 				lat: TREKKER_COORDS.lat,
 				lng: TREKKER_COORDS.lng,
 				panoId: TREKKER_PANO,
-				flags: LoadAsPanoId,
+				flags: LocationFlag.LoadAsPanoId,
 			}),
-			loc({
+			makeLoc({
 				lat: OFFICIAL_COORDS.lat,
 				lng: OFFICIAL_COORDS.lng,
 				panoId: OFFICIAL_PANO,
-				flags: LoadAsPanoId,
+				flags: LocationFlag.LoadAsPanoId,
 			}),
 		]);
 		seenClearWarmId = ids[0];

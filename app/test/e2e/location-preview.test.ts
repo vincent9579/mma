@@ -4,12 +4,15 @@ import {
 	closeMap,
 	deleteMap,
 	addLocs,
-	getLoc,
 	getAllLocs,
 	getLocCount,
 	createTag,
+	makeLoc,
+	openLocation,
+	closeLocation,
 	withApi,
 } from "./helpers";
+import type { Location } from "@/types";
 
 // --- Test pano IDs ---
 // Official Google car coverage (Kursk oblast, Russia)
@@ -31,19 +34,8 @@ const LoadAsPanoId = 1;
 
 const PANO_TIMEOUT = 30_000;
 
-function loc(overrides: Record<string, any> = {}) {
-	return {
-		lat: 0,
-		lng: 0,
-		heading: 0,
-		pitch: 0,
-		zoom: 0,
-		panoId: null,
-		flags: 0,
-		tags: [],
-		createdAt: new Date().toISOString(),
-		...overrides,
-	};
+function loc(overrides: Partial<Location> = {}): Location {
+	return makeLoc({ lat: 0, lng: 0, heading: 0, pitch: 0, zoom: 0, ...overrides });
 }
 
 /** Wait for the date count badge to show a positive number. */
@@ -69,21 +61,6 @@ async function getDateCount(): Promise<number> {
 	const badge = await browser.$(".location-preview__date .badge--number");
 	if (!(await badge.isExisting())) return 0;
 	return parseInt(await badge.getText()) || 0;
-}
-
-/** Open a location by numeric id via test API. */
-async function openLocation(id: number) {
-	await withApi(async (api, locId) => {
-		api.setActiveLocation(locId);
-	}, id);
-}
-
-/** Close active location via test API. */
-async function closeLocation() {
-	await withApi(async (api) => {
-		api.setActiveLocation(null);
-	});
-	await browser.pause(300);
 }
 
 /** Read a location from Rust by numeric ID. */
@@ -167,7 +144,7 @@ describe("LocationPreview — official pano", () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E LP Official");
 		await withApi(async (api) => {
-			const map = api.getCurrentMap();
+			const map = api.getCurrentMap()!;
 			await api.updateMapMeta({ settings: { ...map.meta.settings, enrichMetadata: true } });
 			return "ok";
 		});
@@ -722,7 +699,7 @@ describe("LocationPreview — exact date resolution", () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E LP Exact Date");
 		await withApi(async (api) => {
-			const map = api.getCurrentMap();
+			const map = api.getCurrentMap()!;
 			await api.updateMapMeta({ settings: { ...map.meta.settings, enrichMetadata: true } });
 			return "ok";
 		});
@@ -1052,11 +1029,12 @@ describe("LocationPreview — duplicate location", () => {
 
 		const locs = await getAllLocs();
 
-		const src = locs.find((l: any) => l.id === dupSrcId);
-		const dup = locs.find((l: any) => l.id !== dupSrcId && l.panoId === OFFICIAL_PANO);
+		const src = locs.find((l) => l.id === dupSrcId);
+		const dup = locs.find((l) => l.id !== dupSrcId && l.panoId === OFFICIAL_PANO);
 		expect(dup).toBeTruthy();
-		expect(dup.lat).toBe(src.lat);
-		expect(dup.lng).toBe(src.lng);
+		expect(src).toBeTruthy();
+		expect(dup!.lat).toBe(src!.lat);
+		expect(dup!.lng).toBe(src!.lng);
 	});
 });
 
@@ -1125,11 +1103,13 @@ describe("LocationPreview — tag management in preview", () => {
 		await input.setValue("Alp");
 		await browser.pause(300);
 
-		// Click the suggestion
-		const suggestion = await browser.$(".location-preview__tags ol.tag-list .tag");
-		if (await suggestion.isExisting()) {
-			await suggestion.click();
+		const addBtn = await browser.$(".location-preview__tags ol.tag-list .tag__button--add");
+		if (await addBtn.isExisting()) {
+			await addBtn.click();
 			await browser.pause(300);
+			const saveBtn = await browser.$("[data-qa='location-save']");
+			await saveBtn.click();
+			await browser.pause(500);
 
 			const l = await readLocation(tagmgmt1Id);
 			expect(l.tags).toContain(mgmtTagAId);
@@ -1137,30 +1117,20 @@ describe("LocationPreview — tag management in preview", () => {
 	});
 
 	it("tag removal button removes tag from location", async () => {
-		// First ensure the tag is on the location
-		await withApi(
-			async (api, id, aId, bId) => {
-				api.updateLocation(id, { tags: [aId, bId] });
-				return "ok";
-			},
-			tagmgmt1Id,
-			mgmtTagAId,
-			mgmtTagBId,
-		);
-
 		await openLocation(tagmgmt1Id);
 		await waitForPreview();
 		await browser.pause(500);
 
-		// Click the remove button on the first tag
 		const removeBtn = await browser.$(
 			".location-preview__tags .tag .tag__remove, .location-preview__tags .tag button",
 		);
 		if (await removeBtn.isExisting()) {
 			await removeBtn.click();
 			await browser.pause(300);
+			const saveBtn = await browser.$("[data-qa='location-save']");
+			await saveBtn.click();
+			await browser.pause(500);
 			const l = await readLocation(tagmgmt1Id);
-			// Should have one fewer tag
 			expect(l.tags.length).toBeLessThan(2);
 		}
 	});
@@ -1424,7 +1394,8 @@ describe("LocationPreview — settings toggles", () => {
 			async () => {
 				const el = await browser.$(".location-preview__embed");
 				return (
-					(await el.isExisting()) && !(await el.getAttribute("class")).includes("hide-pano-ui")
+					(await el.isExisting()) &&
+					!((await el.getAttribute("class")) ?? "").includes("hide-pano-ui")
 				);
 			},
 			{ timeout: PANO_TIMEOUT, timeoutMsg: "Pano controls never appeared" },
@@ -1437,7 +1408,7 @@ describe("LocationPreview — settings toggles", () => {
 		await browser.pause(500);
 
 		const embed = await browser.$(".location-preview__embed");
-		expect((await embed.getAttribute("class")).includes("hide-pano-ui")).toBe(true);
+		expect(((await embed.getAttribute("class")) ?? "").includes("hide-pano-ui")).toBe(true);
 
 		// Reset
 		await withApi(async (api) => {
@@ -1459,7 +1430,7 @@ describe("LocationPreview — edge cases", () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E LP Edge Cases");
 		await withApi(async (api) => {
-			const map = api.getCurrentMap();
+			const map = api.getCurrentMap()!;
 			await api.updateMapMeta({ settings: { ...map.meta.settings, enrichMetadata: true } });
 			return "ok";
 		});

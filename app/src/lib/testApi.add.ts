@@ -1,6 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as storage from "@/lib/storage/storage";
-import * as vcs from "@/lib/storage/vcs";
 import { setSetting, getSettings } from "@/store/settings.add";
 import {
 	openMap,
@@ -62,6 +60,7 @@ import {
 	checkoutCommit,
 	invalidateMapList,
 	fetchAllLocations,
+	getUndoRedoState,
 } from "@/store/useMapStore";
 import {
 	getSeenEntries,
@@ -71,7 +70,8 @@ import {
 	type SeenFilter,
 } from "@/lib/seen/seen.add";
 import { loadSeenPano } from "@/components/editor/location/LocationPreview";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd, fetchViaFile } from "@/lib/commands";
+import type { LocationPatch_Deserialize } from "@/bindings.gen";
 import type { Location, Tag, MapMeta } from "@/types";
 import { enrichAll, needsEnrichment } from "@/lib/sv/enrich.add";
 import { bulkPinToPano } from "@/lib/sv/pinPano.add";
@@ -82,13 +82,18 @@ function buildTestApi() {
 		ready: false as boolean,
 
 		// --- Lifecycle ---
-		createMap: (name: string) => storage.createMap(name),
+		createMap: (name: string, folder: string | null) => cmd.storeCreateMap(name, folder),
 		openMap: (id: string) => openMap(id),
 		closeMap: () => closeMap(),
-		listMaps: () => storage.listMaps(),
-		deleteMap: (id: string) => storage.deleteMap(id),
+		listMaps: () => cmd.storeListMaps(),
+		deleteMap: (id: string) => cmd.storeDeleteMap(id),
 		flushSave: () => flushSave(),
 		getDirtyCount: () => getDirtyCount(),
+		// Placeholder for save-failure injection. Real fault injection needs a Rust-side
+		// test command (#[cfg(feature = "e2e")]); the JS path can't intercept Tauri invoke.
+		interceptInvoke: (_command: string, _mode: string): void => {
+			throw new Error("interceptInvoke not implemented (needs Rust e2e test command)");
+		},
 
 		// --- Location CRUD ---
 		getCurrentMap,
@@ -102,15 +107,18 @@ function buildTestApi() {
 		patchLocationExtra: (id: number, extra: Record<string, unknown>, replace?: boolean) =>
 			patchLocationExtra(id, extra, replace),
 		fetchAllLocations: () => fetchAllLocations(),
-		fetchLocation: (id: number) => invoke("store_get_location", { id }),
-		getLocationCount: () => invoke("store_location_count"),
+		fetchLocation: (id: number) => fetchViaFile<Location>(cmd.storeGetLocationFile(id)),
+		getLocationCount: () => cmd.storeLocationCount(),
+		findNearby: (lat: number, lng: number, radiusM: number) => cmd.storeFindNearby(lat, lng, radiusM),
 
 		// --- Undo/Redo ---
 		undo,
 		redo,
+		getUndoRedoState,
 
 		// --- Active location & work area ---
-		setActiveLocation: (id: number | null) => setActiveLocation(id),
+		setActiveLocation: (id: number | null, checkDuplicates?: boolean) =>
+			setActiveLocation(id, checkDuplicates),
 		getActiveLocation,
 		getWorkArea,
 
@@ -130,7 +138,7 @@ function buildTestApi() {
 			getSelections().map((s) => ({
 				key: s.key,
 				color: s.color,
-				locationCount: s.count,
+				locationCount: s.count ?? 0,
 				props: s.props,
 			})),
 		getSelectedLocationIds: () => [...getSelectedLocationIds()],
@@ -170,7 +178,7 @@ function buildTestApi() {
 		deleteTag: (id: number) => deleteTags([id]),
 		bulkAddTag: (tagId: number) => bulkAddTag(tagId),
 		reorderTags: (ids: number[]) => reorderTags(ids),
-		resolveTagNames: (names: string[]) => invoke("store_resolve_tag_names", { names }),
+		resolveTagNames: (names: string[]) => cmd.storeResolveTagNames(names),
 
 		// --- Map management ---
 		renameMap: (id: string, name: string) => renameMap(id, name),
@@ -184,7 +192,7 @@ function buildTestApi() {
 		// --- Version control ---
 		commitMap: (message?: string) => commitMap(message),
 		checkoutCommit: (commitId: string) => checkoutCommit(commitId),
-		listCommits: (mapId: string) => vcs.listCommits(mapId),
+		listCommits: (mapId: string) => cmd.storeListCommits(mapId),
 
 		// --- Seen ---
 		getSeenEntries: (limit?: number, offset?: number, filter?: SeenFilter) =>
@@ -197,12 +205,12 @@ function buildTestApi() {
 		enrichAll: (opts?: any) => enrichAll(opts),
 		bulkPinToPano: (opts?: any) => bulkPinToPano(opts),
 		validateLocations: (locs: Location[], opts?: any) => validateLocations(locs, opts),
-		needsEnrichment,
+		needsEnrichment: (loc: Pick<Location, "extra">) => needsEnrichment(loc as Location),
 
 		// --- Rust bulk import ---
-		bulkImportPreview: (path: string) => invoke("bulk_import_preview", { path }),
+		bulkImportPreview: (path: string) => cmd.bulkImportPreview(path),
 		bulkImportConfirm: (path: string, selectedIndices: number[]) =>
-			invoke("bulk_import_confirm", { path, selectedIndices }),
+			cmd.bulkImportConfirm(path, selectedIndices),
 		invalidateMapList: () => invalidateMapList(),
 
 		// --- Import/export ---
@@ -214,13 +222,14 @@ function buildTestApi() {
 			mapName: string;
 			tagsJson: string;
 			extraFieldsJson: string | null;
-		}) => invoke("store_export_json", { opts }),
-		exportCsv: (scope: number[] | null) => invoke("store_export_csv", { scope }),
+		}) => cmd.storeExportJson(opts),
+		exportCsv: (scope: number[] | null) => cmd.storeExportCsv(scope),
 		exportGeoJson: (scope: number[] | null, tagsJson: string) =>
-			invoke("store_export_geojson", { scope, tagsJson }),
-		writeTempFile: (name: string, content: string) => invoke("write_temp_file", { name, content }),
-		importPreview: (path: string) => invoke("store_import_preview", { path }),
-		importFile: (droppedFields: string[]) => invoke("store_import_file", { droppedFields }),
+			cmd.storeExportGeojson(scope, tagsJson),
+		writeTempFile: (name: string, content: string) => cmd.writeTempFile(name, content),
+		importPreview: (path: string) => cmd.storeImportPreview(path),
+		importFile: (droppedFields: string[]) => cmd.storeImportFile(droppedFields),
+		importPaste: (text: string) => cmd.storeImportPaste(text),
 
 		// --- Low-level updates ---
 		updateLocationNoUndo: (id: number, patch: Partial<Location>) => {
@@ -228,19 +237,19 @@ function buildTestApi() {
 			for (const [k, v] of Object.entries(patch)) {
 				if (k !== "id") p[k] = v;
 			}
-			return invoke("store_update_locations", { updates: [[id, p]], recordUndo: false });
+			return cmd.storeUpdateLocations([[id, p as LocationPatch_Deserialize]], false);
 		},
 
 		// --- Tag counts ---
-		getTagCounts: () => invoke("store_tag_counts"),
+		getTagCounts: () => cmd.storeTagCounts(),
 
 		// --- Selection resolution ---
-		resolveSelection: (props: any) => invoke("store_resolve_selection", { props }),
+		resolveSelection: (props: any) => cmd.storeResolveSelection(props),
 		syncSelections: async () => {
 			const sels = getSelections().map((s) => ({ props: s.props, color: s.color }));
-			if (sels.length === 0) return { ids: [], counts: [] };
-			await invoke("store_sync_selections", { sels });
-			const ids: number[] = await invoke("store_get_selected_ids_list");
+			if (sels.length === 0) return { ids: [] as number[], counts: [] };
+			await cmd.storeSyncSelections(sels);
+			const ids = await cmd.storeGetSelectedIdsList();
 			return { ids };
 		},
 

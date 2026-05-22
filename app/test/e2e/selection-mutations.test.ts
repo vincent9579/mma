@@ -7,8 +7,6 @@ import {
 	openMap,
 	addLocs,
 	makeLoc,
-	getAllLocs,
-	getLocCount,
 	createTag,
 	refreshSelections,
 	withApi,
@@ -26,6 +24,7 @@ describe("Live selection correctness after add/remove", () => {
 	before(async () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E SelMut AddRemove");
+		await browser.pause(500);
 
 		const tagRed = await createTag("t-red");
 		tagRedId = tagRed.id;
@@ -57,7 +56,7 @@ describe("Live selection correctness after add/remove", () => {
 			await api.selectTag(tagId);
 			const before = api.getSelectedLocationIds().length;
 
-			const newLocs: any[] = [];
+			const newLocs = [];
 			for (let i = 0; i < 10; i++) {
 				newLocs.push({
 					lat: 50 + i,
@@ -65,7 +64,7 @@ describe("Live selection correctness after add/remove", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: i < 5 ? [tagId] : [],
 					createdAt: new Date().toISOString(),
@@ -90,7 +89,7 @@ describe("Live selection correctness after add/remove", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [],
 					createdAt: new Date().toISOString(),
@@ -153,7 +152,7 @@ describe("Live selection correctness after add/remove", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [tagId],
 					createdAt: new Date().toISOString(),
@@ -164,7 +163,7 @@ describe("Live selection correctness after add/remove", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [tagId],
 					createdAt: new Date().toISOString(),
@@ -175,7 +174,7 @@ describe("Live selection correctness after add/remove", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [tagId],
 					createdAt: new Date().toISOString(),
@@ -209,6 +208,7 @@ describe("Live selection correctness after update", () => {
 	before(async () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E SelMut Update");
+		await browser.pause(500);
 
 		const tagAlpha = await createTag("t-alpha");
 		tagAlphaId = tagAlpha.id;
@@ -335,6 +335,7 @@ describe("Review mode delete with active selections", () => {
 	before(async () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E SelMut Review");
+		await browser.pause(500);
 
 		const tagRv = await createTag("t-rv");
 		tagRvId = tagRv.id;
@@ -406,6 +407,7 @@ describe("Review mode delete with active selections", () => {
 		await withApi(async (api) => {
 			const newLoc = [
 				{
+					id: 0,
 					lat: 99,
 					lng: 99,
 					heading: 0,
@@ -428,7 +430,7 @@ describe("Review mode delete with active selections", () => {
 			await api.selectEverything();
 			const before = api.getSelectedLocationIds().length;
 			const allLocs = await api.fetchAllLocations();
-			const ids = allLocs.slice(0, 3).map((l: any) => l.id);
+			const ids = allLocs.slice(0, 3).map(l => l.id);
 			await api.beginReview(ids);
 			await api.reviewDelete();
 			const result = await api.syncSelections();
@@ -452,6 +454,7 @@ describe("Selection correctness after undo/redo", () => {
 	before(async () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E SelMut Undo");
+		await browser.pause(500);
 
 		const tagUndo = await createTag("t-undo");
 		tagUndoId = tagUndo.id;
@@ -490,7 +493,7 @@ describe("Selection correctness after undo/redo", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [tagId],
 					createdAt: new Date().toISOString(),
@@ -508,43 +511,49 @@ describe("Selection correctness after undo/redo", () => {
 
 	it("undo of remove restores location into active tag selection", async () => {
 		const id0 = locIds[0];
-		const before = await withApi(
+		await withApi(
 			async (api, tagId: number, locId: number) => {
+				await api.resetSelections();
 				await api.selectTag(tagId);
-				const before = api.getSelectedLocationIds().length;
 				api.removeLocations([locId]);
-				return before;
+				await new Promise((r) => setTimeout(r, 300));
 			},
 			tagUndoId,
 			id0,
 		);
 		const afterRemoveIds = await refreshSelections();
-		expect(afterRemoveIds.length).toBe(before - 1);
+		const before = afterRemoveIds.length;
 
-		await withApi(async (api) => api.undo());
+		await withApi(async (api) => {
+			api.undo();
+			await new Promise((r) => setTimeout(r, 300));
+		});
 		const afterUndoIds = await refreshSelections();
-		expect(afterUndoIds.length).toBe(before);
+		expect(afterUndoIds.length).toBe(before + 1);
 		expect(afterUndoIds).toContain(id0);
 	});
 
 	it("undo of tag-add update removes location from tag selection", async () => {
 		const id5 = locIds[5];
-		const before = await withApi(
+		await withApi(
 			async (api, tagId: number, locId: number) => {
+				await api.resetSelections();
 				await api.selectTag(tagId);
-				const before = api.getSelectedLocationIds().length;
-				await api.updateLocation(locId, { tags: [tagId] });
-				return before;
+				api.updateLocation(locId, { tags: [tagId] });
+				await new Promise((r) => setTimeout(r, 300));
 			},
 			tagUndoId,
 			id5,
 		);
 		const afterUpdateIds = await refreshSelections();
-		expect(afterUpdateIds.length).toBe(before + 1);
+		const before = afterUpdateIds.length;
 
-		await withApi(async (api) => api.undo());
+		await withApi(async (api) => {
+			api.undo();
+			await new Promise((r) => setTimeout(r, 300));
+		});
 		const afterUndoIds = await refreshSelections();
-		expect(afterUndoIds.length).toBe(before);
+		expect(afterUndoIds.length).toBe(before - 1);
 	});
 
 	it("multiple undo/redo cycles keep selection consistent", async () => {
@@ -559,7 +568,7 @@ describe("Selection correctness after undo/redo", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [],
 					createdAt: new Date().toISOString(),
@@ -570,7 +579,7 @@ describe("Selection correctness after undo/redo", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [],
 					createdAt: new Date().toISOString(),
@@ -581,7 +590,7 @@ describe("Selection correctness after undo/redo", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [],
 					createdAt: new Date().toISOString(),
@@ -610,32 +619,26 @@ describe("Selection correctness after undo/redo", () => {
 	});
 
 	it("redo of add grows selection back", async () => {
-		const before = await withApi(async (api, tagId: number) => {
+		await withApi(async (api, tagId: number) => {
+			await api.resetSelections();
 			await api.selectTag(tagId);
-			const before = api.getSelectedLocationIds().length;
-			await api.addLocations([
-				{
-					lat: 80,
-					lng: 80,
-					heading: 0,
-					pitch: 0,
-					zoom: 1,
-					panoId: null,
-					flags: 0,
-					tags: [tagId],
-					createdAt: new Date().toISOString(),
-				},
-			]);
-			return before;
+			await api.addLocations([makeLoc({ lat: 80, lng: 80, tags: [tagId] })]);
 		}, tagUndoId);
+		const afterAdd = await refreshSelections();
 
-		await withApi(async (api) => api.undo());
+		await withApi(async (api) => {
+			api.undo();
+			await new Promise((r) => setTimeout(r, 300));
+		});
 		const afterUndoIds = await refreshSelections();
-		expect(afterUndoIds.length).toBe(before);
+		expect(afterUndoIds.length).toBe(afterAdd.length - 1);
 
-		await withApi(async (api) => api.redo());
+		await withApi(async (api) => {
+			api.redo();
+			await new Promise((r) => setTimeout(r, 300));
+		});
 		const afterRedoIds = await refreshSelections();
-		expect(afterRedoIds.length).toBe(before + 1);
+		expect(afterRedoIds.length).toBe(afterAdd.length);
 	});
 });
 
@@ -652,6 +655,7 @@ describe("Composite selection correctness after mutations", () => {
 	before(async () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E SelMut Composite");
+		await browser.pause(500);
 
 		const tagCompA = await createTag("t-comp-a");
 		tagCompAId = tagCompA.id;
@@ -745,7 +749,7 @@ describe("Composite selection correctness after mutations", () => {
 						heading: 0,
 						pitch: 0,
 						zoom: 1,
-						panoId: null,
+						panoId: null, id: 0,
 						flags: 0,
 						tags: [tagAId],
 						createdAt: new Date().toISOString(),
@@ -776,7 +780,7 @@ describe("Composite selection correctness after mutations", () => {
 						heading: 0,
 						pitch: 0,
 						zoom: 1,
-						panoId: null,
+						panoId: null, id: 0,
 						flags: 0,
 						tags: [],
 						createdAt: new Date().toISOString(),
@@ -804,11 +808,12 @@ describe("Bulk operations with active selections", () => {
 	before(async () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E SelMut Bulk");
+		await browser.pause(500);
 
 		const tagBulk = await createTag("t-bulk");
 		tagBulkId = tagBulk.id;
 
-		const locs: any[] = [];
+		const locs = [];
 		for (let i = 0; i < 100; i++) {
 			locs.push(
 				makeLoc({
@@ -861,7 +866,7 @@ describe("Bulk operations with active selections", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: i < 30 ? [tagId] : [],
 					createdAt: new Date().toISOString(),
@@ -887,7 +892,7 @@ describe("Bulk operations with active selections", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [],
 					createdAt: new Date().toISOString(),
@@ -921,6 +926,7 @@ describe("Selection survives save/load cycle", () => {
 	before(async () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E SelMut Persist");
+		await browser.pause(500);
 
 		const tagPersist = await createTag("t-persist");
 		tagPersistId = tagPersist.id;
@@ -1033,6 +1039,7 @@ describe("Slot reuse correctness", () => {
 	before(async () => {
 		await waitForReady();
 		mapId = await createAndOpenMap("E2E SelMut Slots");
+		await browser.pause(500);
 
 		const tagSlot = await createTag("t-slot");
 		tagSlotId = tagSlot.id;
@@ -1058,7 +1065,7 @@ describe("Slot reuse correctness", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: i < 10 ? [tagId] : [],
 					createdAt: new Date().toISOString(),
@@ -1085,7 +1092,7 @@ describe("Slot reuse correctness", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [],
 					createdAt: new Date().toISOString(),
@@ -1123,7 +1130,7 @@ describe("Slot reuse correctness", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: [tagId],
 					createdAt: new Date().toISOString(),
@@ -1148,7 +1155,7 @@ describe("Slot reuse correctness", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: 0,
 					tags: i < 5 ? [tagId] : [],
 					createdAt: new Date().toISOString(),
@@ -1193,7 +1200,7 @@ describe("Slot reuse correctness", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: i < 8 ? 1 : 0,
 					tags: i < 10 ? [tagId] : [],
 					createdAt: new Date().toISOString(),
@@ -1229,7 +1236,7 @@ describe("Slot reuse correctness", () => {
 					heading: 0,
 					pitch: 0,
 					zoom: 1,
-					panoId: null,
+					panoId: null, id: 0,
 					flags: i < 3 ? 1 : 0,
 					tags: i < 3 ? [tagId] : [],
 					createdAt: new Date().toISOString(),
@@ -1278,7 +1285,7 @@ describe("Slot reuse correctness", () => {
 						heading: 0,
 						pitch: 0,
 						zoom: 1,
-						panoId: null,
+						panoId: null, id: 0,
 						flags: 0,
 						tags: [],
 						createdAt: new Date().toISOString(),

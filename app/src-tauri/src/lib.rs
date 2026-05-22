@@ -1,17 +1,20 @@
 use tauri::Manager;
-use tauri_plugin_sql::{Migration, MigrationKind};
 
 mod fast_io;
 mod import;
 mod location_store;
+mod map_meta;
 mod selections;
 mod arrow_bridge;
 mod export;
 mod geocoder;
+mod seen;
 mod types;
 mod util;
+mod vcs;
 
 #[tauri::command]
+#[specta::specta]
 fn write_temp_file(name: String, content: String) -> Result<String, String> {
     let path = std::env::temp_dir().join(format!("mma_{name}"));
     std::fs::write(&path, &content).map_err(|e| e.to_string())?;
@@ -19,17 +22,20 @@ fn write_temp_file(name: String, content: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn read_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
+#[specta::specta]
 fn get_db_uri(app: tauri::AppHandle) -> Result<String, String> {
     let path = fast_io::db_path(&app)?;
     Ok(format!("sqlite:{}", path.to_string_lossy()))
 }
 
 #[tauri::command]
+#[specta::specta]
 fn get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
     app.path().app_data_dir()
         .map(|p| p.to_string_lossy().into_owned())
@@ -37,6 +43,7 @@ fn get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn open_data_folder(app: tauri::AppHandle) -> Result<(), String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     #[cfg(target_os = "windows")]
@@ -48,7 +55,7 @@ fn open_data_folder(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 struct PluginManifest {
     id: String,
     name: String,
@@ -58,6 +65,7 @@ struct PluginManifest {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn list_user_plugins(app: tauri::AppHandle) -> Vec<PluginManifest> {
     let dir = match app.path().app_data_dir() {
         Ok(d) => d.join("plugins"),
@@ -93,241 +101,131 @@ fn list_user_plugins(app: tauri::AppHandle) -> Vec<PluginManifest> {
     plugins
 }
 
+fn build_http_client(follow_redirects: bool) -> reqwest::blocking::Client {
+    let redirect = if follow_redirects {
+        reqwest::redirect::Policy::default()
+    } else {
+        reqwest::redirect::Policy::none()
+    };
+    reqwest::blocking::Client::builder()
+        .use_native_tls()
+        .redirect(redirect)
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .expect("failed to build http client")
+}
+
+/// Follows redirects (svtile tiles, gmaps RPC).
+fn proxy_client() -> &'static reqwest::blocking::Client {
+    static C: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+    C.get_or_init(|| build_http_client(true))
+}
+
+/// Does NOT follow redirects, so the `Location` header is readable (googl).
+fn resolve_client() -> &'static reqwest::blocking::Client {
+    static C: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+    C.get_or_init(|| build_http_client(false))
+}
+
+fn proxy_error(msg: String) -> tauri::http::Response<Vec<u8>> {
+    tauri::http::Response::builder()
+        .status(502)
+        .header("Access-Control-Allow-Origin", "*")
+        .body(msg.into_bytes())
+        .unwrap()
+}
+
+/// Relays an upstream response body + content-type back to the webview with CORS.
+fn relay(resp: reqwest::blocking::Response, default_ct: &str) -> tauri::http::Response<Vec<u8>> {
+    let status = resp.status().as_u16();
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or(default_ct)
+        .to_string();
+    match resp.bytes() {
+        Ok(body) => tauri::http::Response::builder()
+            .status(status)
+            .header("Content-Type", content_type)
+            .header("Access-Control-Allow-Origin", "*")
+            .body(body.to_vec())
+            .unwrap(),
+        Err(e) => proxy_error(format!("read error: {e}")),
+    }
+}
+
+/// svtile: StreetView photosphere tiles via lh3.ggpht.com.
+fn fetch_svtile(url: &str) -> tauri::http::Response<Vec<u8>> {
+    match proxy_client().get(url).send() {
+        Ok(resp) => {
+            let mut out = relay(resp, "image/jpeg");
+            if let Ok(v) = "private, max-age=86400".parse() {
+                out.headers_mut().insert(tauri::http::header::CACHE_CONTROL, v);
+            }
+            out
+        }
+        Err(e) => proxy_error(format!("svtile fetch error: {e}")),
+    }
+}
+
+/// gmaps: forward a request (POST batchexecute etc.) to www.google.com.
+fn proxy_gmaps(
+    method: reqwest::Method,
+    url: &str,
+    content_type: String,
+    user_agent: String,
+    body: Vec<u8>,
+) -> tauri::http::Response<Vec<u8>> {
+    match proxy_client()
+        .request(method, url)
+        .header(reqwest::header::CONTENT_TYPE, content_type)
+        .header(reqwest::header::USER_AGENT, user_agent)
+        .body(body)
+        .send()
+    {
+        Ok(resp) => relay(resp, "text/plain"),
+        Err(e) => proxy_error(format!("gmaps fetch error: {e}")),
+    }
+}
+
+/// googl: resolve a goo.gl / maps.app.goo.gl short link by reading its redirect
+/// `Location` header; returns the target URL as a JSON string.
+fn resolve_googl(id: &str, mapsapp: bool) -> tauri::http::Response<Vec<u8>> {
+    let url = if mapsapp {
+        format!("https://maps.app.goo.gl/{id}")
+    } else {
+        format!("https://goo.gl/maps/{id}")
+    };
+    match resolve_client().get(&url).send() {
+        Ok(resp) => match resp
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+        {
+            Some(location) => tauri::http::Response::builder()
+                .status(200)
+                .header("Content-Type", "application/json")
+                .header("Access-Control-Allow-Origin", "*")
+                .body(serde_json::to_string(location).unwrap_or_default().into_bytes())
+                .unwrap(),
+            None => tauri::http::Response::builder()
+                .status(404)
+                .header("Access-Control-Allow-Origin", "*")
+                .body(Vec::new())
+                .unwrap(),
+        },
+        Err(e) => proxy_error(format!("googl fetch error: {e}")),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let migrations = vec![
-    Migration {
-        version: 1,
-        description: "create_initial_tables",
-        sql: "CREATE TABLE IF NOT EXISTS maps (
-                id TEXT PRIMARY KEY NOT NULL,
-                name TEXT NOT NULL DEFAULT '',
-                description TEXT NOT NULL DEFAULT '',
-                folder TEXT,
-                settings TEXT NOT NULL DEFAULT '{}',
-                score_bounds TEXT NOT NULL DEFAULT '\"auto\"',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-              );
-              CREATE TABLE IF NOT EXISTS tags (
-                id TEXT PRIMARY KEY NOT NULL,
-                map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-                name TEXT NOT NULL,
-                color TEXT NOT NULL,
-                visible INTEGER NOT NULL DEFAULT 1
-              );
-              CREATE TABLE IF NOT EXISTS locations (
-                id TEXT PRIMARY KEY NOT NULL,
-                map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-                lat REAL NOT NULL,
-                lng REAL NOT NULL,
-                heading REAL NOT NULL DEFAULT 0,
-                pitch REAL NOT NULL DEFAULT 0,
-                zoom REAL NOT NULL DEFAULT 0,
-                pano_id TEXT,
-                created_at TEXT NOT NULL
-              );
-              CREATE TABLE IF NOT EXISTS location_tags (
-                location_id TEXT NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
-                tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-                PRIMARY KEY (location_id, tag_id)
-              );
-              CREATE INDEX IF NOT EXISTS idx_locations_map_id ON locations(map_id);
-              CREATE INDEX IF NOT EXISTS idx_tags_map_id ON tags(map_id);
-              CREATE INDEX IF NOT EXISTS idx_location_tags_location ON location_tags(location_id);
-              CREATE INDEX IF NOT EXISTS idx_location_tags_tag ON location_tags(tag_id);",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 2,
-        description: "chunk_storage_and_vcs",
-        sql: "DROP TABLE IF EXISTS location_tags;
-              DROP TABLE IF EXISTS locations;
-              DROP INDEX IF EXISTS idx_locations_map_id;
-              DROP INDEX IF EXISTS idx_location_tags_location;
-              DROP INDEX IF EXISTS idx_location_tags_tag;
-              CREATE TABLE IF NOT EXISTS blobs (
-                hash TEXT PRIMARY KEY NOT NULL,
-                data TEXT NOT NULL
-              );
-              CREATE TABLE IF NOT EXISTS working_tree (
-                map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-                geohash TEXT NOT NULL,
-                blob_hash TEXT NOT NULL REFERENCES blobs(hash),
-                location_count INTEGER NOT NULL,
-                PRIMARY KEY (map_id, geohash)
-              );
-              CREATE TABLE IF NOT EXISTS commits (
-                id TEXT PRIMARY KEY NOT NULL,
-                map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-                parent_id TEXT,
-                message TEXT,
-                location_count INTEGER NOT NULL,
-                created_at TEXT NOT NULL
-              );
-              CREATE TABLE IF NOT EXISTS commit_trees (
-                commit_id TEXT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
-                geohash TEXT NOT NULL,
-                blob_hash TEXT NOT NULL REFERENCES blobs(hash),
-                location_count INTEGER NOT NULL,
-                PRIMARY KEY (commit_id, geohash)
-              );
-              CREATE INDEX IF NOT EXISTS idx_working_tree_map ON working_tree(map_id);
-              CREATE INDEX IF NOT EXISTS idx_commits_map ON commits(map_id);",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 3,
-        description: "edit_history",
-        sql: "CREATE TABLE IF NOT EXISTS edit_history (
-                map_id TEXT PRIMARY KEY NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-                undo_stack TEXT NOT NULL DEFAULT '[]',
-                redo_stack TEXT NOT NULL DEFAULT '[]'
-              );",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 4,
-        description: "pano_date_cache",
-        sql: "CREATE TABLE IF NOT EXISTS pano_date_cache (
-                pano_id TEXT PRIMARY KEY NOT NULL,
-                timestamp INTEGER NOT NULL
-              );",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 5,
-        description: "commit_hashes_and_diff_stats",
-        sql: "ALTER TABLE commits ADD COLUMN tree_hash TEXT;
-              ALTER TABLE commits ADD COLUMN added INTEGER NOT NULL DEFAULT 0;
-              ALTER TABLE commits ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;
-              ALTER TABLE commits ADD COLUMN modified INTEGER NOT NULL DEFAULT 0;",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 6,
-        description: "tag_sort_order",
-        sql: "ALTER TABLE tags ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 7,
-        description: "seen_log",
-        sql: "CREATE TABLE IF NOT EXISTS seen (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pano_id TEXT NOT NULL,
-                lat REAL NOT NULL,
-                lng REAL NOT NULL,
-                heading REAL NOT NULL,
-                pitch REAL NOT NULL,
-                zoom REAL NOT NULL,
-                entered_at INTEGER NOT NULL,
-                map_id TEXT,
-                location_id TEXT,
-                thumbnail BLOB
-              );
-              CREATE INDEX IF NOT EXISTS idx_seen_entered ON seen(entered_at DESC);",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 8,
-        description: "seen_v2",
-        sql: "DROP TABLE IF EXISTS seen;
-              CREATE TABLE IF NOT EXISTS seen (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pano_id TEXT NOT NULL,
-                lat REAL NOT NULL,
-                lng REAL NOT NULL,
-                heading REAL NOT NULL,
-                pitch REAL NOT NULL,
-                zoom REAL NOT NULL,
-                entered_at INTEGER NOT NULL,
-                map_id TEXT,
-                location_id TEXT,
-                country_code TEXT,
-                address TEXT,
-                thumbnail TEXT
-              );
-              CREATE INDEX IF NOT EXISTS idx_seen_entered ON seen(entered_at DESC);",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 9,
-        description: "map_extra",
-        sql: "ALTER TABLE maps ADD COLUMN extra TEXT NOT NULL DEFAULT '{}';",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 10,
-        description: "separate_blobs_db",
-        sql: "CREATE TABLE IF NOT EXISTS working_tree_new (
-                map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-                geohash TEXT NOT NULL,
-                blob_hash TEXT NOT NULL,
-                location_count INTEGER NOT NULL,
-                PRIMARY KEY (map_id, geohash)
-              );
-              INSERT INTO working_tree_new SELECT * FROM working_tree;
-              DROP TABLE working_tree;
-              ALTER TABLE working_tree_new RENAME TO working_tree;
-              CREATE INDEX IF NOT EXISTS idx_working_tree_map ON working_tree(map_id);
-
-              CREATE TABLE IF NOT EXISTS commit_trees_new (
-                commit_id TEXT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
-                geohash TEXT NOT NULL,
-                blob_hash TEXT NOT NULL,
-                location_count INTEGER NOT NULL,
-                PRIMARY KEY (commit_id, geohash)
-              );
-              INSERT INTO commit_trees_new SELECT * FROM commit_trees;
-              DROP TABLE commit_trees;
-              ALTER TABLE commit_trees_new RENAME TO commit_trees;
-
-              DROP TABLE IF EXISTS blobs;",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 11,
-        description: "location_count_on_maps",
-        sql: "ALTER TABLE maps ADD COLUMN location_count INTEGER NOT NULL DEFAULT 0;",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 12,
-        description: "tags_on_maps_row",
-        sql: "ALTER TABLE maps ADD COLUMN tags TEXT NOT NULL DEFAULT '{}';",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 13,
-        description: "seen_location_id_to_integer",
-        sql: "DROP TABLE IF EXISTS seen;
-              CREATE TABLE seen (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pano_id TEXT NOT NULL,
-                lat REAL NOT NULL,
-                lng REAL NOT NULL,
-                heading REAL NOT NULL,
-                pitch REAL NOT NULL,
-                zoom REAL NOT NULL,
-                entered_at INTEGER NOT NULL,
-                map_id TEXT,
-                location_id INTEGER,
-                country_code TEXT,
-                address TEXT,
-                thumbnail TEXT
-              );
-              CREATE INDEX IF NOT EXISTS idx_seen_entered ON seen(entered_at DESC);",
-        kind: MigrationKind::Up,
-    },
-    Migration {
-        version: 14,
-        description: "map_labels_and_last_opened",
-        sql: "ALTER TABLE maps ADD COLUMN labels TEXT NOT NULL DEFAULT '[]';
-              ALTER TABLE maps ADD COLUMN last_opened_at TEXT;",
-        kind: MigrationKind::Up,
-    }];
-
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!("[PANIC] {info}");
+        default_hook(info);
+    }));
     let builder = tauri::Builder::default()
         .register_uri_scheme_protocol("mma-buf", |_ctx, req| {
             let raw = req.uri().path().replace("%20", " ").replace("%3A", ":");
@@ -371,67 +269,151 @@ pub fn run() {
                     .status(404).body(vec![]).unwrap(),
             }
         })
+        .register_asynchronous_uri_scheme_protocol("svtile", |_ctx, req, responder| {
+            let path = req.uri().path().trim_start_matches('/').to_string();
+            let query = req.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
+            let url = format!("https://lh3.ggpht.com/jsapi2/a/b/c/{path}{query}");
+            std::thread::spawn(move || responder.respond(fetch_svtile(&url)));
+        })
+        .register_asynchronous_uri_scheme_protocol("gmaps", |_ctx, req, responder| {
+            let path = req.uri().path().to_string();
+            let query = req.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
+            let url = format!("https://www.google.com{path}{query}");
+            let method = req.method().clone();
+            let content_type = req
+                .headers()
+                .get(tauri::http::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("application/x-www-form-urlencoded")
+                .to_string();
+            let user_agent = req
+                .headers()
+                .get(tauri::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
+            let body = req.body().clone();
+            std::thread::spawn(move || {
+                responder.respond(proxy_gmaps(method, &url, content_type, user_agent, body))
+            });
+        })
+        .register_asynchronous_uri_scheme_protocol("googl", |_ctx, req, responder| {
+            let id = req.uri().path().trim_start_matches('/').to_string();
+            let mapsapp = req
+                .uri()
+                .query()
+                .unwrap_or("")
+                .split('&')
+                .any(|kv| kv == "source=mapsapp");
+            std::thread::spawn(move || responder.respond(resolve_googl(&id, mapsapp)));
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(location_store::StoreState::new(location_store::Store::new()))
-        .invoke_handler(tauri::generate_handler![
-            write_temp_file,
-            read_file,
-            get_db_uri,
-            get_app_data_dir,
-            open_data_folder,
-            list_user_plugins,
-            import::bulk_import_preview,
-            import::bulk_import_confirm,
-            import::store_import_preview,
-            import::store_import_file,
-            import::store_import_paste,
-            location_store::store_open_map,
-            location_store::store_close_map,
-            location_store::store_add_locations,
-            location_store::store_remove_locations,
-            location_store::store_update_locations,
-            location_store::store_strip_tags,
-            location_store::store_set_active,
-            location_store::store_get_location,
-            location_store::store_get_locations_by_ids,
-            location_store::store_get_all_locations,
-            location_store::store_save_dirty,
-            location_store::store_get_summary,
-            location_store::store_tag_counts,
-            location_store::store_alloc_tag_id,
-            location_store::store_resolve_tag_names,
-            location_store::store_bounds,
-            location_store::store_commit_diff,
-            location_store::store_reset_undo,
-            location_store::store_undo,
-            location_store::store_redo,
-            location_store::store_can_undo_redo,
-            location_store::store_location_count,
-            location_store::store_has_location,
-            location_store::store_extra_field_values,
-            location_store::store_fill_render_attrs,
-            location_store::store_fill_render_file,
-            location_store::store_resolve_pick,
-            location_store::store_sync_selections,
-            location_store::store_get_selected_ids_list,
-            location_store::store_set_selected_ids,
-            location_store::store_resolve_selection,
-            location_store::store_add_selection,
-            location_store::store_remove_selection,
-            location_store::store_reset_selections,
-            location_store::store_get_selections,
-            location_store::store_get_selected_ids,
-            location_store::store_refresh_selections,
-            location_store::store_bake_and_save,
-            location_store::store_snapshot_commit,
-            location_store::store_restore_commit,
-            export::store_export_json,
-            export::store_export_csv,
-            export::store_export_geojson,
-            export::store_export_bulk_zip,
-            geocoder::reverse_geocode,
-        ])
+        .invoke_handler({
+            let mut specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
+                .dangerously_cast_bigints_to_number()
+                .semantic_types(specta_typescript::semantic::Configuration::default().enable_lossless_floats())
+                .commands(tauri_specta::collect_commands![
+                    write_temp_file,
+                    read_file,
+                    get_db_uri,
+                    get_app_data_dir,
+                    open_data_folder,
+                    list_user_plugins,
+                    import::bulk_import_preview,
+                    import::bulk_import_confirm,
+                    import::store_import_preview,
+                    import::store_import_file,
+                    import::store_import_paste,
+                    location_store::store_open_map,
+                    location_store::store_close_map,
+                    location_store::store_add_locations,
+                    location_store::store_remove_locations,
+                    location_store::store_update_locations,
+                    location_store::store_strip_tags,
+                    location_store::store_set_active,
+                    location_store::store_get_location,
+                    location_store::store_get_location_file,
+                    location_store::store_get_locations_by_ids,
+                    location_store::store_get_all_locations,
+                    location_store::store_save_dirty,
+                    location_store::store_get_summary,
+                    location_store::store_tag_counts,
+                    location_store::store_alloc_tag_id,
+                    location_store::store_resolve_tag_names,
+                    location_store::store_bounds,
+                    location_store::store_commit_diff,
+                    location_store::store_reset_undo,
+                    location_store::store_undo,
+                    location_store::store_redo,
+                    location_store::store_can_undo_redo,
+                    location_store::store_location_count,
+                    location_store::store_has_location,
+                    location_store::store_extra_field_values,
+                    location_store::store_fill_render_file,
+                    location_store::store_resolve_pick,
+                    location_store::store_sync_selections,
+                    location_store::store_get_selected_ids_list,
+                    location_store::store_set_selected_ids,
+                    location_store::store_resolve_selection,
+                    location_store::store_find_nearby,
+                    location_store::store_add_selection,
+                    location_store::store_remove_selection,
+                    location_store::store_reset_selections,
+                    location_store::store_get_selections,
+                    location_store::store_get_selected_ids,
+                    location_store::store_refresh_selections,
+                    location_store::store_bake_and_save,
+                    location_store::store_snapshot_commit,
+                    location_store::store_restore_commit,
+                    export::store_export_json,
+                    export::store_export_csv,
+                    export::store_export_geojson,
+                    export::store_export_bulk_zip,
+                    geocoder::reverse_geocode,
+                    map_meta::store_list_maps,
+                    map_meta::store_get_map,
+                    map_meta::store_create_map,
+                    map_meta::store_delete_map,
+                    map_meta::store_update_map_meta,
+                    map_meta::store_save_tags,
+                    map_meta::store_touch_map_opened,
+                    map_meta::store_rename_folder,
+                    map_meta::store_delete_folder,
+                    map_meta::store_move_map_to_folder,
+                    map_meta::store_update_map_labels,
+                    map_meta::store_get_pano_date,
+                    map_meta::store_set_pano_date,
+                    map_meta::store_db_table_info,
+                    map_meta::store_db_clear_table,
+                    map_meta::store_db_stats,
+                    seen::store_seen_write,
+                    seen::store_seen_list,
+                    seen::store_seen_count,
+                    seen::store_seen_countries,
+                    seen::store_seen_maps,
+                    seen::store_seen_clear,
+                    vcs::store_create_commit,
+                    vcs::store_list_commits,
+                    vcs::store_checkout_commit,
+                ]);
+
+            #[cfg(debug_assertions)]
+            {
+                let out = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.gen.ts");
+                eprintln!("[specta] exporting to {}", out.display());
+                match specta_builder.export(specta_typescript::Typescript::default(), &out) {
+                    Ok(()) => eprintln!("[specta] bindings exported OK"),
+                    Err(e) => {
+                        eprintln!("[specta] export FAILED: {e}");
+                        eprintln!("[specta] debug: {e:?}");
+                    }
+                }
+            }
+
+            specta_builder.invoke_handler()
+        })
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(if cfg!(debug_assertions) { log::LevelFilter::Debug } else { log::LevelFilter::Info })
@@ -440,20 +422,11 @@ pub fn run() {
                 .target(tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::LogDir { file_name: Some("mma".to_string()) },
                 ))
-                .target(tauri_plugin_log::Target::new(
-                    tauri_plugin_log::TargetKind::Stdout,
-                ))
                 .build(),
         )
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
-            let db_uri = format!("sqlite:{}", fast_io::db_path(app.handle())?.to_string_lossy());
-            log::info!("[MMA] db_uri: {}", db_uri);
-            app.handle().plugin(
-                tauri_plugin_sql::Builder::default()
-                    .add_migrations(&db_uri, migrations)
-                    .build(),
-            )?;
+            fast_io::run_migrations(app.handle())?;
 
             #[cfg(desktop)]
             {

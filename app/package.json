@@ -7,6 +7,7 @@
 		"gen:plugin-types": "node ../plugins/types/generate.js",
 		"dev": "vite",
 		"build": "npm run gen:plugin-types && vite build",
+		"build:opensv": "node opensv-build/build-opensv.mjs",
 		"lint": "eslint .",
 		"preview": "vite preview",
 		"test": "vitest run",
@@ -14,7 +15,6 @@
 		"bench": "vitest bench --run",
 		"build:e2e": "set VITE_E2E=1&& cargo tauri build --debug --features e2e",
 		"test:e2e": "set MMA_TEST_DB=1&& wdio run wdio.conf.ts",
-		"test:e2e:log": "powershell -Command \"$f = 'test/logs/e2e-' + (Get-Date -Format 'yyyy-MM-ddTHH-mm-ss') + '.txt'; wdio run wdio.conf.ts 2>&1 | Tee-Object -FilePath $f\"",
 		"prepare": "husky || true"
 	},
 	"dependencies": {
@@ -36,7 +36,6 @@
 		"@tauri-apps/plugin-log": "^2.8.0",
 		"@tauri-apps/plugin-process": "^2.3.1",
 		"@tauri-apps/plugin-shell": "^2.3.5",
-		"@tauri-apps/plugin-sql": "^2.4.0",
 		"@tauri-apps/plugin-updater": "^2.10.1",
 		"clsx": "^2.1.1",
 		"cmdk": "^1.1.1",
@@ -64,6 +63,7 @@
 		"eslint-plugin-react-refresh": "^0.5.2",
 		"globals": "^17.5.0",
 		"prettier": "^3.8.3",
+		"terser": "^5.47.1",
 		"typescript": "~6.0.2",
 		"typescript-eslint": "^8.58.2",
 		"vite": "^7.3.2",

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import {
 	addTags,
-	emitRenderDelta,
+	renderDeltaBus,
 	refreshAfterMutation,
 	scheduleSave,
 	addLocationCount,
@@ -10,42 +10,14 @@ import {
 	setUndoRedoState,
 } from "@/store/useMapStore";
 import { fmt } from "@/lib/util/format";
-import { invoke } from "@tauri-apps/api/core";
+import { cmd } from "@/lib/commands";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { log } from "@/lib/util/log";
 import { debugSpan } from "@/lib/util/debug";
-import type { CellDelta } from "@/lib/render/CellManager";
+import { type ImportResult, type ImportPreview } from "@/types"
 
 interface Props {
 	onClose: () => void;
-}
-
-interface FieldCount {
-	key: string;
-	count: number;
-}
-
-interface ImportTag {
-	id: number;
-	name: string;
-	color: string;
-}
-
-interface ImportPreview {
-	locationCount: number;
-	tags: ImportTag[];
-	fields: FieldCount[];
-	warnings: string[];
-}
-
-interface ImportResult {
-	locationCount: number;
-	tags: ImportTag[];
-	delta: CellDelta;
-	warnings: string[];
-	tagCounts: Record<number, number>;
-	canUndo: boolean;
-	canRedo: boolean;
 }
 
 const FIELD_PREFS_KEY = "import-field-prefs";
@@ -82,7 +54,7 @@ export function ImportDialog({ onClose }: Props) {
 
 			setStatus("preview");
 			try {
-				const p: ImportPreview = await invoke("store_import_preview", { path });
+				const p = await cmd.storeImportPreview(path);
 				if (cancelled) return;
 				setPreview(p);
 			} catch (e: unknown) {
@@ -112,16 +84,14 @@ export function ImportDialog({ onClose }: Props) {
 		setStatus("importing");
 		const span = debugSpan("import:rust");
 		try {
-			const r: ImportResult = await invoke("store_import_file", {
-				droppedFields: [...droppedFields],
-			});
+			const r = await cmd.storeImportFile([...droppedFields]);
 			span.end(`${r.locationCount} locs, ${r.tags.length} tags`);
 
 			addTags(r.tags.map((t) => ({ id: t.id, name: t.name, color: t.color, visible: true })));
 			addLocationCount(r.locationCount);
 			setTagCounts(r.tagCounts);
 			setUndoRedoState(r.canUndo, r.canRedo);
-			emitRenderDelta(r.delta);
+			renderDeltaBus.emit(r.delta);
 			refreshAfterMutation();
 			scheduleSave();
 			setResult(r);

@@ -4,26 +4,32 @@
  */
 
 import type { TestAPI } from "@/lib/testApi.add";
+import type { Location } from "@/types";
 
 /**
  * Run an async function in the browser with the test API injected as `api`.
  * Handles the done callback, try/catch, and serialization boilerplate.
+ * The result type is inferred from whatever the callback returns.
  *
  * Usage: `await withApi(async (api, id) => api.fetchLocation(id), locId);`
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function withApi(
-	fn: (api: TestAPI, ...args: any[]) => any,
-	...args: any[]
-): Promise<any> {
+export async function withApi<A extends unknown[], R>(
+	fn: (api: TestAPI, ...args: A) => R,
+	...args: A
+): Promise<Awaited<R>> {
 	const wrapped = new Function(
 		"...___a",
 		`const ___d = ___a.pop();
      const api = window.__TEST_API__;
-     (async () => { try { ___d(await (${fn.toString()})(api, ...___a)); } catch(e) { ___d({error:e.message}); } })();`,
+     const makeLoc = (o = {}) => ({ id: 0, lat: Math.random() * 170 - 85, lng: Math.random() * 360 - 180, heading: Math.random() * 360, pitch: 0, zoom: 1, panoId: null, flags: 0, tags: [], createdAt: new Date().toISOString(), ...o });
+     (async () => { try { ___d(await (${fn.toString()})(api, ...___a)); } catch(e) { ___d({ __withApiError: e.message }); } })();`,
 	);
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return browser.executeAsync(wrapped as any, ...args);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- callback is serialized and re-evaluated in the browser; this bridge can't be statically typed
+	const result = (await browser.executeAsync(wrapped as any, ...args)) as unknown;
+	if (result !== null && typeof result === "object" && "__withApiError" in result) {
+		throw new Error(String((result as { __withApiError: unknown }).__withApiError));
+	}
+	return result as Awaited<R>;
 }
 
 export async function waitForReady() {
@@ -35,13 +41,11 @@ export async function waitForReady() {
 }
 
 export async function createAndOpenMap(name: string): Promise<string> {
-	const mapId = await withApi(async (api, n) => {
-		const map = await api.createMap(n);
+	return withApi(async (api, n) => {
+		const map = await api.createMap(n, null);
 		await api.openMap(map.meta.id);
 		return map.meta.id;
 	}, name);
-	if (typeof mapId === "string" && mapId.startsWith("ERROR")) throw new Error(mapId);
-	return mapId as string;
 }
 
 export async function openMap(id: string) {
@@ -68,11 +72,26 @@ export async function flushAndWait() {
 	await withApi(async (api) => api.flushSave());
 }
 
+/** Open a location in the editor via the test API. */
+export async function openLocation(id: number) {
+	await withApi(async (api, locId) => {
+		api.setActiveLocation(locId, false);
+	}, id);
+}
+
+/** Close the active location (return to overview) via the test API. */
+export async function closeLocation() {
+	await withApi(async (api) => {
+		api.setActiveLocation(null);
+	});
+	await browser.pause(300);
+}
+
 // --- Location helpers ---
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function makeLoc(overrides: Record<string, any> = {}): Record<string, any> {
+export function makeLoc(overrides: Partial<Location> = {}): Location {
 	return {
+		id: 0, // placeholder; Rust assigns the real ID on insert
 		lat: Math.random() * 170 - 85,
 		lng: Math.random() * 360 - 180,
 		heading: Math.random() * 360,
@@ -124,23 +143,25 @@ export function makeLocBatch(
   `;
 }
 
-export async function addLocs(locs: Record<string, unknown>[]): Promise<number[]> {
-	const result = await withApi(async (api, locations) => {
+export async function addLocs(locs: Location[]): Promise<number[]> {
+	return withApi(async (api, locations) => {
 		await api.addLocations(locations);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		return locations.map((l: any) => l.id);
+		return locations.map((l) => l.id);
 	}, locs);
-	if (result && typeof result === "object" && "error" in result) throw new Error(result.error);
-	return result as number[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getLoc(id: number): Promise<any> {
+export async function getLoc(id: number): Promise<Location> {
+	const loc = await withApi(async (api, locId) => api.fetchLocation(locId), id);
+	if (loc == null) throw new Error(`Location ${id} not found`);
+	return loc;
+}
+
+/** Like getLoc but returns null instead of throwing — for asserting a location was removed. */
+export async function getLocOrNull(id: number): Promise<Location | null> {
 	return withApi(async (api, locId) => api.fetchLocation(locId), id);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getAllLocs(): Promise<any[]> {
+export async function getAllLocs(): Promise<Location[]> {
 	return withApi(async (api) => api.fetchAllLocations());
 }
 
