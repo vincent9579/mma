@@ -14,7 +14,7 @@ export function EnrichInfoButton() {
 					setOpen(true);
 				}}
 				title="What is metadata enrichment?"
-				style={{ padding: "0 0.25rem", color: "#888", flexShrink: 0 }}
+				style={{ padding: 0, color: "#888", flexShrink: 0 }}
 			>
 				<Icon path={mdiInformationOutline} size={14} />
 			</button>

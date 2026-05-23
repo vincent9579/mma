@@ -2,8 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { ManageFieldsModal } from "@/components/dialogs/ManageFieldsModal.add";
 import { getEnrichFieldOptions, getAllEnrichKeys } from "@/lib/data/fieldDefs.add";
 import { useSetting } from "@/store/settings.add";
+import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import type { MapStyle } from "@/lib/geo/tiles";
 import { EnrichInfoButton } from "@/components/editor/map/EnrichInfoButton";
+import { Icon } from "@/components/primitives/Icon";
+import { mdiCogOutline } from "@mdi/js";
 import { type SvColor, SV_COLORS, type MapTypeKey } from "./mapSettingsTypes";
 
 const MAP_TYPE_LABELS: Record<MapTypeKey, string> = {
@@ -305,6 +308,7 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 	const showExactDate = useSetting("showExactDate");
 	const [isOpen, setIsOpen] = useState(false);
 	const [showManageFields, setShowManageFields] = useState(false);
+	const [showEnrichFields, setShowEnrichFields] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -422,38 +426,21 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 							/>
 							Enrich locations with metadata
 							<EnrichInfoButton />
+							{s.enrichMetadata && (
+								<button
+									className="icon-button"
+									title="Configure enrichment fields"
+									style={{ padding: 0, color: "#888", flexShrink: 0 }}
+									onClick={(e) => {
+										e.preventDefault();
+										setShowEnrichFields(true);
+										setIsOpen(false);
+									}}
+								>
+									<Icon path={mdiCogOutline} size={14} />
+								</button>
+							)}
 						</label>
-						{s.enrichMetadata && (
-							<details className="settings-popup__details">
-								<summary className="settings-popup__summary">Enrichment fields</summary>
-								<div className="settings-popup__sub-items">
-									{getEnrichFieldOptions().map((f) => {
-										const exactDateOff = !showExactDate && (f.key === "datetime" || f.key === "timezone");
-										const enabled = !exactDateOff && (!s.enrichFields || s.enrichFields.includes(f.key));
-										return (
-											<label key={f.key} className="settings-popup__item" style={exactDateOff ? { opacity: 0.5 } : undefined}>
-												<input
-													type="checkbox"
-													checked={enabled}
-													disabled={exactDateOff}
-													onChange={(e) => {
-														const allKeys = getAllEnrichKeys();
-														const current = s.enrichFields ?? [...allKeys];
-														const next = e.target.checked
-															? [...current, f.key]
-															: current.filter((k) => k !== f.key);
-														s.setEnrichFields(
-															next.length === allKeys.length ? null : next,
-														);
-													}}
-												/>
-												{f.label}
-											</label>
-										);
-									})}
-								</div>
-							</details>
-						)}
 					</fieldset>
 					<fieldset className="fieldset">
 						<legend className="fieldset__header">
@@ -494,6 +481,37 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 				</div>
 			)}
 			{showManageFields && <ManageFieldsModal onClose={() => setShowManageFields(false)} />}
+			<Dialog open={showEnrichFields} onOpenChange={setShowEnrichFields}>
+				<DialogContent title="Enrichment fields">
+					<p style={{ margin: "0 0 .5rem", fontSize: ".85rem", color: "#888" }}>
+						Choose which metadata fields to fetch when enriching locations.
+					</p>
+					{getEnrichFieldOptions().map((f) => {
+						const exactDateOff = !showExactDate && (f.key === "datetime" || f.key === "timezone");
+						const enabled = !exactDateOff && (!s.enrichFields || s.enrichFields.includes(f.key));
+						return (
+							<label key={f.key} className="settings-popup__item" style={{ display: "flex", alignItems: "center", gap: ".5rem", ...(exactDateOff ? { opacity: 0.5 } : undefined) }}>
+								<input
+									type="checkbox"
+									checked={enabled}
+									disabled={exactDateOff}
+									onChange={(e) => {
+										const allKeys = getAllEnrichKeys();
+										const current = s.enrichFields ?? [...allKeys];
+										const next = e.target.checked
+											? [...current, f.key]
+											: current.filter((k) => k !== f.key);
+										s.setEnrichFields(
+											next.length === allKeys.length ? null : next,
+										);
+									}}
+								/>
+								{f.label}
+							</label>
+						);
+					})}
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }
