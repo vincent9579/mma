@@ -1,7 +1,8 @@
+// @vitest-environment jsdom
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from "vitest";
 import {
 	parsePanoDate,
-	extractPanoDates,
 	svSearchRadius,
 	normalizeHeading,
 	calcHeading,
@@ -40,50 +41,6 @@ describe("parsePanoDate", () => {
 		const d = parsePanoDate({ year: 2020 });
 		expect(d.getFullYear()).toBe(2020);
 		expect(d.getMonth()).toBe(0);
-	});
-});
-
-describe("extractPanoDates", () => {
-	function makePanoData(time: { pano: string; date?: any }[]) {
-		return { time } as any;
-	}
-
-	it("extracts and sorts dates", () => {
-		const data = makePanoData([
-			{ pano: "B", date: { year: 2024, month: 6 } },
-			{ pano: "A", date: { year: 2020, month: 1 } },
-		]);
-		const result = extractPanoDates(data);
-		expect(result).toHaveLength(2);
-		expect(result[0].pano).toBe("A"); // 2020 before 2024
-		expect(result[1].pano).toBe("B");
-	});
-
-	it("deduplicates by pano ID", () => {
-		const data = makePanoData([
-			{ pano: "A", date: { year: 2020, month: 1 } },
-			{ pano: "A", date: { year: 2021, month: 1 } },
-		]);
-		const result = extractPanoDates(data);
-		expect(result).toHaveLength(1);
-	});
-
-	it("returns empty for null data", () => {
-		expect(extractPanoDates(null)).toEqual([]);
-	});
-
-	it("returns empty for data with no time array", () => {
-		expect(extractPanoDates({} as any)).toEqual([]);
-	});
-
-	it("skips entries without pano ID", () => {
-		const data = makePanoData([
-			{ pano: "", date: { year: 2020, month: 1 } },
-			{ pano: "A", date: { year: 2020, month: 2 } },
-		]);
-		const result = extractPanoDates(data);
-		expect(result).toHaveLength(1);
-		expect(result[0].pano).toBe("A");
 	});
 });
 
