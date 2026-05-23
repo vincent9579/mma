@@ -1017,6 +1017,10 @@ export function updateTags(patches: { id: number; patch: Partial<Tag> }[]) {
 	mapVersion++;
 	notify();
 	persistTags();
+	// If color changes while selected... update it visually
+	if (selections.some((s) => { const p = s.props; return p.type === "Tag" && patches.some((q) => q.id === p.tagId); })) {
+		applySelectionUpdate((_, sels) => sels);
+	}
 }
 
 export async function deleteTags(tagIds: number[]) {
