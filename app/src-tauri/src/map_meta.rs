@@ -21,6 +21,7 @@ pub struct MapSettings {
     pub export_unpanned: bool,
     pub enrich_metadata: bool,
     pub enrich_fields: Option<Vec<String>>,
+    pub generated_location_tag: Option<String>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]

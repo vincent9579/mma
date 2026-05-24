@@ -8,6 +8,7 @@ import {
 	addLocations,
 	setActiveLocation,
 	getActiveLocation,
+	resolveTagsByName,
 	addTags,
 	addLocationCount,
 	setTagCounts,
@@ -51,8 +52,7 @@ function usePasteHandler() {
 				if (parsed) {
 					let tagIds: number[] = [];
 					if (parsed.tags.length > 0) {
-						const resolved = await cmd.storeResolveTagNames(parsed.tags);
-						addTags(resolved);
+						const resolved = await resolveTagsByName(parsed.tags);
 						tagIds = resolved.map((t) => t.id);
 					}
 					const loc = createLocation({

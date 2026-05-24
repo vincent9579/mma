@@ -7,7 +7,7 @@ import { RegionSelector } from "./RegionSelector";
 import { SettingsPanel } from "./SettingsPanel";
 import { ProgressDisplay } from "./ProgressDisplay";
 import { google } from "@/lib/sv/opensv";
-import { getSelections } from "@/store/useMapStore";
+import { getSelections, getCurrentMap, resolveTagsByName } from "@/store/useMapStore";
 import type { Selection } from "@/store/selections";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiArrowLeft } from "@mdi/js";
@@ -29,7 +29,7 @@ function saveSettings(s: GeneratorSettings) {
 	localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
 }
 
-function generatedToLocation(loc: GeneratedLocation) {
+function generatedToLocation(loc: GeneratedLocation, tagId: number | null) {
 	return createLocation({
 		lat: loc.lat,
 		lng: loc.lng,
@@ -37,8 +37,16 @@ function generatedToLocation(loc: GeneratedLocation) {
 		pitch: loc.pitch,
 		panoId: loc.panoId,
 		flags: LocationFlag.LoadAsPanoId,
+		...(tagId != null ? { tags: [tagId] } : {}),
 		...(loc.imageDate ? { extra: { imageDate: loc.imageDate } } : {}),
 	});
+}
+
+async function resolveGeneratedLocationTag(): Promise<number | null> {
+	const tagName = getCurrentMap()?.meta.settings?.generatedLocationTag;
+	if (!tagName) return null;
+	const [tag] = await resolveTagsByName([tagName]);
+	return tag.id;
 }
 
 function selectionToRegion(sel: Selection, meta: GeneratorRegionMeta): GeneratorRegion | null {
@@ -63,6 +71,7 @@ let sessionMeta: Map<string, GeneratorRegionMeta> = new Map();
 let sessionEngine: GenerationEngine | null = null;
 let sessionRunning = false;
 let sessionPaused = false;
+let sessionTagId: number | null = null;
 
 export function GeneratorSidebar({ onClose }: { onClose: () => void }) {
 	const [settings, setSettings] = useState<GeneratorSettings>(loadSettings);
@@ -80,9 +89,10 @@ export function GeneratorSidebar({ onClose }: { onClose: () => void }) {
 	useEffect(() => {
 		const engine = engineRef.current;
 		if (!engine || !running) return;
+		const tagId = sessionTagId;
 		engine.replaceCallbacks({
 			onLocationsFound: (locs: GeneratedLocation[]) => {
-				MMA.addLocations(locs.map(generatedToLocation));
+				MMA.addLocations(locs.map((l) => generatedToLocation(l, tagId)));
 				rerender((n) => n + 1);
 			},
 			onProgress: () => {
@@ -108,10 +118,13 @@ export function GeneratorSidebar({ onClose }: { onClose: () => void }) {
 		});
 	}, []);
 
-	const handleStart = useCallback(() => {
+	const handleStart = useCallback(async () => {
 		const sels = getSelections().filter((s) => s.props.type === "Polygon");
 		if (sels.length === 0) return;
 		if (!google) return;
+
+		const tagId = await resolveGeneratedLocationTag();
+		sessionTagId = tagId;
 
 		// Reset metadata for selected regions
 		const nextMeta = new Map(sessionMeta);
@@ -129,7 +142,7 @@ export function GeneratorSidebar({ onClose }: { onClose: () => void }) {
 
 		const engine = new GenerationEngine(google, settings, regions, {
 			onLocationsFound: (locs: GeneratedLocation[]) => {
-				MMA.addLocations(locs.map(generatedToLocation));
+				MMA.addLocations(locs.map((l) => generatedToLocation(l, tagId)));
 				rerender((n) => n + 1);
 			},
 			onProgress: () => {

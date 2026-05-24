@@ -19,6 +19,8 @@ export interface MapSettingsState {
 	setEnrichMetadata: (v: boolean) => void;
 	enrichFields: string[] | null;
 	setEnrichFields: (v: string[] | null) => void;
+	generatedLocationTag: string | null;
+	setGeneratedLocationTag: (v: string | null) => void;
 }
 
 export function useMapSettings(
@@ -33,6 +35,7 @@ export function useMapSettings(
 	const [defaultPanoId, _setDefaultPanoId] = useState(false);
 	const [enrichMetadata, _setEnrichMetadata] = useState(true);
 	const [enrichFields, _setEnrichFields] = useState<string[] | null>(null);
+	const [generatedLocationTag, _setGeneratedLocationTag] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (!ms) return;
@@ -44,6 +47,7 @@ export function useMapSettings(
 		_setDefaultPanoId(ms.defaultPanoId);
 		_setEnrichMetadata(ms.enrichMetadata ?? true);
 		_setEnrichFields(ms.enrichFields);
+		_setGeneratedLocationTag(ms.generatedLocationTag ?? null);
 	}, [ms]);
 
 	const makeSetter =
@@ -76,5 +80,7 @@ export function useMapSettings(
 		setEnrichMetadata: makeSetter("enrichMetadata", _setEnrichMetadata),
 		enrichFields,
 		setEnrichFields: makeSetter("enrichFields", _setEnrichFields),
+		generatedLocationTag,
+		setGeneratedLocationTag: makeSetter("generatedLocationTag", _setGeneratedLocationTag),
 	};
 }

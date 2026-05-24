@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { cmd } from "@/lib/commands";
 import type { Location, Tag } from "@/types";
+import { resolveTagsByName } from "@/store/useMapStore";
 
 function tagIdsToNames(tagIds: number[], tags: Record<string, Tag>): string[] {
 	return tagIds.map((id) => tags[id]?.name ?? String(id));
@@ -8,8 +8,7 @@ function tagIdsToNames(tagIds: number[], tags: Record<string, Tag>): string[] {
 
 async function resolveTagNames(names: string[]): Promise<number[]> {
 	if (names.length === 0) return [];
-	const resolved = await cmd.storeResolveTagNames(names);
-	for (const t of resolved) MMA.addTag(t);
+	const resolved = await resolveTagsByName(names);
 	return resolved.map((t) => t.id);
 }
 

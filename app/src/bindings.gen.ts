@@ -399,6 +399,7 @@ export type MapSettings = {
 	exportUnpanned: boolean,
 	enrichMetadata: boolean,
 	enrichFields: string[] | null,
+	generatedLocationTag: string | null,
 };
 
 export type MutationResult = MutationResult_Serialize | MutationResult_Deserialize;

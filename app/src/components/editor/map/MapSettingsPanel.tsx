@@ -72,6 +72,8 @@ export interface MapSettingsDropdownProps {
 	setEnrichMetadata: (v: boolean) => void;
 	enrichFields: string[] | null;
 	setEnrichFields: (v: string[] | null) => void;
+	generatedLocationTag: string | null;
+	setGeneratedLocationTag: (v: string | null) => void;
 }
 
 function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
@@ -440,6 +442,21 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 									<Icon path={mdiCogOutline} size={14} />
 								</button>
 							)}
+						</label>
+					</fieldset>
+					<fieldset className="fieldset">
+						<legend className="fieldset__header">
+							Generation <span className="fieldset__divider" />
+						</legend>
+						<label className="settings-popup__item settings-popup__select">
+							Tag generated locations:
+							<input
+								className="input"
+								type="text"
+								value={s.generatedLocationTag ?? ""}
+								onChange={(e) => s.setGeneratedLocationTag(e.target.value || null)}
+								placeholder="None"
+							/>
 						</label>
 					</fieldset>
 					<fieldset className="fieldset">

@@ -8,7 +8,6 @@ import {
 	useMemo,
 	useSyncExternalStore,
 } from "react";
-import { cmd } from "@/lib/commands";
 import { LocationFlag, hasLoadAsPanoId, createLocation } from "@/types";
 import type { Location, Tag } from "@/types";
 import {
@@ -22,7 +21,7 @@ import {
 	removeLocations,
 	duplicateLocation,
 	addLocations,
-	addTags,
+	resolveTagsByName,
 	setActiveLocation,
 	cancelReview,
 	reviewNext,
@@ -461,8 +460,7 @@ function FullscreenTagBar({
 		e.preventDefault();
 		const name = input.trim();
 		if (!name) return;
-		const [resolved] = await cmd.storeResolveTagNames([name]);
-		addTags([resolved]);
+		const [resolved] = await resolveTagsByName([name]);
 		if (!pendingTags.includes(resolved.id)) {
 			onChangeTags([...pendingTags, resolved.id]);
 		}
@@ -1258,8 +1256,7 @@ export function LocationPreview() {
 		e.preventDefault();
 		const name = tagInput.trim();
 		if (!name) return;
-		const [resolved] = await cmd.storeResolveTagNames([name]);
-		addTags([resolved]);
+		const [resolved] = await resolveTagsByName([name]);
 		if (!pendingTags.includes(resolved.id)) {
 			setPendingTags([...pendingTags, resolved.id]);
 		}

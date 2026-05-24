@@ -938,6 +938,13 @@ function reconcileTags() {
 	}
 }
 
+export async function resolveTagsByName(names: string[]): Promise<Tag[]> {
+	if (names.length === 0) return [];
+	const tags = await cmd.storeResolveTagNames(names);
+	addTags(tags);
+	return tags;
+}
+
 export function addTags(tags: Tag[]) {
 	if (!currentMapId || !currentMap || tags.length === 0) return;
 	const newTags = { ...currentMap.meta.tags };
