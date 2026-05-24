@@ -788,12 +788,18 @@ export function removeChildFromSelection(parentKey: string, childKey: string) {
 	applySelectionUpdate((m, sels) => removeFromCompositeSel(m, sels, parentKey, childKey));
 }
 
-export function toggleTagSelection(tagId: number) {
-	if (!currentMap) return;
-	const key = `tag:${tagId}`;
-	const exists = selections.some((s) => s.key === key);
-	if (exists) removeSelection(key);
-	else selectTag(tagId);
+export function toggleTagSelections(tagIds: number[]) {
+	if (!currentMap || tagIds.length === 0) return;
+	applySelectionUpdate((m, sels) => {
+		let result = sels;
+		for (const tagId of tagIds) {
+			const key = `tag:${tagId}`;
+			const exists = result.some((s) => s.key === key);
+			if (exists) result = removeSel(result, key);
+			else result = addSel(m, result, { type: "Tag", tagId });
+		}
+		return result;
+	});
 }
 
 export function useSelectedTagIds() {

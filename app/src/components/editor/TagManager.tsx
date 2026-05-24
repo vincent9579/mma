@@ -6,7 +6,7 @@ import {
 	useCurrentMap,
 	useSelectedTagIds,
 	useTagCounts,
-	toggleTagSelection,
+	toggleTagSelections,
 	updateTags,
 	deleteTags,
 	reorderTags,
@@ -193,13 +193,15 @@ export function TagManager() {
 														if (anchorIdx !== -1 && targetIdx !== -1) {
 															const lo = Math.min(anchorIdx, targetIdx);
 															const hi = Math.max(anchorIdx, targetIdx);
+															const ids: number[] = [];
 															for (let i = lo; i <= hi; i++) {
 																if (i === anchorIdx) continue;
-																toggleTagSelection(sortedTags[i].id);
+																ids.push(sortedTags[i].id);
 															}
+															toggleTagSelections(ids);
 														}
 													} else {
-														toggleTagSelection(tag.id);
+														toggleTagSelections([tag.id]);
 													}
 													lastShiftClickRef.current = tag.id;
 												}}

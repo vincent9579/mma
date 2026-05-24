@@ -5,7 +5,7 @@ import { mdiChevronDown, mdiChevronRight, mdiPencil } from "@mdi/js";
 import { textColorFor } from "@/lib/util/color";
 import { fmt } from "@/lib/util/format";
 import {
-	toggleTagSelection,
+	toggleTagSelections,
 	removeTagFromAll,
 	removeTagFromSelection,
 	getSelectedLocationIds,
@@ -209,14 +209,10 @@ function TagTreeNodeRow({
 	const count = sumCounts(node, tagCounts);
 
 	const handleClick = () => {
-		for (const id of node.descendantTagIds) {
-			const isTagSelected = selectedTagIds.has(id);
-			if (effectiveSelected) {
-				if (isTagSelected) toggleTagSelection(id);
-			} else {
-				if (!isTagSelected) toggleTagSelection(id);
-			}
-		}
+		const ids = node.descendantTagIds.filter((id) =>
+			effectiveSelected ? selectedTagIds.has(id) : !selectedTagIds.has(id),
+		);
+		toggleTagSelections(ids);
 	};
 
 	const handleChevronClick = (e: React.MouseEvent) => {
