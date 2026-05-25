@@ -186,7 +186,7 @@ describe("Selection composition edge cases", () => {
 			// Untagged = indices 15-19
 			await api.selectUntagged();
 			await api.selectIntersection();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(0);
 	});
@@ -194,11 +194,11 @@ describe("Selection composition edge cases", () => {
 	it("union of same selection = same count", async () => {
 		const result = await withApi(async (api, tagId) => {
 			await api.selectTag(tagId);
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 			// Add another tag selection (same tag) -- won't duplicate since key is the same
 			await api.selectTag(tagId);
 			await api.selectUnion();
-			return { before, after: api.getSelectedLocationIds().length };
+			return { before, after: api.getSelectedLocationIds().size };
 		}, edgeTagId);
 		expect(result.after).toBe(result.before);
 	});
@@ -207,7 +207,7 @@ describe("Selection composition edge cases", () => {
 		const result = await withApi(async (api) => {
 			await api.selectEverything();
 			await api.selectInverse();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(0);
 	});
@@ -217,7 +217,7 @@ describe("Selection composition edge cases", () => {
 			await api.selectPanoIds(); // just need a base selection
 			// Invert PanoIds (5 locations) = 15 non-panoId
 			await api.selectInverse();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(15);
 	});

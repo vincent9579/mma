@@ -55,7 +55,7 @@ describe("Live selection correctness after add/remove", () => {
 	it("tag selection updates when matching locations are added (no reset)", async () => {
 		const before = await withApi(async (api, tagId: number) => {
 			await api.selectTag(tagId);
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 
 			const newLocs = [];
 			for (let i = 0; i < 10; i++) {
@@ -78,7 +78,7 @@ describe("Live selection correctness after add/remove", () => {
 	it("Everything selection count increases on add (no reset)", async () => {
 		const before = await withApi(async (api) => {
 			await api.selectEverything();
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 			await api.addLocations([
 				api.createLocation({ lat: 99, lng: 99 }),
 			]);
@@ -94,8 +94,8 @@ describe("Live selection correctness after add/remove", () => {
 		const result = await withApi(
 			async (api, tagId: number, removeId0: number, removeId1: number) => {
 				await api.selectTag(tagId);
-				const before = api.getSelectedLocationIds().length;
-				await api.removeLocations([removeId0, removeId1]);
+				const before = api.getSelectedLocationIds().size;
+				await api.removeLocations(new Set([removeId0, removeId1]));
 				const result = await api.syncSelections();
 				const after = result.ids;
 				return { before, after: after.length };
@@ -113,8 +113,8 @@ describe("Live selection correctness after add/remove", () => {
 		const before = await withApi(
 			async (api, tagId: number, removeId0: number, removeId1: number) => {
 				await api.selectTag(tagId);
-				const before = api.getSelectedLocationIds().length;
-				api.removeLocations([removeId0, removeId1]);
+				const before = api.getSelectedLocationIds().size;
+				api.removeLocations(new Set([removeId0, removeId1]));
 				return before;
 			},
 			tagRedId,
@@ -128,7 +128,7 @@ describe("Live selection correctness after add/remove", () => {
 	it("add then remove in sequence, final count correct (no reset between)", async () => {
 		const initial = await withApi(async (api, tagId: number) => {
 			await api.selectTag(tagId);
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		}, tagRedId);
 
 		const afterAddIds = await withApi(async (api, tagId: number) => {
@@ -146,7 +146,7 @@ describe("Live selection correctness after add/remove", () => {
 		expect(afterAddIds.ids.length).toBe(initial + 3);
 
 		await withApi(async (api, removeId: number) => {
-			api.removeLocations([removeId]);
+			api.removeLocations(new Set([removeId]));
 		}, afterAddIds.removeId);
 		const ids = await refreshSelections();
 		expect(ids.length).toBe(initial + 2);
@@ -200,7 +200,7 @@ describe("Live selection correctness after update", () => {
 		const result = await withApi(
 			async (api, tagId: number, locId: number) => {
 				await api.selectTag(tagId);
-				const before = api.getSelectedLocationIds().length;
+				const before = api.getSelectedLocationIds().size;
 				await api.updateLocation(locId, { tags: [tagId] });
 				const result = await api.syncSelections();
 				const after = result.ids;
@@ -219,7 +219,7 @@ describe("Live selection correctness after update", () => {
 		const before = await withApi(
 			async (api, tagId: number, locId: number) => {
 				await api.selectTag(tagId);
-				const before = api.getSelectedLocationIds().length;
+				const before = api.getSelectedLocationIds().size;
 				await api.updateLocation(locId, { tags: [] });
 				return before;
 			},
@@ -235,7 +235,7 @@ describe("Live selection correctness after update", () => {
 		const id10 = locIds[10];
 		const before = await withApi(async (api, locId: number) => {
 			await api.selectPanoIds();
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 			await api.updateLocation(locId, { flags: 1 });
 			return before;
 		}, id10);
@@ -247,7 +247,7 @@ describe("Live selection correctness after update", () => {
 		const id0 = locIds[0];
 		const before = await withApi(async (api, locId: number) => {
 			await api.selectPanoIds();
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 			await api.updateLocation(locId, { flags: 0 });
 			return before;
 		}, id0);
@@ -259,7 +259,7 @@ describe("Live selection correctness after update", () => {
 		const id0 = locIds[0];
 		const before = await withApi(async (api, locId: number) => {
 			await api.selectUnpanned();
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 			await api.updateLocation(locId, { heading: 45 });
 			return before;
 		}, id0);
@@ -271,7 +271,7 @@ describe("Live selection correctness after update", () => {
 		const id10 = locIds[10];
 		const before = await withApi(async (api, locId: number) => {
 			await api.selectUnpanned();
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 			await api.updateLocation(locId, { heading: 0 });
 			return before;
 		}, id10);
@@ -327,7 +327,7 @@ describe("Review mode delete with active selections", () => {
 		const result = await withApi(
 			async (api, tagId: number, reviewIds: number[]) => {
 				await api.selectTag(tagId);
-				const before = api.getSelectedLocationIds().length;
+				const before = api.getSelectedLocationIds().size;
 				await api.beginReview(reviewIds);
 				await api.reviewDelete();
 				const result = await api.syncSelections();
@@ -347,7 +347,7 @@ describe("Review mode delete with active selections", () => {
 		const result = await withApi(
 			async (api, tagId: number, rvIds: number[]) => {
 				await api.selectTag(tagId);
-				const before = api.getSelectedLocationIds().length;
+				const before = api.getSelectedLocationIds().size;
 				await api.beginReview(rvIds);
 				await api.reviewDelete();
 				api.cancelReview();
@@ -373,7 +373,7 @@ describe("Review mode delete with active selections", () => {
 	it("review-delete with Everything selection decreases count", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectEverything();
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 			const allLocs = await api.fetchAllLocations();
 			const ids = allLocs.slice(0, 3).map(l => l.id);
 			await api.beginReview(ids);
@@ -429,7 +429,7 @@ describe("Selection correctness after undo/redo", () => {
 	it("undo of add shrinks active selection", async () => {
 		const before = await withApi(async (api, tagId: number) => {
 			await api.selectTag(tagId);
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 
 			await api.addLocations([
 				api.createLocation({ lat: 50, lng: 50, tags: [tagId] }),
@@ -450,7 +450,7 @@ describe("Selection correctness after undo/redo", () => {
 			async (api, tagId: number, locId: number) => {
 				await api.resetSelections();
 				await api.selectTag(tagId);
-				api.removeLocations([locId]);
+				api.removeLocations(new Set([locId]));
 				await new Promise((r) => setTimeout(r, 300));
 			},
 			tagUndoId,
@@ -494,7 +494,7 @@ describe("Selection correctness after undo/redo", () => {
 	it("multiple undo/redo cycles keep selection consistent", async () => {
 		const baseline = await withApi(async (api) => {
 			await api.selectEverything();
-			const baseline = api.getSelectedLocationIds().length;
+			const baseline = api.getSelectedLocationIds().size;
 
 			await api.addLocations([
 				api.createLocation({ lat: 60, lng: 60 }),
@@ -603,7 +603,7 @@ describe("Composite selection correctness after mutations", () => {
 				await api.selectTag(tagAId);
 				await api.selectTag(tagBId);
 				await api.selectIntersection();
-				const before = api.getSelectedLocationIds().length;
+				const before = api.getSelectedLocationIds().size;
 
 				await api.updateLocation(locId, { tags: [tagAId, tagBId] });
 				return before;
@@ -625,7 +625,7 @@ describe("Composite selection correctness after mutations", () => {
 				await api.selectTag(tagAId);
 				await api.selectTag(tagBId);
 				await api.selectIntersection();
-				const before = api.getSelectedLocationIds().length;
+				const before = api.getSelectedLocationIds().size;
 
 				await api.updateLocation(locId, { tags: [tagAId] });
 				return before;
@@ -645,7 +645,7 @@ describe("Composite selection correctness after mutations", () => {
 				await api.selectTag(tagAId);
 				await api.selectTag(tagBId);
 				await api.selectUnion();
-				const before = api.getSelectedLocationIds().length;
+				const before = api.getSelectedLocationIds().size;
 
 				await api.addLocations([
 					api.createLocation({ lat: 99, lng: 99, tags: [tagAId] }),
@@ -665,7 +665,7 @@ describe("Composite selection correctness after mutations", () => {
 				await api.selectTag(tagAId);
 				await api.selectTag(tagBId);
 				await api.selectUnion();
-				const before = api.getSelectedLocationIds().length;
+				const before = api.getSelectedLocationIds().size;
 
 				await api.addLocations([
 					api.createLocation({ lat: 98, lng: 98 }),
@@ -723,7 +723,7 @@ describe("Bulk operations with active selections", () => {
 		const result = await withApi(
 			async (api, tagId: number, ids: number[]) => {
 				await api.selectTag(tagId);
-				const before = api.getSelectedLocationIds().length;
+				const before = api.getSelectedLocationIds().size;
 				const updates = ids.map((id: number) => ({ id, patch: { tags: [tagId] } }));
 				await api.batchUpdateLocations(updates);
 				const result = await api.syncSelections();
@@ -740,7 +740,7 @@ describe("Bulk operations with active selections", () => {
 	it("adding 100 locations at once, correct delta for active tag selection", async () => {
 		const before = await withApi(async (api, tagId: number) => {
 			await api.selectTag(tagId);
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 
 			const newLocs: Location[] = [];
 			for (let i = 0; i < 100; i++) {
@@ -762,7 +762,7 @@ describe("Bulk operations with active selections", () => {
 	it("bulk add followed by bulk remove, selection tracks correctly", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectEverything();
-			const baseline = api.getSelectedLocationIds().length;
+			const baseline = api.getSelectedLocationIds().size;
 
 			const newLocs: Location[] = [];
 			for (let i = 0; i < 20; i++) {
@@ -779,7 +779,7 @@ describe("Bulk operations with active selections", () => {
 
 			// Remove first 10 of the newly added
 			const toRemove = newLocs.slice(0, 10).map((l) => l.id);
-			api.removeLocations(toRemove);
+			api.removeLocations(new Set(toRemove));
 			const afterRemoveResult = await api.syncSelections();
 			const afterRemove = afterRemoveResult.ids.length;
 
@@ -830,7 +830,7 @@ describe("Selection survives save/load cycle", () => {
 	it("tag selection produces same results after save/close/reopen", async () => {
 		const beforeCount = await withApi(async (api, tagId: number) => {
 			await api.selectTag(tagId);
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		}, tagPersistId);
 
 		await flushAndWait();
@@ -839,7 +839,7 @@ describe("Selection survives save/load cycle", () => {
 
 		const afterCount = await withApi(async (api, tagId: number) => {
 			await api.selectTag(tagId);
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		}, tagPersistId);
 
 		expect(afterCount).toBe(beforeCount);
@@ -849,7 +849,7 @@ describe("Selection survives save/load cycle", () => {
 		const beforeCount = await withApi(async (api) => {
 			api.resetSelections();
 			await api.selectPanoIds();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 
 		await flushAndWait();
@@ -858,7 +858,7 @@ describe("Selection survives save/load cycle", () => {
 
 		const afterCount = await withApi(async (api) => {
 			await api.selectPanoIds();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 
 		expect(afterCount).toBe(beforeCount);
@@ -868,7 +868,7 @@ describe("Selection survives save/load cycle", () => {
 		const beforeCount = await withApi(async (api) => {
 			api.resetSelections();
 			await api.selectEverything();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 
 		await flushAndWait();
@@ -877,7 +877,7 @@ describe("Selection survives save/load cycle", () => {
 
 		const afterCount = await withApi(async (api) => {
 			await api.selectEverything();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 
 		expect(afterCount).toBe(beforeCount);
@@ -887,7 +887,7 @@ describe("Selection survives save/load cycle", () => {
 		const beforeCount = await withApi(async (api) => {
 			api.resetSelections();
 			await api.selectUnpanned();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 
 		await flushAndWait();
@@ -896,7 +896,7 @@ describe("Selection survives save/load cycle", () => {
 
 		const afterCount = await withApi(async (api) => {
 			await api.selectUnpanned();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 
 		expect(afterCount).toBe(beforeCount);
@@ -945,11 +945,11 @@ describe("Slot reuse correctness", () => {
 			await api.addLocations(initial);
 
 			await api.selectTag(tagId);
-			const afterInitial = api.getSelectedLocationIds().length;
+			const afterInitial = api.getSelectedLocationIds().size;
 
 			// Remove first 10 (the tagged ones)
 			const toRemove = initial.slice(0, 10).map((l) => l.id);
-			await api.removeLocations(toRemove);
+			await api.removeLocations(new Set(toRemove));
 			const afterRemoveResult = await api.syncSelections();
 			const afterRemoveIds: number[] = afterRemoveResult.ids;
 			const afterRemove = afterRemoveIds.length;
@@ -996,7 +996,7 @@ describe("Slot reuse correctness", () => {
 			await api.selectTag(tagId);
 
 			// Remove all 10 — tag count drops to 0, selection is cleared
-			api.removeLocations(batch1.map((l) => l.id));
+			api.removeLocations(new Set(batch1.map((l) => l.id)));
 			const afterRemoveResult = await api.syncSelections();
 			const afterRemoveIds: number[] = afterRemoveResult.ids;
 			const afterRemoveAll = afterRemoveIds.length;
@@ -1060,22 +1060,22 @@ describe("Slot reuse correctness", () => {
 
 			await api.selectTag(tagId);
 			await api.selectPanoIds();
-			const tagBefore = api.getSelections().find((s) => s.props.type === "Tag")?.locationCount;
+			const tagBefore = api.getSelections().find((s) => s.props.type === "Tag")?.count;
 			const panoBefore = api
 				.getSelections()
-				.find((s) => s.props.type === "PanoIds")?.locationCount;
+				.find((s) => s.props.type === "PanoIds")?.count;
 
 			// Remove indices 0-4 (tagged AND flagged)
 			const toRemove = locs.slice(0, 5).map((l) => l.id);
-			api.removeLocations(toRemove);
+			api.removeLocations(new Set(toRemove));
 			await api.syncSelections();
 
 			const tagAfterRemove = api
 				.getSelections()
-				.find((s) => s.props.type === "Tag")?.locationCount;
+				.find((s) => s.props.type === "Tag")?.count;
 			const panoAfterRemove = api
 				.getSelections()
-				.find((s) => s.props.type === "PanoIds")?.locationCount;
+				.find((s) => s.props.type === "PanoIds")?.count;
 
 			// Add new locs: 3 tagged+flagged, 2 untagged+unflagged
 			const refill: Location[] = [];
@@ -1094,10 +1094,10 @@ describe("Slot reuse correctness", () => {
 
 			const tagAfterRefill = api
 				.getSelections()
-				.find((s) => s.props.type === "Tag")?.locationCount;
+				.find((s) => s.props.type === "Tag")?.count;
 			const panoAfterRefill = api
 				.getSelections()
-				.find((s) => s.props.type === "PanoIds")?.locationCount;
+				.find((s) => s.props.type === "PanoIds")?.count;
 
 			return {
 				tagBefore,
@@ -1134,10 +1134,10 @@ describe("Slot reuse correctness", () => {
 					);
 				}
 				await api.addLocations(batch);
-				api.removeLocations(batch.slice(0, 3).map((l) => l.id));
+				api.removeLocations(new Set(batch.slice(0, 3).map((l) => l.id)));
 			}
 
-			const totalLocs = await api.getLocationCount();
+			const totalLocs = await api.cmd.storeLocationCount();
 			return totalLocs;
 		});
 		const ids = await refreshSelections();

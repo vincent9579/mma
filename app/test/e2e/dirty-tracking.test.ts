@@ -57,7 +57,7 @@ describe("Dirty tracking", () => {
 		await flushAndWait();
 
 		await withApi(async (api, id) => {
-			await api.removeLocations([id]);
+			await api.removeLocations(new Set([id]));
 		}, ids[0]);
 
 		const count = await withApi(async (api) => api.getDirtyCount());

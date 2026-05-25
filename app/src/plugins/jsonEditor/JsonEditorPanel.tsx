@@ -21,7 +21,7 @@ export function JsonEditorPanel() {
 	useEffect(() => {
 		if (!active) return;
 		const { id: _id, createdAt: _createdAt, modifiedAt: _modifiedAt, ...editable } = active;
-		const map = MMA.getMap();
+		const map = MMA.getCurrentMap();
 		const display = map
 			? { ...editable, tags: tagIdsToNames(editable.tags, map.meta.tags) }
 			: editable;

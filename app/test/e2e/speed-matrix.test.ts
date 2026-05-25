@@ -176,19 +176,19 @@ function timeComposite(setup: string, measure: string, tagId: number): Promise<n
 
 function timeRemoveAll(): Promise<number> {
 	return withApi(async (api) => {
-		const ids: number[] = await api.resolveSelection({ type: "Everything" });
+		const ids: number[] = await api.cmd.storeResolveSelection({ type: "Everything" });
 		const t0 = performance.now();
-		await api.removeLocations(ids);
+		await api.removeLocations(new Set(ids)));
 		return performance.now() - t0;
 	});
 }
 
 function timeRemoveOne(): Promise<number> {
 	return withApi(async (api) => {
-		const ids: number[] = await api.resolveSelection({ type: "Everything" });
+		const ids: number[] = await api.cmd.storeResolveSelection({ type: "Everything" });
 		if (ids.length === 0) return -1;
 		const t0 = performance.now();
-		await api.removeLocations([ids[0]]);
+		await api.removeLocations(new Set([ids[0]]));
 		return performance.now() - t0;
 	});
 }
@@ -196,7 +196,7 @@ function timeRemoveOne(): Promise<number> {
 function timeBatchUpdate(count: number, iter: number): Promise<number> {
 	return withApi(
 		async (api, n: number, it: number) => {
-			const ids: number[] = await api.resolveSelection({ type: "Everything" });
+			const ids: number[] = await api.cmd.storeResolveSelection({ type: "Everything" });
 			const updates = ids.slice(0, n).map((id: number) => ({ id, patch: { heading: it * 10 } }));
 			const t0 = performance.now();
 			await api.batchUpdateLocations(updates);
@@ -210,7 +210,7 @@ function timeBatchUpdate(count: number, iter: number): Promise<number> {
 function timeTagCounts(): Promise<number> {
 	return withApi(async (api) => {
 		const t0 = performance.now();
-		await api.getTagCounts();
+		await api.cmd.storeTagCounts();
 		return performance.now() - t0;
 	});
 }

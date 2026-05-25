@@ -116,7 +116,7 @@ describe.skip("Save failure recovery", () => {
 			await api.flushSave();
 
 			// Now remove it (creates a delete_chunks call on next save)
-			await api.removeLocations([delId]);
+			await api.removeLocations(new Set([delId]));
 
 			// Fail the delete
 			api.interceptInvoke("delete_chunks", "failOnce");
@@ -214,7 +214,7 @@ describe("Save ordering under concurrent mutations", () => {
 			await api.flushSave();
 
 			// Remove it and add a different one at similar coords (same geohash cell)
-			await api.removeLocations([geoId1]);
+			await api.removeLocations(new Set([geoId1]));
 			const geoLocs2: Location[] = [
 				createLocation({ lat: 45.001, lng: 90.001, heading: 0, pitch: 0, zoom: 1 }),
 			];
@@ -400,7 +400,7 @@ describe("Geohash cell boundary correctness", () => {
 		// Remove just one (index 10)
 		const removeId = spreadIds[10];
 		await withApi(async (api, id: number) => {
-			await api.removeLocations([id]);
+			await api.removeLocations(new Set([id]));
 			return { ok: true };
 		}, removeId);
 
@@ -502,7 +502,7 @@ describe("Large dataset save/load fidelity", () => {
 		for (let i = 0; i < 1000; i += 3) toRemove.push(lgIds[i]);
 
 		await withApi(async (api, ids: number[]) => {
-			await api.removeLocations(ids);
+			await api.removeLocations(new Set(ids)));
 			return { ok: true };
 		}, toRemove);
 
@@ -607,7 +607,7 @@ describe("Dirty tracking accuracy", () => {
 
 	it("remove marks dirty", async () => {
 		await withApi(async (api, id: number) => {
-			await api.removeLocations([id]);
+			await api.removeLocations(new Set([id]));
 			return { ok: true };
 		}, dt1Id);
 

@@ -204,7 +204,7 @@ describe("Review mode - delete", () => {
 			async (api, did, _nid, settle) => {
 				await api.reviewDelete();
 				await new Promise((r) => setTimeout(r, settle));
-				const count = await api.getLocationCount();
+				const count = await api.cmd.storeLocationCount();
 				const deleted = await api.fetchLocation(did).catch(() => null);
 				return {
 					activeId: api.getActiveLocation()?.id ?? null,
@@ -276,7 +276,7 @@ describe("Review mode - skips deleted locations", () => {
 		const result = await withApi(
 			async (api, ids, delId, settle) => {
 				await api.beginReview(ids);
-				await api.removeLocations([delId]);
+				await api.removeLocations(new Set([delId]));
 				await api.reviewNext(); // should skip locIds[1], land on locIds[2]
 				await new Promise((r) => setTimeout(r, settle));
 				return { activeId: api.getActiveLocation()?.id ?? null };

@@ -13,7 +13,7 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"bench": "vitest bench --run",
-		"build:e2e": "set VITE_E2E=1&& cargo tauri build --debug --features e2e",
+		"build:e2e": "cargo tauri build --debug --features e2e",
 		"test:e2e": "set MMA_TEST_DB=1&& wdio run wdio.conf.ts",
 		"prepare": "husky || true"
 	},

@@ -53,7 +53,7 @@ describe("Undo/Redo", () => {
 
 	it("undo remove locations", async () => {
 		await withApi(async (api, id) => {
-			await api.removeLocations([id]);
+			await api.removeLocations(new Set([id]));
 		}, undo1Id);
 
 		let count = await getLocCount();

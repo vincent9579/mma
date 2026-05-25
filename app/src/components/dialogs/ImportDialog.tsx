@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
-import { mutate } from "@/store/useMapStore";
+import { importFile } from "@/store/useMapStore";
 import { fmt } from "@/lib/util/format";
 import { cmd } from "@/lib/commands";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -76,10 +76,8 @@ export function ImportDialog({ onClose }: Props) {
 		setStatus("importing");
 		const span = debugSpan("import:rust");
 		try {
-			const r = await cmd.storeImportFile([...droppedFields]);
+			const r = await importFile([...droppedFields]);
 			span.end(`${r.importedCount} locs imported`);
-
-			await mutate(Promise.resolve(r));
 			setResult(r);
 			setStatus("done");
 		} catch (e: unknown) {

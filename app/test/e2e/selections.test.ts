@@ -58,7 +58,7 @@ describe("Selections - basic types", () => {
 	it("selectEverything selects all locations", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectEverything();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(200);
 	});
@@ -69,7 +69,7 @@ describe("Selections - basic types", () => {
 		const result = await withApi(async (api) => {
 			await api.selectPanoIds();
 			const sels = api.getSelections();
-			return { count: api.getSelectedLocationIds().length, selCount: sels.length };
+			return { count: api.getSelectedLocationIds().size, selCount: sels.length };
 		});
 		expect(result.count).toBe(50);
 		expect(result.selCount).toBe(1);
@@ -78,7 +78,7 @@ describe("Selections - basic types", () => {
 	it("selectNotPanoIds selects locations without LoadAsPanoId flag", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectNotPanoIds();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(150);
 	});
@@ -87,7 +87,7 @@ describe("Selections - basic types", () => {
 		const result = await withApi(async (api) => {
 			await api.selectPanoIds();
 			await api.selectNotPanoIds();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(200);
 	});
@@ -97,7 +97,7 @@ describe("Selections - basic types", () => {
 	it("selectUntagged selects locations with no tags", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectUntagged();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(80); // indices 120-199 have no tags
 	});
@@ -107,7 +107,7 @@ describe("Selections - basic types", () => {
 	it("selectUnpanned selects locations with heading=0", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectUnpanned();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		// All 200 seeded locations have heading=0
 		expect(result).toBe(200);
@@ -118,7 +118,7 @@ describe("Selections - basic types", () => {
 	it("selectTag selects locations with specific tag", async () => {
 		const result = await withApi(async (api, tagId: number) => {
 			await api.selectTag(tagId);
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		}, tagRedId);
 		expect(result).toBe(60);
 	});
@@ -126,7 +126,7 @@ describe("Selections - basic types", () => {
 	it("selectTag for nonexistent tag selects none", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectTag(999999);
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(0);
 	});
@@ -175,7 +175,7 @@ describe("Selections - basic types", () => {
 					],
 				],
 			});
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBeGreaterThan(0);
 	});
@@ -239,7 +239,7 @@ describe("Selection operations", () => {
 			// PanoIds (0-29) intersect Tag-a (0-49) = 30
 			await api.selectIntersection();
 			const sels = api.getSelections();
-			return { count: api.getSelectedLocationIds().length, selCount: sels.length };
+			return { count: api.getSelectedLocationIds().size, selCount: sels.length };
 		}, tagAId);
 		expect(result.count).toBe(30);
 	});
@@ -250,7 +250,7 @@ describe("Selection operations", () => {
 			await api.selectTag(tagId); // 50
 			// Union: 0-29 + 0-49 = 0-49 = 50
 			await api.selectUnion();
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		}, tagAId);
 		expect(result).toBe(50);
 	});
@@ -259,7 +259,7 @@ describe("Selection operations", () => {
 		const result = await withApi(async (api) => {
 			await api.selectPanoIds(); // 30
 			await api.selectInverse(); // 100 - 30 = 70
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(70);
 	});
@@ -302,7 +302,7 @@ describe("Selection operations", () => {
 			return {
 				count: sels.length,
 				type: sels[0]?.props?.type,
-				locCount: sels[0]?.locationCount,
+				locCount: sels[0]?.count,
 			};
 		});
 		expect(result.count).toBe(1);
@@ -342,14 +342,14 @@ describe("Selection correctness after mutations", () => {
 
 		const result = await withApi(async (api, ids: number[]) => {
 			await api.selectPanoIds();
-			const before = api.getSelectedLocationIds().length;
+			const before = api.getSelectedLocationIds().size;
 			for (let i = 0; i < 5; i++) {
 				api.updateLocation(ids[i], { flags: 1 });
 			}
 			await new Promise((r) => setTimeout(r, 500));
 			api.resetSelections();
 			await api.selectPanoIds();
-			const after = api.getSelectedLocationIds().length;
+			const after = api.getSelectedLocationIds().size;
 			return { before, after };
 		}, locIds);
 		expect(result.before).toBe(0);
@@ -378,7 +378,7 @@ describe("Selection correctness after mutations", () => {
 			await api.selectEverything();
 			const before = (await api.syncSelections()).ids;
 			const toRemove = before[before.length - 1];
-			api.removeLocations([toRemove]);
+			api.removeLocations(new Set([toRemove]));
 			await new Promise((r) => setTimeout(r, 300));
 			const after = (await api.syncSelections()).ids;
 			return { before: before.length, after: after.length };
@@ -456,7 +456,7 @@ describe("Selection with Filter", () => {
 	it("filter by string equality", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectFilter("country", "eq", "US");
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(25);
 	});
@@ -464,7 +464,7 @@ describe("Selection with Filter", () => {
 	it("filter by string inequality", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectFilter("country", "neq", "US");
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(25);
 	});
@@ -472,7 +472,7 @@ describe("Selection with Filter", () => {
 	it("filter by numeric greater than", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectFilter("altitude", "gt", 200);
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(29);
 	});
@@ -480,7 +480,7 @@ describe("Selection with Filter", () => {
 	it("filter by numeric less than", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectFilter("altitude", "lt", 100);
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(10);
 	});
@@ -488,7 +488,7 @@ describe("Selection with Filter", () => {
 	it("filter by between", async () => {
 		const result = await withApi(async (api) => {
 			await api.selectFilter("altitude", "between", 100, 200);
-			return api.getSelectedLocationIds().length;
+			return api.getSelectedLocationIds().size;
 		});
 		expect(result).toBe(11);
 	});

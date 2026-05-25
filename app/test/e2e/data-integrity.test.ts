@@ -349,7 +349,7 @@ describe("Data integrity - concurrent operations", () => {
 
 			// Remove first 50
 			const toRemove = locs.slice(0, 50).map((l) => l.id);
-			await api.removeLocations(toRemove);
+			await api.removeLocations(new Set(toRemove));
 
 			// Add 50 more
 			const moreLocs: Location[] = [];
@@ -358,7 +358,7 @@ describe("Data integrity - concurrent operations", () => {
 			}
 			await api.addLocations(moreLocs);
 
-			const count = await api.getLocationCount();
+			const count = await api.cmd.storeLocationCount();
 			return { count };
 		});
 		expect(result.count).toBe(100); // 50 remaining from first batch + 50 new

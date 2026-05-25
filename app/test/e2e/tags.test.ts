@@ -59,7 +59,7 @@ describe("Tag CRUD", () => {
 
 	it("update tag name", async () => {
 		const result = await withApi(async (api, tagId) => {
-			await api.updateTag(tagId, { name: "Renamed Red" });
+			await api.updateTags([{ id: tagId, patch: { name: "Renamed Red" } }]);
 			return api.getCurrentMap()!.meta.tags[String(tagId)].name;
 		}, t1Id);
 		expect(result).toBe("Renamed Red");
@@ -67,7 +67,7 @@ describe("Tag CRUD", () => {
 
 	it("update tag color", async () => {
 		const result = await withApi(async (api, tagId) => {
-			await api.updateTag(tagId, { color: "#ff8800" });
+			await api.updateTags([{ id: tagId, patch: { color: "#ff8800" } }]);
 			return api.getCurrentMap()!.meta.tags[String(tagId)].color;
 		}, t1Id);
 		expect(result).toBe("#ff8800");
@@ -75,7 +75,7 @@ describe("Tag CRUD", () => {
 
 	it("delete tag hides it (count drops to 0)", async () => {
 		const result = await withApi(async (api, tagId) => {
-			await api.deleteTag(tagId);
+			await api.deleteTags([tagId]);
 			const tags = api.getCurrentMap()!.meta.tags;
 			return {
 				count: Object.keys(tags).length,
@@ -134,7 +134,7 @@ describe("Tag operations on locations", () => {
 	it("bulkAddTag adds tag to all selected locations", async () => {
 		const result = await withApi(async (api, tagId) => {
 			await api.selectEverything();
-			await api.bulkAddTag(tagId);
+			await api.addTagToLocations(tagId, [...api.getSelectedLocationIds()]);
 			const locs = await api.fetchAllLocations();
 			const tagged = locs.filter((l: any) => l.tags.includes(tagId));
 			return tagged.length;
@@ -146,7 +146,7 @@ describe("Tag operations on locations", () => {
 		const result = await withApi(
 			async (api, tagId, locId) => {
 				await api.selectEverything();
-				await api.bulkAddTag(tagId);
+				await api.addTagToLocations(tagId, [...api.getSelectedLocationIds()]);
 				const loc = await api.fetchLocation(locId);
 				return loc!.tags.filter((t: number) => t === tagId).length;
 			},
@@ -214,8 +214,8 @@ describe("Tag persistence", () => {
 	it("tags survive save/load", async () => {
 		const result = await withApi(async (api) => {
 			const resolved = await api.createTags(["Persist Tag", "Persist Tag 2"]);
-			await api.updateTag(resolved[0].id, { color: "#112233" });
-			await api.updateTag(resolved[1].id, { color: "#445566" });
+			await api.updateTags([{ id: resolved[0].id, patch: { color: "#112233" } }]);
+			await api.updateTags([{ id: resolved[1].id, patch: { color: "#445566" } }]);
 			return { pt1Id: resolved[0].id, pt2Id: resolved[1].id };
 		});
 		pt1Id = result.pt1Id;
@@ -312,7 +312,7 @@ describe("Tag merge on rename collision", () => {
 
 	it("renaming tag A to tag B's name merges them", async () => {
 		const result = await withApi(async (api, aId, bId) => {
-			await api.updateTag(aId, { name: "Beta" });
+			await api.updateTags([{ id: aId, patch: { name: "Beta" } }]);
 			const map = api.getCurrentMap()!;
 			const tags = map.meta.tags;
 			return {
@@ -403,7 +403,7 @@ describe("Tag merge persists across save/load", () => {
 
 	it("merge survives save/load", async () => {
 		await withApi(async (api, xId) => {
-			await api.updateTag(xId, { name: "Yankee" });
+			await api.updateTags([{ id: xId, patch: { name: "Yankee" } }]);
 			return "ok";
 		}, tagXId);
 
@@ -464,7 +464,7 @@ describe("Tag name dedup on creation", () => {
 	it("delete then re-resolve reuses the hidden tag and makes it visible", async () => {
 		const result = await withApi(async (api) => {
 			const [created] = await api.createTags(["Revive"]);
-			await api.deleteTag(created.id);
+			await api.deleteTags([created.id]);
 			const tagsAfterDelete = api.getCurrentMap()!.meta.tags;
 			const hiddenAfterDelete = tagsAfterDelete[String(created.id)]?.visible;
 			const [resolved] = await api.createTags(["Revive"]);
@@ -499,7 +499,7 @@ describe("Tag visibility lifecycle", () => {
 	it("deleted tag reappears when re-resolved after save/load", async () => {
 		const tagId = await withApi(async (api) => {
 			const [tag] = await api.createTags(["Phoenix"]);
-			await api.deleteTag(tag.id);
+			await api.deleteTags([tag.id]);
 			return tag.id;
 		});
 
@@ -522,7 +522,7 @@ describe("Tag visibility lifecycle", () => {
 			const [tag] = await api.createTags(["StripMe"]);
 			const locs = [api.createLocation({ lat: 50, lng: 50, tags: [tag.id] }), api.createLocation({ lat: 51, lng: 51, tags: [tag.id] })];
 			await api.addLocations(locs);
-			await api.deleteTag(tag.id);
+			await api.deleteTags([tag.id]);
 			const allLocs = await api.fetchAllLocations();
 			const withTag = allLocs.filter((l: any) => l.tags.includes(tag.id));
 			return withTag.length;
@@ -535,7 +535,7 @@ describe("Tag visibility lifecycle", () => {
 		// JS must reflect the tag being available again.
 		const result = await withApi(async (api) => {
 			const [tag] = await api.createTags(["Zombie"]);
-			await api.deleteTag(tag.id);
+			await api.deleteTags([tag.id]);
 			const hiddenInJs = api.getCurrentMap()!.meta.tags[String(tag.id)]?.visible;
 			// Re-resolve (simulates typing the name in the tag input)
 			await api.createTags(["Zombie"]);
@@ -549,7 +549,7 @@ describe("Tag visibility lifecycle", () => {
 	it("color update via updateTag persists", async () => {
 		const tagId = await withApi(async (api) => {
 			const [tag] = await api.createTags(["ColorPersist"]);
-			await api.updateTag(tag.id, { color: "#abcdef" });
+			await api.updateTags([{ id: tag.id, patch: { color: "#abcdef" } }]);
 			return tag.id;
 		});
 
@@ -566,7 +566,7 @@ describe("Tag visibility lifecycle", () => {
 	it("name update via updateTag persists", async () => {
 		const tagId = await withApi(async (api) => {
 			const [tag] = await api.createTags(["OldName"]);
-			await api.updateTag(tag.id, { name: "NewName" });
+			await api.updateTags([{ id: tag.id, patch: { name: "NewName" } }]);
 			return tag.id;
 		});
 
@@ -597,7 +597,7 @@ describe("Tag edge cases", () => {
 	it("rename to same name is a no-op", async () => {
 		const result = await withApi(async (api) => {
 			const [tag] = await api.createTags(["SameName"]);
-			await api.updateTag(tag.id, { name: "SameName" });
+			await api.updateTags([{ id: tag.id, patch: { name: "SameName" } }]);
 			const tags = api.getCurrentMap()!.meta.tags;
 			const matching = Object.values(tags).filter((t: any) => t.name === "SameName");
 			return { count: matching.length, exists: String(tag.id) in tags };
@@ -609,7 +609,7 @@ describe("Tag edge cases", () => {
 	it("case-only rename updates name without self-merge", async () => {
 		const result = await withApi(async (api) => {
 			const [tag] = await api.createTags(["lowercase"]);
-			await api.updateTag(tag.id, { name: "Lowercase" });
+			await api.updateTags([{ id: tag.id, patch: { name: "Lowercase" } }]);
 			const updated = api.getCurrentMap()!.meta.tags[String(tag.id)];
 			return { name: updated?.name };
 		});
@@ -619,8 +619,8 @@ describe("Tag edge cases", () => {
 	it("delete an already-hidden tag is idempotent", async () => {
 		const result = await withApi(async (api) => {
 			const [tag] = await api.createTags(["DoubleDelete"]);
-			await api.deleteTag(tag.id);
-			await api.deleteTag(tag.id);
+			await api.deleteTags([tag.id]);
+			await api.deleteTags([tag.id]);
 			const t = api.getCurrentMap()!.meta.tags[String(tag.id)];
 			return { visible: t?.visible, exists: !!t };
 		});
@@ -631,7 +631,7 @@ describe("Tag edge cases", () => {
 	it("empty tag name is rejected or ignored", async () => {
 		const result = await withApi(async (api) => {
 			const [tag] = await api.createTags(["KeepMyName"]);
-			await api.updateTag(tag.id, { name: "" });
+			await api.updateTags([{ id: tag.id, patch: { name: "" } }]);
 			return api.getCurrentMap()!.meta.tags[String(tag.id)]?.name;
 		});
 		// Should either keep old name or reject — never become ""
@@ -641,7 +641,7 @@ describe("Tag edge cases", () => {
 	it("whitespace-only tag name is rejected or ignored", async () => {
 		const result = await withApi(async (api) => {
 			const [tag] = await api.createTags(["KeepMe"]);
-			await api.updateTag(tag.id, { name: "   " });
+			await api.updateTags([{ id: tag.id, patch: { name: "   " } }]);
 			return api.getCurrentMap()!.meta.tags[String(tag.id)]?.name;
 		});
 		expect(result).toBe("KeepMe");
@@ -684,8 +684,8 @@ describe("Tag merge advanced", () => {
 	it("tag counts are correct after merge", async () => {
 		const result = await withApi(async (api, aId, bId) => {
 			// A has 2 locs, B has 1 loc → merge A into B → B should have 3
-			await api.updateTag(aId, { name: "MrgB" });
-			const counts = await api.getTagCounts();
+			await api.updateTags([{ id: aId, patch: { name: "MrgB" } }]);
+			const counts = await api.cmd.storeTagCounts();
 			return { bCount: counts[bId] ?? 0, aCount: counts[aId] ?? 0 };
 		}, tagAId, tagBId);
 		expect(result.bCount).toBe(3);
@@ -695,8 +695,8 @@ describe("Tag merge advanced", () => {
 	it("sequential merges accumulate correctly", async () => {
 		const result = await withApi(async (api, cId, bId) => {
 			// C has 3 locs, B now has 3 → merge C into B → B should have 6
-			await api.updateTag(cId, { name: "MrgB" });
-			const counts = await api.getTagCounts();
+			await api.updateTags([{ id: cId, patch: { name: "MrgB" } }]);
+			const counts = await api.cmd.storeTagCounts();
 			const locs = await api.fetchAllLocations();
 			const withB = locs.filter((l: any) => l.tags.includes(bId));
 			return { bCount: counts[bId] ?? 0, locsWithB: withB.length };
@@ -714,7 +714,7 @@ describe("Tag merge advanced", () => {
 
 		const afterUndo = await withApi(async (api, cId, bId) => {
 			const tags = api.getCurrentMap()!.meta.tags;
-			const counts = await api.getTagCounts();
+			const counts = await api.cmd.storeTagCounts();
 			return {
 				cVisible: tags[String(cId)]?.visible,
 				bCount: counts[bId] ?? 0,
@@ -732,7 +732,7 @@ describe("Tag merge advanced", () => {
 
 		const afterRedo = await withApi(async (api, cId, bId) => {
 			const tags = api.getCurrentMap()!.meta.tags;
-			const counts = await api.getTagCounts();
+			const counts = await api.cmd.storeTagCounts();
 			return {
 				cVisible: tags[String(cId)]?.visible,
 				bCount: counts[bId] ?? 0,
@@ -756,7 +756,7 @@ describe("Tag import dedup", () => {
 
 		const tags = await withApi(async (api) => {
 			const resolved = await api.createTags(["Existing", "WasHidden"]);
-			await api.deleteTag(resolved[1].id);
+			await api.deleteTags([resolved[1].id]);
 			return { existingId: resolved[0].id, hiddenId: resolved[1].id };
 		});
 		existingTagId = tags.existingId;

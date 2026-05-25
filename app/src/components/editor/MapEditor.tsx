@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cmd } from "@/lib/commands";
 import { createLocation } from "@/types";
 import {
 	useCurrentMap,
@@ -9,7 +8,7 @@ import {
 	setActiveLocation,
 	getActiveLocation,
 	createTags,
-	mutate,
+	importPaste,
 } from "@/store/useMapStore";
 import { activatePlugins, deactivatePlugins } from "@/plugins/registry";
 import { getGoogleMap as getGoogleMapInstance } from "@/lib/map/mapState";
@@ -59,11 +58,8 @@ function usePasteHandler() {
 			}
 
 			try {
-				const [r, singleId] = await cmd.storeImportPaste(text);
-				if (r.importedCount > 0) {
-					await mutate(Promise.resolve(r));
-					if (singleId != null) setActiveLocation(singleId);
-				}
+				const [r, singleId] = await importPaste(text);
+				if (r.importedCount > 0 && singleId != null) setActiveLocation(singleId);
 			} catch {
 				log.warn('Couldn\'t import locations via paste.')
 			}

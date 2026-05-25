@@ -104,7 +104,7 @@ describe("Map folder operations", () => {
 			await api.moveMapToFolder(id, "TestFolder");
 		}, mapId);
 
-		const maps = await withApi(async (api) => api.listMaps());
+		const maps = await withApi(async (api) => api.cmd.storeListMaps());
 		const map = maps.find((m: any) => m.id === mapId);
 		expect(map!.folder).toBe("TestFolder");
 	});
@@ -114,7 +114,7 @@ describe("Map folder operations", () => {
 			await api.renameFolder("TestFolder", "RenamedFolder");
 		});
 
-		const maps = await withApi(async (api) => api.listMaps());
+		const maps = await withApi(async (api) => api.cmd.storeListMaps());
 		const map = maps.find((m: any) => m.id === mapId);
 		expect(map!.folder).toBe("RenamedFolder");
 	});
@@ -124,7 +124,7 @@ describe("Map folder operations", () => {
 			await api.moveMapToFolder(id, null);
 		}, mapId);
 
-		const maps = await withApi(async (api) => api.listMaps());
+		const maps = await withApi(async (api) => api.cmd.storeListMaps());
 		const map = maps.find((m: any) => m.id === mapId);
 		expect(map!.folder).toBeNull();
 	});
@@ -149,7 +149,7 @@ describe("Map listing and sorting", () => {
 	});
 
 	it("lists all created maps", async () => {
-		const maps = await withApi(async (api) => api.listMaps());
+		const maps = await withApi(async (api) => api.cmd.storeListMaps());
 		for (const id of mapIds) {
 			const found = maps.find((m: any) => m.id === id);
 			expect(found).toBeTruthy();
@@ -157,7 +157,7 @@ describe("Map listing and sorting", () => {
 	});
 
 	it("each map has correct name", async () => {
-		const maps = await withApi(async (api) => api.listMaps());
+		const maps = await withApi(async (api) => api.cmd.storeListMaps());
 		const names = mapIds.map(
 			(id) => maps.find((m: any) => m.id === id)!.name,
 		);
@@ -170,7 +170,7 @@ describe("Map listing and sorting", () => {
 		const toDelete = mapIds.pop()!;
 		await deleteMap(toDelete);
 
-		const maps = await withApi(async (api) => api.listMaps());
+		const maps = await withApi(async (api) => api.cmd.storeListMaps());
 		const found = maps.find((m: any) => m.id === toDelete);
 		expect(found).toBeUndefined();
 	});

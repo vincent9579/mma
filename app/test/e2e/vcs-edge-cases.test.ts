@@ -40,7 +40,7 @@ describe("Version control — commit and restore", () => {
 
 		await withApi(async (api) => api.commitMap("Two locations"));
 
-		const commits = await withApi(async (api, id) => api.listCommits(id), mapId);
+		const commits = await withApi(async (api, id) => api.cmd.storeListCommits(id), mapId);
 		expect(commits.length).toBeGreaterThanOrEqual(2);
 	});
 
@@ -56,7 +56,7 @@ describe("Version control — commit and restore", () => {
 	});
 
 	it("checkout restores to committed state", async () => {
-		const commits = await withApi(async (api, id) => api.listCommits(id), mapId);
+		const commits = await withApi(async (api, id) => api.cmd.storeListCommits(id), mapId);
 		// Find the "Two locations" commit
 		const twoLocCommit = commits.find((c: any) => c.message === "Two locations");
 		expect(twoLocCommit).toBeTruthy();
@@ -117,12 +117,12 @@ describe("Version control — multiple commits", () => {
 		await flushAndWait();
 		await withApi(async (api) => api.commitMap("Ten locations"));
 
-		const commits = await withApi(async (api, id) => api.listCommits(id), mapId);
+		const commits = await withApi(async (api, id) => api.cmd.storeListCommits(id), mapId);
 		expect(commits.length).toBeGreaterThanOrEqual(3);
 	});
 
 	it("commit messages are preserved", async () => {
-		const commits = await withApi(async (api, id) => api.listCommits(id), mapId);
+		const commits = await withApi(async (api, id) => api.cmd.storeListCommits(id), mapId);
 		const messages = commits.map((c: any) => c.message);
 		expect(messages).toContain("Initial");
 		expect(messages).toContain("Five locations");
@@ -130,7 +130,7 @@ describe("Version control — multiple commits", () => {
 	});
 
 	it("can checkout any prior commit", async () => {
-		const commits = await withApi(async (api, id) => api.listCommits(id), mapId);
+		const commits = await withApi(async (api, id) => api.cmd.storeListCommits(id), mapId);
 		const fiveCommit = commits.find((c: any) => c.message === "Five locations");
 
 		await withApi(async (api, commitId) => {

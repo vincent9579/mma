@@ -44,7 +44,7 @@ describe("Map rename", () => {
 
 	it("rename shows in map list", async () => {
 		const maps = await withApi(async (api) => {
-			return await api.listMaps();
+			return await api.cmd.storeListMaps();
 		});
 		const ourMap = maps.find((m) => m.id === mapId);
 		expect(ourMap).toBeTruthy();
@@ -76,7 +76,7 @@ describe("Folder operations", () => {
 		}, id);
 
 		const maps = await withApi(async (api) => {
-			return await api.listMaps();
+			return await api.cmd.storeListMaps();
 		});
 		const ourMap = maps.find((m) => m.id === id);
 		expect(ourMap!.folder).toBe("MyFolder");
@@ -88,7 +88,7 @@ describe("Folder operations", () => {
 		}, mapIds[0]);
 
 		const maps = await withApi(async (api) => {
-			return await api.listMaps();
+			return await api.cmd.storeListMaps();
 		});
 		const ourMap = maps.find((m) => m.id === mapIds[0]);
 		expect(ourMap!.folder).toBeNull();
@@ -113,7 +113,7 @@ describe("Folder operations", () => {
 		);
 
 		const maps = await withApi(async (api) => {
-			return await api.listMaps();
+			return await api.cmd.storeListMaps();
 		});
 		const m1 = maps.find((m) => m.id === id1);
 		const m2 = maps.find((m) => m.id === id2);
@@ -127,7 +127,7 @@ describe("Folder operations", () => {
 		});
 
 		const maps = await withApi(async (api) => {
-			return await api.listMaps();
+			return await api.cmd.storeListMaps();
 		});
 
 		// Maps still exist but in root
@@ -212,7 +212,7 @@ describe.skip("Bulk import", () => {
 
 	it("bulk import creates multiple maps", async () => {
 		await withApi(async (api) => {
-			const maps = await api.listMaps();
+			const maps = await api.cmd.storeListMaps();
 			return maps.length;
 		});
 
@@ -237,7 +237,7 @@ describe.skip("Bulk import", () => {
 		});
 
 		const maps = await withApi(async (api) => {
-			return await api.listMaps();
+			return await api.cmd.storeListMaps();
 		});
 
 		const bulkMaps = maps.filter((m: any) => m.name.startsWith("Bulk Map"));
@@ -355,7 +355,7 @@ describe("Extra field definitions", () => {
 
 	it("set extra field definitions on map", async () => {
 		await withApi(async (api) => {
-			await api.registerFieldDefs({
+			await api.cmd.storeRegisterFieldDefs({
 				altitude: { type: "number", label: "Altitude (m)" },
 				country: { type: "string", label: "Country" },
 				region: { type: "enum", label: "Region", values: ["NA", "EU", "AS"] },
@@ -423,7 +423,7 @@ describe("Extra field definitions", () => {
 	it("does not re-register already known keys", async () => {
 		// Explicitly register with a custom label
 		await withApi(async (api) => {
-			await api.registerFieldDefs({
+			await api.cmd.storeRegisterFieldDefs({
 				score: { type: "number", label: "My Score" },
 			});
 		});

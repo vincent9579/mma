@@ -33,7 +33,7 @@ describe("SameLocation — duplicate picker", () => {
 		]);
 
 		const nearby = await withApi(async (api) => {
-			return await api.findNearby(10.0, 20.0, 2.0);
+			return await api.cmd.storeFindNearby(10.0, 20.0, 2.0);
 		});
 		expect(nearby.length).toBe(3);
 	});
@@ -41,12 +41,12 @@ describe("SameLocation — duplicate picker", () => {
 	it("deleting one co-located location reduces count", async () => {
 		const before = await getLocCount();
 		const nearby = await withApi(async (api) => {
-			return await api.findNearby(10.0, 20.0, 2.0);
+			return await api.cmd.storeFindNearby(10.0, 20.0, 2.0);
 		});
 		const toDelete = nearby[0].id;
 
 		await withApi(async (api, id) => {
-			api.removeLocations([id]);
+			api.removeLocations(new Set([id]));
 			await new Promise((r) => setTimeout(r, 300));
 		}, toDelete);
 
@@ -54,7 +54,7 @@ describe("SameLocation — duplicate picker", () => {
 		expect(after).toBe(before - 1);
 
 		const remaining = await withApi(async (api) => {
-			return await api.findNearby(10.0, 20.0, 2.0);
+			return await api.cmd.storeFindNearby(10.0, 20.0, 2.0);
 		});
 		expect(remaining.length).toBe(2);
 		expect(remaining.every((l: any) => l.id !== toDelete)).toBe(true);

@@ -349,6 +349,17 @@ export function getSelectedLocationIds() {
 	return selectedLocationIds;
 }
 
+/** @internal Test-only. Forces a full selection re-resolve in Rust and returns
+ *  the raw selected IDs. App code should use getSelectedLocationIds() instead —
+ *  mutations already sync selections via MutationResult. */
+export async function syncSelections(): Promise<{ ids: number[] }> {
+	const sels = selections.map((s) => ({ props: s.props, color: s.color }));
+	if (sels.length === 0) return { ids: [] };
+	await cmd.storeSyncSelections(sels);
+	const ids = await cmd.storeGetSelectedIdsList();
+	return { ids };
+}
+
 export async function createMap(name: string, folder: string | null = null) {
 	await cmd.storeCreateMap(name, folder);
 	await invalidateMapList();
@@ -549,6 +560,14 @@ export async function duplicateLocation(locId: number): Promise<number | null> {
 	const clone: Location = { ...loc, id: 0, createdAt: now, modifiedAt: now };
 	await addLocations([clone]);
 	return clone.id;
+}
+
+export function updateLocationNoUndo(id: number, patch: Partial<Location>) {
+	const p: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(patch)) {
+		if (k !== "id") p[k] = v;
+	}
+	return cmd.storeUpdateLocations([[id, p as LocationPatch]], false);
 }
 
 export function removeLocations(ids: Set<number>) {
@@ -977,6 +996,24 @@ export async function removeTagFromAllLocations(tagId: number) {
 	if (!currentMap) return;
 	const allWithTag = await cmd.storeResolveSelection({ type: "Tag", tagId });
 	if (allWithTag.length > 0) await removeTagFromLocations(tagId, allWithTag);
+}
+
+// --- Import ---
+
+/** Import a file (previously previewed via storeImportPreview). Syncs all
+ *  state (tags, counts, render) via mutate. */
+export async function importFile(droppedFields: string[]) {
+	const r = await cmd.storeImportFile(droppedFields);
+	await mutate(Promise.resolve(r));
+	return r;
+}
+
+/** Import locations from pasted text (JSON or CSV). Returns the import
+ *  result and the single location ID if exactly one was pasted. */
+export async function importPaste(text: string) {
+	const [r, singleId] = await cmd.storeImportPaste(text);
+	await mutate(Promise.resolve(r));
+	return [r, singleId] as const;
 }
 
 // --- Review ---

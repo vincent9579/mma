@@ -44,7 +44,7 @@ describe("Version control - commits", () => {
 	});
 
 	it("listCommits returns commit history", async () => {
-		const commits = await withApi(async (api, id) => api.listCommits(id), mapId);
+		const commits = await withApi(async (api, id) => api.cmd.storeListCommits(id), mapId);
 		expect(Array.isArray(commits)).toBe(true);
 		expect(commits.length).toBeGreaterThanOrEqual(1);
 		expect(commits[0].message).toBe("initial commit");
@@ -55,11 +55,11 @@ describe("Version control - commits", () => {
 		const newLocs = [createLocation({ lat: 50, lng: 60, heading: 0, panoId: null, flags: 0 })];
 		await addLocs(newLocs);
 
-		await withApi(async (api, removeId) => api.removeLocations([removeId]), locIds[0]);
+		await withApi(async (api, removeId) => api.removeLocations(new Set([removeId]), locIds[0]));
 
 		await withApi(async (api) => api.commitMap("add one remove one"));
 
-		const commits = await withApi(async (api, id) => api.listCommits(id), mapId);
+		const commits = await withApi(async (api, id) => api.cmd.storeListCommits(id), mapId);
 
 		expect(commits.length).toBe(2);
 		expect(commits[0].message).toBe("add one remove one");
@@ -93,7 +93,7 @@ describe("Version control - checkout", () => {
 		// Make changes after commit
 		await addLocs([createLocation({ lat: 50, lng: 60, heading: 0, panoId: null, flags: 0 })]);
 
-		await withApi(async (api, removeId) => api.removeLocations([removeId]), locIds[0]);
+		await withApi(async (api, removeId) => api.removeLocations(new Set([removeId]), locIds[0]));
 
 		let count = await getLocCount();
 		expect(count).toBe(2); // locIds[1] + new one
@@ -122,7 +122,7 @@ describe("Version control - checkout", () => {
 	});
 
 	it("checkout creates a revert commit", async () => {
-		const commits = await withApi(async (api, id) => api.listCommits(id), mapId);
+		const commits = await withApi(async (api, id) => api.cmd.storeListCommits(id), mapId);
 		expect(commits.length).toBeGreaterThanOrEqual(2);
 		const revertCommit = commits[0];
 		expect(revertCommit.message).toContain("Revert");

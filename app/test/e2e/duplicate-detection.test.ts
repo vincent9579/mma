@@ -81,14 +81,14 @@ describe("findNearby API", () => {
 
 	it("finds locations within radius", async () => {
 		const nearby = await withApi(async (api) => {
-			return api.findNearby(0, 0, 100); // 100m radius
+			return api.cmd.storeFindNearby(0, 0, 100); // 100m radius
 		});
 		expect(nearby.length).toBe(2);
 	});
 
 	it("does not find distant locations", async () => {
 		const nearby = await withApi(async (api) => {
-			return api.findNearby(0, 0, 100);
+			return api.cmd.storeFindNearby(0, 0, 100);
 		});
 		// The location at (1,1) is ~157km away, should not be found at 100m
 		const hasDistant = nearby.some((l: any) => Math.abs(l.lat - 1) < 0.01);
@@ -97,7 +97,7 @@ describe("findNearby API", () => {
 
 	it("returns empty for location with no neighbors", async () => {
 		const nearby = await withApi(async (api) => {
-			return api.findNearby(50, 50, 100); // no locations near (50,50)
+			return api.cmd.storeFindNearby(50, 50, 100); // no locations near (50,50)
 		});
 		expect(nearby.length).toBe(0);
 	});

@@ -26,7 +26,7 @@ describe("Extra field definitions", () => {
 
 	it("registers field definitions that persist after reopen", async () => {
 		await withApi(async (api) => {
-			await api.registerFieldDefs({
+			await api.cmd.storeRegisterFieldDefs({
 				altitude: { label: "Altitude", type: "number" },
 				country: { label: "Country", type: "string" },
 			});

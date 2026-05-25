@@ -79,7 +79,7 @@ describe("Active location and work area", () => {
 		expect(areaBefore).toBe("location");
 
 		await withApi(async (api, id) => {
-			await api.removeLocations([id]);
+			await api.removeLocations(new Set([id]));
 		}, locIds[2]);
 
 		const active = await withApi(async (api) => api.getActiveLocation());

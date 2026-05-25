@@ -164,7 +164,7 @@ describe("Location CRUD", () => {
 			const newId = await api.duplicateLocation(id);
 			const original = await api.fetchLocation(id);
 			const dup = await api.fetchLocation(newId!);
-			const count = await api.getLocationCount();
+			const count = await api.cmd.storeLocationCount();
 			return { newId, originalLat: original?.lat, dupLat: dup?.lat, count };
 		}, singleLocId);
 		expect(result.newId).not.toBeNull();
@@ -176,7 +176,7 @@ describe("Location CRUD", () => {
 
 	it("remove single location", async () => {
 		await withApi(async (api, id) => {
-			api.removeLocations([id]);
+			api.removeLocations(new Set([id]));
 		}, singleLocId);
 		const count = await getLocCount();
 		expect(count).toBe(501);
@@ -185,7 +185,7 @@ describe("Location CRUD", () => {
 	it("remove bulk locations", async () => {
 		const idsToRemove = bulkLocIds.slice(0, 100);
 		await withApi(async (api, ids) => {
-			api.removeLocations(ids);
+			api.removeLocations(new Set(ids)));
 		}, idsToRemove);
 		const count = await getLocCount();
 		expect(count).toBe(401);
@@ -193,7 +193,7 @@ describe("Location CRUD", () => {
 
 	it("remove nonexistent id is a no-op", async () => {
 		await withApi(async (api) => {
-			api.removeLocations([999999999]);
+			api.removeLocations(new Set([999999999]));
 		});
 		const count = await getLocCount();
 		expect(count).toBe(401);
@@ -237,7 +237,7 @@ describe("Location persistence", () => {
 
 		const result = await withApi(
 			async (api, id0, id50) => {
-				const count = await api.getLocationCount();
+				const count = await api.cmd.storeLocationCount();
 				const loc0 = await api.fetchLocation(id0);
 				const loc50 = await api.fetchLocation(id50);
 				const allLocs = await api.fetchAllLocations();
