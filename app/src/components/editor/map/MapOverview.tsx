@@ -25,6 +25,8 @@ import {
 	composeSelections,
 	decomposeChild,
 	removeChildFromSelection,
+	updateTags,
+	getVisibleTags,
 } from "@/store/useMapStore";
 import { cmd } from "@/lib/commands";
 
@@ -32,13 +34,14 @@ import { RgbColorPicker } from "react-colorful";
 import type { Selection, FilterOp } from "@/store/selections";
 import { selectionDisplayName } from "@/store/selections";
 import { TagManager } from "@/components/editor/TagManager";
+import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { ToolBlock } from "@/components/primitives/ToolBlock";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiClose, mdiChevronRight, mdiDotsVertical } from "@mdi/js";
 import { PluginToolbar } from "@/plugins/PluginPanels";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { fmt } from "@/lib/util/format";
-import { rgbCss } from "@/lib/util/color";
+import { rgbCss, textColorFor } from "@/lib/util/color";
 import { getGoogleMap as getGoogleMapInstance } from "@/lib/map/mapState";
 import { loadGeoJSON } from "@/lib/util/loadGeoJSON.add";
 
@@ -653,6 +656,102 @@ function FilterBuilder({ mapId }: { mapId: string }) {
 	);
 }
 
+function TagFindReplaceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+	const [find, setFind] = useState("");
+	const [replace, setReplace] = useState("");
+	const [applied, setApplied] = useState(false);
+
+	const tags = getVisibleTags();
+	const matches = find
+		? tags.filter((t) => t.name.toLowerCase().includes(find.toLowerCase()))
+		: [];
+
+	const handleApply = async () => {
+		if (!find || matches.length === 0) return;
+		const patches = matches.map((t) => ({
+			id: t.id,
+			patch: { name: t.name.replaceAll(new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), replace) },
+		}));
+		await updateTags(patches);
+		setApplied(true);
+	};
+
+	const handleOpenChange = (v: boolean) => {
+		if (!v) {
+			setFind("");
+			setReplace("");
+			setApplied(false);
+		}
+		onOpenChange(v);
+	};
+
+	return (
+		<Dialog open={open} onOpenChange={handleOpenChange}>
+			<DialogContent title="Find and replace in tag names" className="tag-find-replace-modal">
+				<div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: 4 }}>
+					<label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+						<span style={{ width: 60 }}>Find</span>
+						<input
+							className="input"
+							style={{ flex: 1 }}
+							value={find}
+							onChange={(e) => { setFind(e.target.value); setApplied(false); }}
+							placeholder="Text to find..."
+							autoFocus
+						/>
+					</label>
+					<label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+						<span style={{ width: 60 }}>Replace</span>
+						<input
+							className="input"
+							style={{ flex: 1 }}
+							value={replace}
+							onChange={(e) => { setReplace(e.target.value); setApplied(false); }}
+							placeholder="Replace with..."
+						/>
+					</label>
+					{find && (
+						<div>
+							<p style={{ margin: "0 0 0.25rem", fontSize: "0.85rem", color: "#888" }}>
+								{matches.length} tag{matches.length !== 1 ? "s" : ""} will be affected:
+							</p>
+							<div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 160, overflowY: "auto" }}>
+								{matches.map((t) => {
+									const newName = t.name.replaceAll(new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), replace);
+									return (
+										<span key={t.id} className="tag is-small" style={{ backgroundColor: t.color, color: textColorFor(t.color) }}>
+											<span className="tag__text">
+												{t.name} <span style={{ opacity: 0.5 }}>-&gt;</span> {newName}
+											</span>
+										</span>
+									);
+								})}
+							</div>
+						</div>
+					)}
+					<p style={{ margin: 0, fontSize: "0.8rem", color: "#e5a33e" }}>Tag renames cannot be undone.</p>
+					<div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+						<button className="button" type="button" onClick={() => handleOpenChange(false)}>
+							{applied ? "Close" : "Cancel"}
+						</button>
+						{!applied && (
+							<button
+								className="button button--primary"
+								type="button"
+								disabled={!find || matches.length === 0}
+								onClick={handleApply}
+							>
+								Replace {matches.length} tag{matches.length !== 1 ? "s" : ""}
+							</button>
+						)}
+						{applied && <span style={{ alignSelf: "center", color: "#2fcc8b", fontSize: "0.85rem" }}>Done!</span>}
+					</div>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 export function MapOverview() {
 	const map = useCurrentMap();
 	const selected = useSelectedLocationIds();
@@ -660,6 +759,13 @@ export function MapOverview() {
 	const [bulkTagInput, setBulkTagInput] = useState("");
 	const [selectionsCollapsed, setSelectionsCollapsed] = useState(false);
 	const [dupDistance, setDupDistance] = useState(1);
+	const [showTagFindReplace, setShowTagFindReplace] = useState(false);
+
+	useEffect(() => {
+		const handler = () => setShowTagFindReplace(true);
+		document.addEventListener("open-tag-find-replace", handler);
+		return () => document.removeEventListener("open-tag-find-replace", handler);
+	}, []);
 
 	if (!map) return null;
 
@@ -886,6 +992,7 @@ export function MapOverview() {
 				</p>
 				<FilterBuilder key={map.meta.id} mapId={map.meta.id} />
 			</ToolBlock>
+			<TagFindReplaceDialog open={showTagFindReplace} onOpenChange={setShowTagFindReplace} />
 		</section>
 	);
 }

@@ -17,6 +17,7 @@ import {
 	mdiEye,
 	mdiTagRemove,
 	mdiDatabaseRemoveOutline,
+	mdiFindReplace,
 } from "@mdi/js";
 import { registerCommand } from "./commands.add";
 import {
@@ -221,6 +222,15 @@ registerCommand({
 		a.click();
 		URL.revokeObjectURL(url);
 	},
+});
+
+registerCommand({
+	id: "tag-find-replace",
+	label: "Find and replace in tag names",
+	icon: mdiFindReplace,
+	group: "Tags",
+	execute: () => document.dispatchEvent(new CustomEvent("open-tag-find-replace")),
+	enabled: () => getCurrentMap() !== null,
 });
 
 registerCommand({
