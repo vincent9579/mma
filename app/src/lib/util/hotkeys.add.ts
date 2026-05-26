@@ -50,7 +50,8 @@ export type HotkeyAction =
 	| "jumpForward"
 	| "jumpBackward"
 	| "panToLocation"
-	| "viewportLock";
+	| "viewportLock"
+	| "countrySelect";
 
 export type HotkeyGroup = "Commands" | "Global" | "Map Navigation" | "Location Editor" | "Review";
 
@@ -249,6 +250,12 @@ const RAW_HOTKEY_DEFS: HotkeyDef[] = [
 		label: "Lock viewport direction",
 		group: "Location Editor",
 		defaultBinding: "v",
+	},
+	{
+		action: "countrySelect",
+		label: "Hold + click to select country",
+		group: "Global",
+		defaultBinding: "q",
 	},
 ];
 

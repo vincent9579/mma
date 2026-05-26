@@ -30,6 +30,7 @@ import { mdiBackburger, mdiPencil } from "@mdi/js";
 import { PluginSidebarHost } from "@/components/editor/PluginSidebarHost";
 import SameLocation from "@/components/editor/SameLocation.add";
 import { log } from "@/lib/util/log"
+import { useCountrySelect } from "@/lib/map/useCountrySelect.add";
 
 function usePasteHandler() {
 	useEffect(() => {
@@ -144,6 +145,7 @@ export function MapEditor() {
 	const appSettings = useSettings();
 	usePasteHandler();
 	useCommandHotkeys();
+	useCountrySelect();
 	useHotkey(useBinding("toggleFullscreenMap"), () => {
 		setSetting("fullscreenMap", !getSettings().fullscreenMap);
 	});
