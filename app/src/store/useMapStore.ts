@@ -429,18 +429,6 @@ export async function updateMapMeta(patch: MapMetaPatch) {
 	await invalidateMapList();
 }
 
-export function mergeNewFieldDefs(newDefs: Record<string, ExtraFieldDef> | null) {
-	if (!newDefs || !currentMap) return;
-	const current = currentMap.meta.extra ?? {};
-	currentMap = {
-		...currentMap,
-		meta: {
-			...currentMap.meta,
-			extra: { ...current, fields: { ...current.fields, ...newDefs } },
-		},
-	};
-}
-
 export async function setMapExtraFields(fields: Record<string, ExtraFieldDef>) {
 	if (!currentMapId || !currentMap) return;
 	const current = currentMap.meta.extra ?? {};
@@ -457,10 +445,15 @@ function syncMutationResult(r: MutationResult) {
 	const needsNotify =
 		currentMap.meta.locationCount !== r.locationCount ||
 		undoRedoState.canUndo !== r.canUndo ||
-		undoRedoState.canRedo !== r.canRedo;
+		undoRedoState.canRedo !== r.canRedo ||
+		r.newFieldDefs != null;
 	currentMap = {
 		...currentMap,
-		meta: { ...currentMap.meta, locationCount: r.locationCount },
+		meta: {
+			...currentMap.meta,
+			locationCount: r.locationCount,
+			extra: { ...currentMap.meta.extra, fields: { ...currentMap.meta.extra.fields, ...r.newFieldDefs } },
+		},
 	};
 	undoRedoState = { canUndo: r.canUndo, canRedo: r.canRedo };
 	tagCounts = r.tagCounts;
@@ -483,7 +476,6 @@ function syncMutationResult(r: MutationResult) {
 	if (r.selectionSync) {
 		applySelectionSync(r.selectionSync);
 	}
-	mergeNewFieldDefs(r.newFieldDefs);
 }
 
 /** Parse a binary bitmask file from Rust and emit to selBitmaskBus. */

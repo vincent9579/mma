@@ -983,9 +983,6 @@ declare const mma: {
 		storeDeleteFolder: (name: string) => Promise<null>;
 		storeMoveMapToFolder: (mapId: string, folder: string | null) => Promise<null>;
 		storeUpdateMapLabels: (mapId: string, labels: string[]) => Promise<null>;
-		storeRegisterFieldDefs: (defs: {
-			[x: string]: ExtraFieldDef;
-		}) => Promise<null>;
 		storeGetPanoDate: (panoId: string) => Promise<number | null>;
 		storeSetPanoDate: (panoId: string, timestamp: number) => Promise<null>;
 		storeDbTableInfo: () => Promise<DbTableInfo[]>;
@@ -1200,7 +1197,6 @@ declare const mma: {
 	renameMap(id: string, name: string): Promise<void>;
 	updateMapLabels(id: string, labels: string[]): Promise<void>;
 	updateMapMeta(patch: MapMetaPatch): Promise<void>;
-	mergeNewFieldDefs(newDefs: Record<string, ExtraFieldDef> | null): void;
 	setMapExtraFields(fields: Record<string, ExtraFieldDef>): Promise<void>;
 	mutate(p: Promise<MutationResult_Serialize>): Promise<MutationResult_Serialize>;
 	addLocations(locs: Location$1[], opts?: {

@@ -355,11 +355,8 @@ describe("Extra field definitions", () => {
 
 	it("set extra field definitions on map", async () => {
 		await withApi(async (api) => {
-			await api.cmd.storeRegisterFieldDefs({
-				altitude: { type: "number", label: "Altitude (m)" },
-				country: { type: "string", label: "Country" },
-				region: { type: "enum", label: "Region", values: ["NA", "EU", "AS"] },
-			});
+			const cur = api.getCurrentMap()!.meta.extra?.fields ?? {};
+			await api.updateMapMeta({ extra: { ...api.getCurrentMap()!.meta.extra, fields: { ...cur, altitude: { type: "number", label: "Altitude (m)" }, country: { type: "string", label: "Country" }, region: { type: "enum", label: "Region", values: ["NA", "EU", "AS"] } } } });
 		});
 
 		const extra = await withApi(async (api) => api.getCurrentMap()?.meta.extra);
@@ -423,9 +420,8 @@ describe("Extra field definitions", () => {
 	it("does not re-register already known keys", async () => {
 		// Explicitly register with a custom label
 		await withApi(async (api) => {
-			await api.cmd.storeRegisterFieldDefs({
-				score: { type: "number", label: "My Score" },
-			});
+			const cur = api.getCurrentMap()!.meta.extra?.fields ?? {};
+			await api.updateMapMeta({ extra: { ...api.getCurrentMap()!.meta.extra, fields: { ...cur, score: { type: "number", label: "My Score" } } } });
 		});
 
 		// Add a location with the same key — should not overwrite the custom def

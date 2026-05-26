@@ -164,7 +164,27 @@ pub fn auto_register_field_defs(
     if new_defs.is_empty() { None } else { Some(new_defs) }
 }
 
-/// Persist new field defs into the map's `extra` column in SQLite (read-modify-write).
+/// Upsert field defs — overwrites existing entries. Used for explicit user edits.
+fn upsert_field_defs(
+    conn: &rusqlite::Connection,
+    map_id: &str,
+    new_defs: &HashMap<String, ExtraFieldDef>,
+) -> Result<(), String> {
+    let extra_str: String = conn.query_row(
+        "SELECT extra FROM maps WHERE id = ?1", params![map_id], |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    let mut extra: MapExtra = serde_json::from_str(&extra_str).unwrap_or_default();
+    let fields = extra.fields.get_or_insert_with(HashMap::new);
+    for (k, v) in new_defs {
+        fields.insert(k.clone(), v.clone());
+    }
+    let json = serde_json::to_string(&extra).unwrap_or_default();
+    conn.execute("UPDATE maps SET extra = ?1 WHERE id = ?2", params![json, map_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Persist new field defs — skips keys that already exist. Used for auto-registration.
 pub fn persist_field_defs(
     conn: &rusqlite::Connection,
     map_id: &str,
@@ -343,6 +363,7 @@ pub fn store_delete_map(app: tauri::AppHandle, id: String) -> Result<(), String>
 #[specta::specta]
 pub fn store_update_map_meta(
     app: tauri::AppHandle,
+    state: tauri::State<'_, crate::location_store::StoreState>,
     id: String,
     patch: MapMetaPatch,
 ) -> Result<(), String> {
@@ -399,6 +420,12 @@ pub fn store_update_map_meta(
     let conn = crate::fast_io::open_db(&app)?;
     conn.execute(&sql, param_refs.as_slice())
         .map_err(|e| e.to_string())?;
+    if let Some(ref extra) = patch.extra {
+        let mut store = state.lock().map_err(|e| e.to_string())?;
+        store.known_field_keys = extra.fields.as_ref()
+            .map(|f| f.keys().cloned().collect())
+            .unwrap_or_default();
+    }
     Ok(())
 }
 
@@ -506,22 +533,6 @@ pub fn store_set_pano_date(
     Ok(())
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn store_register_field_defs(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, crate::location_store::StoreState>,
-    defs: HashMap<String, ExtraFieldDef>,
-) -> Result<(), String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let map_id = store.map_id.as_ref().ok_or("no map open")?.clone();
-    let conn = crate::fast_io::open_db(&app)?;
-    persist_field_defs(&conn, &map_id, &defs)?;
-    for key in defs.keys() {
-        store.known_field_keys.insert(key.clone());
-    }
-    Ok(())
-}
 
 // ---------------------------------------------------------------------------
 // Debug / diagnostics

@@ -1211,6 +1211,26 @@ pub fn store_close_map(
     Ok(())
 }
 
+pub(crate) fn auto_register_extras(
+    app: &tauri::AppHandle,
+    store: &mut Store,
+    extras: &[&serde_json::Map<String, serde_json::Value>],
+    result: &mut MutationResult,
+) {
+    if extras.is_empty() { return; }
+    if let Some(new_defs) = crate::map_meta::auto_register_field_defs(&store.known_field_keys, extras) {
+        if let Some(map_id) = &store.map_id {
+            if let Ok(conn) = fast_io::open_db(app) {
+                let _ = crate::map_meta::persist_field_defs(&conn, map_id, &new_defs);
+            }
+        }
+        for key in new_defs.keys() {
+            store.known_field_keys.insert(key.clone());
+        }
+        result.new_field_defs = Some(new_defs);
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn store_add_locations(
@@ -1235,23 +1255,10 @@ pub fn store_add_locations(
         store.overlay_add(loc);
     }
     let mut result = store.finish_mutation(ChangeSet { added: added.clone(), ..Default::default() });
-    // Auto-register field defs for new extra keys
     let extras: Vec<&serde_json::Map<String, serde_json::Value>> = added.iter()
         .filter_map(|l| l.extra.as_ref())
         .collect();
-    if !extras.is_empty() {
-        if let Some(new_defs) = crate::map_meta::auto_register_field_defs(&store.known_field_keys, &extras) {
-            if let Some(map_id) = &store.map_id {
-                if let Ok(conn) = fast_io::open_db(&app) {
-                    let _ = crate::map_meta::persist_field_defs(&conn, map_id, &new_defs);
-                }
-            }
-            for key in new_defs.keys() {
-                store.known_field_keys.insert(key.clone());
-            }
-            result.new_field_defs = Some(new_defs);
-        }
-    }
+    auto_register_extras(&app, &mut store, &extras, &mut result);
     log::debug!("[cmd] store_add_locations lock={}ms total={}ms", _lock, _t.elapsed().as_millis());
     Ok(result)
 }
@@ -1323,19 +1330,7 @@ pub fn store_update_locations(
         let extras: Vec<&serde_json::Map<String, serde_json::Value>> = updated.iter()
             .filter_map(|(_, n)| n.extra.as_ref())
             .collect();
-        if !extras.is_empty() {
-            if let Some(new_defs) = crate::map_meta::auto_register_field_defs(&store.known_field_keys, &extras) {
-                if let Some(map_id) = &store.map_id {
-                    if let Ok(conn) = fast_io::open_db(&app) {
-                        let _ = crate::map_meta::persist_field_defs(&conn, map_id, &new_defs);
-                    }
-                }
-                for key in new_defs.keys() {
-                    store.known_field_keys.insert(key.clone());
-                }
-                result.new_field_defs = Some(new_defs);
-            }
-        }
+        auto_register_extras(&app, &mut store, &extras, &mut result);
     }
     log::debug!("[cmd] store_update_locations n={} undo={} total={}ms", updates.len(), record_undo, _t.elapsed().as_millis());
     Ok(result)

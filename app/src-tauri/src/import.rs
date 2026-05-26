@@ -924,23 +924,10 @@ fn add_parsed_to_store(
     );
     result.tags = Some(store.tags.clone());
 
-    // Auto-register field defs for new extra keys
     let extras: Vec<&serde_json::Map<String, serde_json::Value>> = parsed.locations.iter()
         .filter_map(|l| l.extra.as_ref())
         .collect();
-    if !extras.is_empty() {
-        if let Some(defs) = crate::map_meta::auto_register_field_defs(&store.known_field_keys, &extras) {
-            if let Some(map_id) = &store.map_id {
-                if let Ok(conn) = crate::fast_io::open_db(app) {
-                    let _ = crate::map_meta::persist_field_defs(&conn, map_id, &defs);
-                }
-            }
-            for key in defs.keys() {
-                store.known_field_keys.insert(key.clone());
-            }
-            result.new_field_defs = Some(defs);
-        }
-    }
+    crate::location_store::auto_register_extras(app, store, &extras, &mut result);
     Ok(result)
 }
 
