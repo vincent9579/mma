@@ -1542,3 +1542,71 @@ fn patch_all_rows_preserves_order() {
     assert_eq!(store.get_loc_by_id(2).unwrap().heading, 20.0);
     assert_eq!(store.get_loc_by_id(3).unwrap().heading, 30.0);
 }
+
+// -----------------------------------------------------------------------
+// StoreManager
+// -----------------------------------------------------------------------
+
+#[test]
+fn manager_insert_and_lookup() {
+    let mut mgr = StoreManager::new();
+    let mut s1 = Store::new();
+    s1.map_id = Some("map-a".into());
+    s1.alive_count = 10;
+    let mut s2 = Store::new();
+    s2.map_id = Some("map-b".into());
+    s2.alive_count = 20;
+
+    mgr.stores.insert("map-a".into(), s1);
+    mgr.stores.insert("map-b".into(), s2);
+    mgr.window_map.insert("win-1".into(), "map-a".into());
+    mgr.window_map.insert("win-2".into(), "map-b".into());
+
+    assert_eq!(mgr.store_for_window("win-1").unwrap().alive_count, 10);
+    assert_eq!(mgr.store_for_window("win-2").unwrap().alive_count, 20);
+    assert_eq!(mgr.store_for_map("map-a").unwrap().alive_count, 10);
+    assert_eq!(mgr.store_for_map("map-b").unwrap().alive_count, 20);
+}
+
+#[test]
+fn manager_window_not_found() {
+    let mut mgr = StoreManager::new();
+    assert!(mgr.store_for_window("nonexistent").is_err());
+}
+
+#[test]
+fn manager_map_not_found() {
+    let mut mgr = StoreManager::new();
+    assert!(mgr.store_for_map("nonexistent").is_err());
+}
+
+#[test]
+fn manager_map_id_for_window() {
+    let mut mgr = StoreManager::new();
+    mgr.window_map.insert("win-1".into(), "map-a".into());
+    assert_eq!(mgr.map_id_for_window("win-1").unwrap(), "map-a");
+    assert!(mgr.map_id_for_window("win-2").is_err());
+}
+
+#[test]
+fn manager_remove_preserves_other() {
+    let mut mgr = StoreManager::new();
+    let mut s1 = Store::new();
+    s1.map_id = Some("map-a".into());
+    let mut s2 = Store::new();
+    s2.map_id = Some("map-b".into());
+    s2.alive_count = 99;
+
+    mgr.stores.insert("map-a".into(), s1);
+    mgr.stores.insert("map-b".into(), s2);
+    mgr.window_map.insert("win-1".into(), "map-a".into());
+    mgr.window_map.insert("win-2".into(), "map-b".into());
+
+    mgr.window_map.remove("win-1");
+    mgr.stores.remove("map-a");
+
+    assert!(mgr.store_for_window("win-1").is_err());
+    assert_eq!(mgr.store_for_window("win-2").unwrap().alive_count, 99);
+    assert!(mgr.store_for_map("map-a").is_err());
+    assert_eq!(mgr.store_for_map("map-b").unwrap().alive_count, 99);
+}
