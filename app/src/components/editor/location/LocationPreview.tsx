@@ -456,6 +456,7 @@ function FullscreenTagBar({
 }) {
 	const [input, setInput] = useState("");
 	const [focused, setFocused] = useState(false);
+	const [hovered, setHovered] = useState(false);
 
 	const handleAdd = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -475,14 +476,27 @@ function FullscreenTagBar({
 		setInput("");
 	};
 
+	const toggleTag = (t: Tag) => {
+		if (pendingTags.includes(t.id)) {
+			onChangeTags(pendingTags.filter((id) => id !== t.id));
+		} else {
+			onChangeTags([...pendingTags, t.id]);
+		}
+	};
+
 	const locTags = pendingTags.map((id) => tags.find((t) => t.id === id)).filter(Boolean) as Tag[];
-	const available = tags.filter((t) => !pendingTags.includes(t.id));
+	const sorted = [...tags].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
+	const available = sorted.filter((t) => !pendingTags.includes(t.id));
 	const suggestions = input.trim()
 		? available.filter((t) => t.name.toLowerCase().includes(input.toLowerCase())).slice(0, 15)
 		: available.slice(0, 15);
 
 	return (
-		<div className="fullscreen-tagbar">
+		<div
+			className="fullscreen-tagbar"
+			onMouseEnter={() => setHovered(true)}
+			onMouseLeave={() => setHovered(false)}
+		>
 			<ul className="tag-list">
 				{locTags.map((t) => (
 					<li
@@ -537,6 +551,21 @@ function FullscreenTagBar({
 					</ul>
 				)}
 			</div>
+			{hovered && available.length > 0 && (
+				<div className="fullscreen-tagbar__palette">
+					{available.map((t) => (
+						<button
+							key={t.id}
+							className="tag is-small fullscreen-tagbar__palette-tag"
+							style={{ backgroundColor: t.color, color: textColorFor(t.color) }}
+							onClick={() => toggleTag(t)}
+							type="button"
+						>
+							<span className="tag__text">{t.name}</span>
+						</button>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }

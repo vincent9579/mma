@@ -4556,6 +4556,25 @@ body {
 .fullscreen-tagbar__suggestion {
 	cursor: pointer;
 }
+.fullscreen-tagbar__palette {
+	position: absolute;
+	bottom: 100%;
+	left: 0;
+	right: 0;
+	max-height: 240px;
+	overflow-y: auto;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	padding: 8px 12px;
+	background: rgba(0, 0, 0, 0.85);
+	border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+.fullscreen-tagbar__palette-tag {
+	cursor: pointer;
+	border: none;
+	font: inherit;
+}
 
 /* Hide Google logo in Street View panorama */
 .location-preview__embed a[href*="maps.google.com/maps"] {
