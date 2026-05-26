@@ -2,7 +2,11 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { MapData, MapMeta, Location, Tag, WorkArea, ExtraFieldDef } from "@/types";
 import { emit as tauriEmit, listen } from "@tauri-apps/api/event";
 import { cmd, fetchViaFile } from "@/lib/commands";
-import type { MutationResult_Serialize as MutationResult, LocationPatch_Deserialize as LocationPatch, MapMetaPatch } from "@/bindings.gen";
+import type {
+	MutationResult_Serialize as MutationResult,
+	LocationPatch_Deserialize as LocationPatch,
+	MapMetaPatch,
+} from "@/bindings.gen";
 import { emit as emitEvent } from "@/lib/events";
 import { log } from "@/lib/util/log";
 import { debugSpan } from "@/lib/util/debug";
@@ -13,8 +17,15 @@ import type { RenderDelta } from "@/lib/render/CellManager";
 function createBus<T extends (...args: never[]) => void>() {
 	let handlers: T[] = [];
 	return {
-		on: (fn: T) => { handlers.push(fn); return () => { handlers = handlers.filter((h) => h !== fn); }; },
-		emit: ((...args: Parameters<T>) => { for (const h of handlers) h(...args); }) as T,
+		on: (fn: T) => {
+			handlers.push(fn);
+			return () => {
+				handlers = handlers.filter((h) => h !== fn);
+			};
+		},
+		emit: ((...args: Parameters<T>) => {
+			for (const h of handlers) h(...args);
+		}) as T,
 	};
 }
 
@@ -33,14 +44,14 @@ import {
 	type Selection,
 	type SelectionProps,
 	type PolygonGeometry,
-	addSelection as addSel,
-	removeSelection as removeSel,
+	addSelections as addSel,
+	removeSelections as removeSel,
 	intersectSelections,
 	unionSelections,
 	invertSelections,
 	toggleManualSelection as toggleManual,
 	setPolygonName as renamePolygonSel,
-	setSelectionColor as setSelColor,
+	setSelectionColors as setSelColor,
 	reorderSelections,
 	composeSelections as composeSels,
 	composeWithChild as composeWithChildSel,
@@ -48,7 +59,6 @@ import {
 	removeFromComposite as removeFromCompositeSel,
 	composeSiblings as composeSiblingsSel,
 } from "./selections";
-
 
 const storeBus = createBus<() => void>();
 const subscribe = storeBus.on;
@@ -114,7 +124,7 @@ function getMapSnapshot() {
 export function refreshAfterMutation() {
 	if (!currentMap) {
 		selections = [];
-	
+
 		selectedLocationIds = new Set();
 		mapVersion++;
 		notify();
@@ -174,9 +184,7 @@ let cachedCommitDiff = { added: 0, removed: 0, modified: 0 };
 
 export function hasCommitDiff(): boolean {
 	return (
-		cachedCommitDiff.added > 0 ||
-		cachedCommitDiff.removed > 0 ||
-		cachedCommitDiff.modified > 0
+		cachedCommitDiff.added > 0 || cachedCommitDiff.removed > 0 || cachedCommitDiff.modified > 0
 	);
 }
 
@@ -443,7 +451,10 @@ function syncMutationResult(r: MutationResult) {
 		meta: {
 			...currentMap.meta,
 			locationCount: r.locationCount,
-			extra: { ...currentMap.meta.extra, fields: { ...currentMap.meta.extra.fields, ...r.newFieldDefs } },
+			extra: {
+				...currentMap.meta.extra,
+				fields: { ...currentMap.meta.extra.fields, ...r.newFieldDefs },
+			},
 		},
 	};
 	undoRedoState = { canUndo: r.canUndo, canRedo: r.canRedo };
@@ -460,7 +471,7 @@ function syncMutationResult(r: MutationResult) {
 			const was = oldTags[id];
 			const now = r.tags[id];
 			if (was && was.visible !== false && (!now || now.visible === false)) {
-				removeSelection(`tag:${id}`);
+				removeSelection([`tag:${id}`]);
 			}
 		}
 	}
@@ -498,10 +509,16 @@ async function emitBitmaskFile(patchFile: string) {
 		}
 		cellEntries.push({ cellChar, locCount, masks });
 	}
-	selBitmaskBus.emit(selColors, cellEntries, (ids) => { selectedLocationIds = ids; });
+	selBitmaskBus.emit(selColors, cellEntries, (ids) => {
+		selectedLocationIds = ids;
+	});
 }
 
-async function applySelectionSync(sync: { counts: number[]; patchFile: string | null; selectedCount: number }) {
+async function applySelectionSync(sync: {
+	counts: number[];
+	patchFile: string | null;
+	selectedCount: number;
+}) {
 	for (let i = 0; i < selections.length; i++) {
 		selections[i] = { ...selections[i], count: sync.counts[i] ?? 0 };
 	}
@@ -525,7 +542,9 @@ export async function addLocations(locs: Location[], opts?: { hideInDelta?: bool
 	if (!currentMap || locs.length === 0) return;
 	const t0 = performance.now();
 	const r = await mutate(cmd.storeAddLocations(locs));
-	log.debug(`[add] ipc=${(performance.now() - t0).toFixed(0)}ms delta: +${r.delta.added.length} -${r.delta.removed.length}`);
+	log.debug(
+		`[add] ipc=${(performance.now() - t0).toFixed(0)}ms delta: +${r.delta.added.length} -${r.delta.removed.length}`,
+	);
 	for (let i = 0; i < r.delta.added.length && i < locs.length; i++) {
 		locs[i].id = r.delta.added[i].id;
 	}
@@ -572,8 +591,9 @@ export function removeLocations(ids: Set<number>) {
 	mapVersion++;
 	notify();
 	emitEvent("location:remove", [...ids]);
-	mutate(cmd.storeRemoveLocations([...ids]))
-		.catch((e) => log.error("[delete] store_remove_locations failed:", e));
+	mutate(cmd.storeRemoveLocations([...ids])).catch((e) =>
+		log.error("[delete] store_remove_locations failed:", e),
+	);
 }
 
 function buildUpdates(
@@ -621,17 +641,15 @@ export function patchLocationExtra(
 ) {
 	if (!currentMap) return;
 	const send = (extra: Record<string, unknown>) => {
-		mutate(cmd.storeUpdateLocations([[locId, { extra }]], false)).then(
-			() => {
-				if (activeLocationId === locId) {
-					fetchViaFile<Location>(cmd.storeGetLocationFile(locId)).then((loc) => {
-						cachedActiveLocation = loc ?? null;
-						mapVersion++;
-						notify();
-					});
-				}
-			},
-		);
+		mutate(cmd.storeUpdateLocations([[locId, { extra }]], false)).then(() => {
+			if (activeLocationId === locId) {
+				fetchViaFile<Location>(cmd.storeGetLocationFile(locId)).then((loc) => {
+					cachedActiveLocation = loc ?? null;
+					mapVersion++;
+					notify();
+				});
+			}
+		});
 	};
 	if (replace) {
 		send(extraPatch);
@@ -690,12 +708,20 @@ async function applySelectionUpdate(updater: (m: MapData, sels: Selection[]) => 
 	emitEvent("selection:change", selections);
 }
 
-export function addSelection(props: SelectionProps) {
-	return applySelectionUpdate((m, sels) => addSel(m, sels, props));
+export function addSelection(props: SelectionProps[]) {
+	return applySelectionUpdate((m, sels) => {
+		let result = sels;
+		for (const p of props) result = addSel(m, result, p);
+		return result;
+	});
 }
 
-export function removeSelection(key: string) {
-	return applySelectionUpdate((_m, sels) => removeSel(sels, key));
+export function removeSelection(keys: string[]) {
+	return applySelectionUpdate((_m, sels) => {
+		let result = sels;
+		for (const k of keys) result = removeSel(result, k);
+		return result;
+	});
 }
 
 export function resetSelections() {
@@ -719,35 +745,35 @@ export function toggleManualSelection(locationId: number) {
 }
 
 export function selectEverything() {
-	return addSelection({ type: "Everything" });
+	return addSelection([{ type: "Everything" }]);
 }
 
 export function selectUntagged() {
-	return addSelection({ type: "Untagged" });
+	return addSelection([{ type: "Untagged" }]);
 }
 
 export function selectUnpanned() {
-	return addSelection({ type: "Unpanned" });
+	return addSelection([{ type: "Unpanned" }]);
 }
 
 export function selectPanoIds() {
-	return addSelection({ type: "PanoIds" });
+	return addSelection([{ type: "PanoIds" }]);
 }
 
 export function selectNotPanoIds() {
-	return addSelection({ type: "NotPanoIds" });
+	return addSelection([{ type: "NotPanoIds" }]);
 }
 
 export function selectDuplicates(distance: number) {
-	return addSelection({ type: "Duplicates", distance });
+	return addSelection([{ type: "Duplicates", distance }]);
 }
 
 export function selectTag(tagId: number) {
-	return addSelection({ type: "Tag", tagId });
+	return addSelection([{ type: "Tag", tagId }]);
 }
 
 export function selectPolygon(polygon: PolygonGeometry, includeInformational = false) {
-	return addSelection({ type: "Polygon", polygon, includeInformational });
+	return addSelection([{ type: "Polygon", polygon, includeInformational }]);
 }
 
 export function selectFilter(
@@ -756,7 +782,7 @@ export function selectFilter(
 	value: unknown,
 	value2?: unknown,
 ) {
-	return addSelection({ type: "Filter", field, op, value, value2 });
+	return addSelection([{ type: "Filter", field, op, value, value2 }]);
 }
 
 export function setPolygonName(key: string, name: string) {
@@ -765,8 +791,12 @@ export function setPolygonName(key: string, name: string) {
 
 // TODO: debounce — color picker fires this on every drag tick, triggering a full
 // store_sync_selections IPC each time. Laggy on large maps.
-export function setSelectionColor(key: string, color: [number, number, number]) {
-	applySelectionUpdate((_m, sels) => setSelColor(sels, key, color));
+export function setSelectionColor(entries: { key: string; color: [number, number, number] }[]) {
+	applySelectionUpdate((_m, sels) => {
+		let result = sels;
+		for (const { key, color } of entries) result = setSelColor(result, key, color);
+		return result;
+	});
 }
 
 export function reorderSelection(fromKey: string, toKey: string, position: "before" | "after") {
@@ -825,9 +855,7 @@ export function useSelectedTagIds() {
 export async function setActiveLocation(id: number | null, checkDuplicates = true) {
 	const t0 = performance.now();
 	activeLocationId = id;
-	cmd.storeSetActive(id).catch((e) =>
-		log.error("[setActive] store_set_active failed:", e),
-	);
+	cmd.storeSetActive(id).catch((e) => log.error("[setActive] store_set_active failed:", e));
 	if (id) {
 		const loc = await fetchViaFile<Location>(cmd.storeGetLocationFile(id));
 		log.debug(`[setActive] store_get_location_file ipc=${(performance.now() - t0).toFixed(0)}ms`);
@@ -841,7 +869,9 @@ export async function setActiveLocation(id: number | null, checkDuplicates = tru
 				cachedActiveLocation = null;
 				mapVersion++;
 				notify();
-				log.debug(`[setActive] duplicates=${nearby.length} total=${(performance.now() - t0).toFixed(0)}ms`);
+				log.debug(
+					`[setActive] duplicates=${nearby.length} total=${(performance.now() - t0).toFixed(0)}ms`,
+				);
 				return;
 			}
 		}
@@ -861,9 +891,7 @@ export function openDuplicateLocation(loc: Location) {
 	activeLocationId = loc.id;
 	cachedActiveLocation = loc;
 	workArea = "location";
-	cmd.storeSetActive(loc.id).catch((e) =>
-		log.error("[setActive] store_set_active failed:", e),
-	);
+	cmd.storeSetActive(loc.id).catch((e) => log.error("[setActive] store_set_active failed:", e));
 	mapVersion++;
 	notify();
 }
@@ -902,8 +930,6 @@ export function getWorkArea() {
 	return workArea;
 }
 
-
-
 export function setPluginMode(pluginId: string) {
 	workArea = "plugin";
 	activePluginId = pluginId;
@@ -927,8 +953,8 @@ export function exitPluginMode() {
 export async function createTags(names: string[]): Promise<Tag[]> {
 	if (names.length === 0) return [];
 	await mutate(cmd.storeCreateTags(names));
-	const lower = new Set(names.map(n => n.toLowerCase()));
-	return Object.values(currentMap!.meta.tags).filter(t => lower.has(t.name.toLowerCase()));
+	const lower = new Set(names.map((n) => n.toLowerCase()));
+	return Object.values(currentMap!.meta.tags).filter((t) => lower.has(t.name.toLowerCase()));
 }
 
 /** Rename or recolor tags. If a rename collides with an existing tag name
@@ -939,7 +965,12 @@ export async function updateTags(patches: { id: number; patch: Partial<Tag> }[])
 	for (const { id, patch } of patches) {
 		await mutate(cmd.storeUpdateTag(id, patch.name ?? null, patch.color ?? null));
 	}
-	if (selections.some((s) => { const p = s.props; return p.type === "Tag" && patches.some((q) => q.id === p.tagId); })) {
+	if (
+		selections.some((s) => {
+			const p = s.props;
+			return p.type === "Tag" && patches.some((q) => q.id === p.tagId);
+		})
+	) {
 		applySelectionUpdate((_, sels) => sels);
 	}
 }

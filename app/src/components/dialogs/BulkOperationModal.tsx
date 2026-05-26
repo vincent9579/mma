@@ -140,8 +140,8 @@ function BulkSetup({
 					selectionCount={selectionCount}
 				/>
 				<div className="bulk-operation__status">
-					{fmt.format(scopedLocs.length)} locations in scope. {fmt.format(unpinned)} not pinned to
-					a pano ID.
+					{fmt.format(scopedLocs.length)} locations in scope. {fmt.format(unpinned)} not pinned to a
+					pano ID.
 				</div>
 				<label className="bulk-operation__option">
 					<input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
@@ -235,8 +235,7 @@ function ClearFieldsSetup({
 		});
 	};
 
-	const scopedWithData = (key: string) =>
-		scopedLocs.filter((l) => l.extra?.[key] != null).length;
+	const scopedWithData = (key: string) => scopedLocs.filter((l) => l.extra?.[key] != null).length;
 
 	return (
 		<div className="bulk-operation">
@@ -255,14 +254,8 @@ function ClearFieldsSetup({
 						const count = scopedWithData(key);
 						return (
 							<label key={key} className="bulk-operation__field-item">
-								<input
-									type="checkbox"
-									checked={selected.has(key)}
-									onChange={() => toggle(key)}
-								/>
-								<span className="bulk-operation__field-label">
-									{def?.label ?? key}
-								</span>
+								<input type="checkbox" checked={selected.has(key)} onChange={() => toggle(key)} />
+								<span className="bulk-operation__field-label">{def?.label ?? key}</span>
 								{def?.label && def.label !== key && (
 									<span className="bulk-operation__field-key">{key}</span>
 								)}
@@ -398,12 +391,14 @@ function BulkProgress({
 					ValidationState.Unofficial,
 					ValidationState.NotFound,
 				];
-				for (const state of stateOrder) {
-					const locs = results.get(state);
-					if (locs && locs.length > 0) {
-						addSelection({ type: "ValidationState", locations: locs.map((l) => l.id), state });
-					}
-				}
+				const batch = stateOrder
+					.filter((state) => (results.get(state)?.length ?? 0) > 0)
+					.map((state) => ({
+						type: "ValidationState" as const,
+						locations: results.get(state)!.map((l) => l.id),
+						state,
+					}));
+				if (batch.length > 0) addSelection(batch);
 			} else if (operation === "enrich") {
 				const er = await enrichAll(locations, {
 					signal: controller.signal,
@@ -465,7 +460,7 @@ function BulkProgress({
 					<EnrichSummary
 						result={enrichResult}
 						onSelect={(ids, _label) => {
-							addSelection({ type: "Manual", locations: ids });
+							addSelection([{ type: "Manual", locations: ids }]);
 						}}
 					/>
 				) : status === "done" && operation === "clearFields" ? (

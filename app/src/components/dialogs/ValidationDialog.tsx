@@ -32,16 +32,14 @@ function ValidationContent() {
 				ValidationState.NotFound,
 			];
 
-			for (const state of stateOrder) {
-				const locs = results.get(state);
-				if (locs && locs.length > 0) {
-					addSelection({
-						type: "ValidationState",
-						locations: locs.map((l) => l.id),
-						state,
-					});
-				}
-			}
+			const batch = stateOrder
+				.filter((state) => (results.get(state)?.length ?? 0) > 0)
+				.map((state) => ({
+					type: "ValidationState" as const,
+					locations: results.get(state)!.map((l) => l.id),
+					state,
+				}));
+			if (batch.length > 0) addSelection(batch);
 		} catch (e: unknown) {
 			if (!(e instanceof Error && e.name === "AbortError")) {
 				setError(e instanceof Error ? e.message : "Validation failed");

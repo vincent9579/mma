@@ -109,7 +109,7 @@ function SelectionRow({
 	const isDropTarget = drag != null && drag.key !== selection.key;
 	const handleColorChange = useCallback(
 		(c: { r: number; g: number; b: number }) => {
-			setSelectionColor(selection.key, [c.r, c.g, c.b]);
+			setSelectionColor([{ key: selection.key, color: [c.r, c.g, c.b] }]);
 		},
 		[selection.key],
 	);
@@ -981,7 +981,7 @@ export function MapOverview() {
 							<SelectionRow
 								key={sel.key}
 								selection={sel}
-								onRemove={() => removeSelection(sel.key)}
+								onRemove={() => removeSelection([sel.key])}
 							/>
 						))}
 					</div>

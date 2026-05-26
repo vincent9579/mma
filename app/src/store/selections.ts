@@ -108,7 +108,7 @@ function dedupe(selections: Selection[]): Selection[] {
 	return map.size === selections.length ? selections : Array.from(map.values());
 }
 
-export function addSelection(
+export function addSelections(
 	map: MapData,
 	current: Selection[],
 	props: SelectionProps,
@@ -117,7 +117,7 @@ export function addSelection(
 }
 
 /** Remove a selection by key. Composites (Intersection/Union/Invert) unwrap their children back into the list. */
-export function removeSelection(current: Selection[], key: string): Selection[] {
+export function removeSelections(current: Selection[], key: string): Selection[] {
 	return current.flatMap((s) => {
 		if (s.key !== key) return [s];
 		if (s.props.type === "Invert" || s.props.type === "Intersection" || s.props.type === "Union")
@@ -483,7 +483,7 @@ function validationStateLabel(state: ValidationState): string {
 	}
 }
 
-export function setSelectionColor(
+export function setSelectionColors(
 	current: Selection[],
 	key: string,
 	color: [number, number, number],

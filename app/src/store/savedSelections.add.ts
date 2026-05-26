@@ -70,7 +70,10 @@ function resolveTagByName(map: MapData, tagName: string): number | null {
 	return null;
 }
 
-export function savedToSelectionProps(saved: SavedSelectionProps, map: MapData): SelectionProps | null {
+export function savedToSelectionProps(
+	saved: SavedSelectionProps,
+	map: MapData,
+): SelectionProps | null {
 	switch (saved.type) {
 		case "TagName": {
 			const tagId = resolveTagByName(map, saved.tagName);
@@ -98,18 +101,30 @@ export function savedToSelectionProps(saved: SavedSelectionProps, map: MapData):
 
 export function describeRule(props: SavedSelectionProps): string {
 	switch (props.type) {
-		case "Everything": return "All";
-		case "Polygon": return props.polygon.properties?.name || "Polygon";
-		case "TagName": return `Tag: ${props.tagName}`;
-		case "Untagged": return "Untagged";
-		case "Unpanned": return "Unpanned";
-		case "PanoIds": return "Has Pano ID";
-		case "NotPanoIds": return "No Pano ID";
-		case "Duplicates": return `Dupes (${props.distance}m)`;
-		case "Filter": return `${props.field} ${props.op} ${String(props.value)}`;
-		case "Intersection": return props.selections.map(describeRule).join(" AND ");
-		case "Union": return props.selections.map(describeRule).join(" OR ");
-		case "Invert": return `NOT (${props.selections.map(describeRule).join(", ")})`;
+		case "Everything":
+			return "All";
+		case "Polygon":
+			return props.polygon.properties?.name || "Polygon";
+		case "TagName":
+			return `Tag: ${props.tagName}`;
+		case "Untagged":
+			return "Untagged";
+		case "Unpanned":
+			return "Unpanned";
+		case "PanoIds":
+			return "Has Pano ID";
+		case "NotPanoIds":
+			return "No Pano ID";
+		case "Duplicates":
+			return `Dupes (${props.distance}m)`;
+		case "Filter":
+			return `${props.field} ${props.op} ${String(props.value)}`;
+		case "Intersection":
+			return props.selections.map(describeRule).join(" AND ");
+		case "Union":
+			return props.selections.map(describeRule).join(" OR ");
+		case "Invert":
+			return `NOT (${props.selections.map(describeRule).join(", ")})`;
 	}
 }
 
@@ -119,7 +134,11 @@ export function getSavedSelections(): SavedSelection[] {
 	return getSettings().savedSelections;
 }
 
-export function saveCurrentSelections(name: string, selections: Selection[], map: MapData): boolean {
+export function saveCurrentSelections(
+	name: string,
+	selections: Selection[],
+	map: MapData,
+): boolean {
 	const items: SavedSelectionItem[] = [];
 	for (const sel of selections) {
 		const props = selectionToSaved(sel, map);
@@ -145,13 +164,11 @@ export function deleteSavedSelection(id: string): void {
 }
 
 export function applySavedSelection(saved: SavedSelection, map: MapData): number {
-	let applied = 0;
+	const batch: SelectionProps[] = [];
 	for (const item of saved.items) {
 		const props = savedToSelectionProps(item.props, map);
-		if (props) {
-			addSelection(props);
-			applied++;
-		}
+		if (props) batch.push(props);
 	}
-	return applied;
+	if (batch.length > 0) addSelection(batch);
+	return batch.length;
 }
