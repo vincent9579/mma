@@ -51,7 +51,7 @@ pub struct Location {
     /// Street View zoom level (0-5), not map zoom.
     pub zoom: f64,
     pub pano_id: Option<String>,
-    /// Bitfield: bit 1 = LoadAsPanoId, bit 2 = Informational.
+    /// Bitfield: see [`LOAD_AS_PANO_ID`] and [`INFORMATIONAL`].
     pub flags: u32,
     /// Tag IDs applied to this location. References `Tag.id`.
     pub tags: Vec<u32>,
@@ -65,3 +65,7 @@ pub struct Location {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<String>,
 }
+
+// TODO: consider bitflags! crate so these compose into a typed LocationFlags instead of raw u32
+pub const LOAD_AS_PANO_ID: u32 = 1;
+pub const INFORMATIONAL: u32 = 2;

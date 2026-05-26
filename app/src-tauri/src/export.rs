@@ -6,9 +6,8 @@ use std::io::Write;
 use crate::arrow_bridge;
 use crate::fast_io;
 use crate::location_store::StoreState;
+use crate::types::LOAD_AS_PANO_ID;
 use crate::util::hex_to_rgb;
-
-const LOAD_AS_PANO_ID: u32 = 1;
 
 /// Configuration for JSON export. Controls which fields are included and
 /// whether the export covers all locations or a specific selection.

@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use arrow::array::{RecordBatch, StringArray, Float64Array, UInt32Array, ListArray, Array};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use crate::types::Location;
+use crate::types::{Location, LOAD_AS_PANO_ID, INFORMATIONAL};
 use crate::util::{iso_to_unix, unix_to_month_day, unix_to_hour_min};
 
 /// Discriminated union of all selection types. Serialized with `{ "type": "..." }` tag
@@ -231,11 +231,6 @@ impl<'a> LocView<'a> {
 // ---------------------------------------------------------------------------
 // Bitmask resolve
 // ---------------------------------------------------------------------------
-
-/// Location flag: load using pano ID rather than lat/lng coordinates.
-const LOAD_AS_PANO_ID: u32 = 1;
-/// Location flag: informational marker (excluded from some polygon selections).
-const INFORMATIONAL: u32 = 2;
 
 /// Per-row predicate for batch rows. Thread-safe (reads only shared Arrow columns
 /// and immutable overlay refs). Returns true if the row matches the selection.
