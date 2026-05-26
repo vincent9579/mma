@@ -55,8 +55,7 @@ pub struct Location {
     pub flags: u32,
     /// Tag IDs applied to this location. References `Tag.id`.
     pub tags: Vec<u32>,
-    /// Arbitrary key-value metadata from imports (e.g. GeoGuessr extra fields).
-    /// Not populated by the editor itself -- preserved round-trip from import data.
+    /// Arbitrary key-value metadata
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[specta(type = Option<specta_typescript::Any>)]
     pub extra: Option<serde_json::Map<String, serde_json::Value>>,

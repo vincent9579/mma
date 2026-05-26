@@ -8,8 +8,7 @@ export const commands = {
 	 *  Write arbitrary text content to a named temp file (`mma_{name}`). Returns the path.
 	 *  Used by JS to pass large payloads via file instead of IPC serialization.
 	 */
-	writeTempFile: (name: string, content: string) =>
-		typedError<string, string>(__TAURI_INVOKE("write_temp_file", { name, content })),
+	writeTempFile: (name: string, content: string) => typedError<string, string>(__TAURI_INVOKE("write_temp_file", { name, content })),
 	/**  Read a file from disk as UTF-8 text. Used by JS to read temp files and plugin sources. */
 	readFile: (path: string) => typedError<string, string>(__TAURI_INVOKE("read_file", { path })),
 	/**  Return the platform-specific app data directory path (e.g., `%LOCALAPPDATA%/app.map-making.local`). */
@@ -22,30 +21,26 @@ export const commands = {
 	 *  Download a plugin from the GitHub plugin repository and install it to the local plugins directory.
 	 *  Fetches `manifest.json` and the main JS file specified in the manifest.
 	 */
-	installPlugin: (id: string) =>
-		typedError<PluginManifest, string>(__TAURI_INVOKE("install_plugin", { id })),
+	installPlugin: (id: string) => typedError<PluginManifest, string>(__TAURI_INVOKE("install_plugin", { id })),
 	/**  Remove a plugin by deleting its directory from the local plugins folder. */
-	uninstallPlugin: (id: string) =>
-		typedError<null, string>(__TAURI_INVOKE("uninstall_plugin", { id })),
+	uninstallPlugin: (id: string) => typedError<null, string>(__TAURI_INVOKE("uninstall_plugin", { id })),
 	/**
 	 *  Finds the nearest city/country for a coordinate. O(log n) k-d tree lookup.
 	 *  Always returns `Some` -- the GeoNames dataset covers every landmass.
 	 */
-	reverseGeocode: (lat: number, lng: number) =>
-		__TAURI_INVOKE<{
-			city: string;
-			/**  First-level administrative division (state, province, region). */
-			admin: string;
-			country: string;
-			/**  ISO 3166-1 alpha-2 (e.g. "US", "FR"). */
-			country_code: string;
-		} | null>("reverse_geocode", { lat, lng }),
+	reverseGeocode: (lat: number, lng: number) => __TAURI_INVOKE<{
+	city: string,
+	/**  First-level administrative division (state, province, region). */
+	admin: string,
+	country: string,
+	/**  ISO 3166-1 alpha-2 (e.g. "US", "FR"). */
+	country_code: string,
+} | null>("reverse_geocode", { lat, lng }),
 	/**
 	 *  Load a map's Arrow data from disk, rebuild all indexes, and return initial state
 	 *  (tag counts, undo/redo availability). Must be called before any other store commands.
 	 */
-	storeOpenMap: (mapId: string) =>
-		typedError<StoreStatus, string>(__TAURI_INVOKE("store_open_map", { mapId })),
+	storeOpenMap: (mapId: string) => typedError<StoreStatus, string>(__TAURI_INVOKE("store_open_map", { mapId })),
 	/**
 	 *  Close the current map: bake overlay, flush Arrow + tags + edit history to disk, then
 	 *  release all in-memory state (batch, mmap, indexes, selections, undo stacks).
@@ -64,286 +59,96 @@ export const commands = {
 	/**  Lightweight status query: location count, version, and dirty flag. */
 	storeGetSummary: () => typedError<SummaryResult, string>(__TAURI_INVOKE("store_get_summary")),
 	/**  Return metadata for every map in the database. */
-	storeListMaps: () =>
-		typedError<MapMeta[], string>(__TAURI_INVOKE("store_list_maps")).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: v.data.map((i) => ({
-								...i,
-								settings: {
-									...i.settings,
-									preferDirection:
-										i.settings.preferDirection == null
-											? i.settings.preferDirection
-											: i.settings.preferDirection,
-								},
-							})),
-						}
-					: v) as typeof v,
-		),
+	storeListMaps: () => typedError<MapMeta[], string>(__TAURI_INVOKE("store_list_maps")).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>({...i,settings:({...i.settings,preferDirection:i.settings.preferDirection==null?i.settings.preferDirection:i.settings.preferDirection})})) } : v) as typeof v)),
 	/**  Fetch a single map's metadata by ID. Returns `None` if not found. */
-	storeGetMap: (id: string) =>
-		typedError<
-			{
-				meta: MapMeta;
-			} | null,
-			string
-		>(__TAURI_INVOKE("store_get_map", { id })).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data:
-								v.data == null
-									? v.data
-									: {
-											...v.data,
-											meta: {
-												...v.data.meta,
-												settings: {
-													...v.data.meta.settings,
-													preferDirection:
-														v.data.meta.settings.preferDirection == null
-															? v.data.meta.settings.preferDirection
-															: v.data.meta.settings.preferDirection,
-												},
-											},
-										},
-						}
-					: v) as typeof v,
-		),
+	storeGetMap: (id: string) => typedError<{
+	meta: MapMeta,
+} | null, string>(__TAURI_INVOKE("store_get_map", { id })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:({...v.data,meta:({...v.data.meta,settings:({...v.data.meta.settings,preferDirection:v.data.meta.settings.preferDirection==null?v.data.meta.settings.preferDirection:v.data.meta.settings.preferDirection})})}) } : v) as typeof v)),
 	/**
 	 *  Create a new empty map with default settings. Returns the full metadata
 	 *  (including the generated UUID) so the frontend can navigate to it immediately.
 	 */
-	storeCreateMap: (name: string, folder: string | null) =>
-		typedError<MapData, string>(__TAURI_INVOKE("store_create_map", { name, folder })).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								meta: {
-									...v.data.meta,
-									settings: {
-										...v.data.meta.settings,
-										preferDirection:
-											v.data.meta.settings.preferDirection == null
-												? v.data.meta.settings.preferDirection
-												: v.data.meta.settings.preferDirection,
-									},
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeCreateMap: (name: string, folder: string | null) => typedError<MapData, string>(__TAURI_INVOKE("store_create_map", { name, folder })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,meta:({...v.data.meta,settings:({...v.data.meta.settings,preferDirection:v.data.meta.settings.preferDirection==null?v.data.meta.settings.preferDirection:v.data.meta.settings.preferDirection})})}) } : v) as typeof v)),
 	/**
 	 *  Delete a map and all associated data: SQLite rows (maps, edit_history,
 	 *  commits, orphaned commit_trees) and Arrow IPC files on disk.
 	 */
-	storeDeleteMap: (id: string) =>
-		typedError<null, string>(__TAURI_INVOKE("store_delete_map", { id })),
+	storeDeleteMap: (id: string) => typedError<null, string>(__TAURI_INVOKE("store_delete_map", { id })),
 	/**
 	 *  Apply a partial update to a map's metadata. Dynamically builds the SQL
 	 *  UPDATE from non-`None` fields in the patch. Also syncs `known_field_keys`
 	 *  on the in-memory store when extra fields change, so auto-registration
 	 *  doesn't re-discover fields the user explicitly defined.
 	 */
-	storeUpdateMapMeta: (id: string, patch: MapMetaPatch) =>
-		typedError<null, string>(
-			__TAURI_INVOKE("store_update_map_meta", {
-				id,
-				patch: {
-					...patch,
-					settings:
-						patch.settings == null
-							? patch.settings
-							: {
-									...patch.settings,
-									preferDirection:
-										patch.settings.preferDirection == null
-											? patch.settings.preferDirection
-											: patch.settings.preferDirection,
-								},
-					scoreBounds: patch.scoreBounds == null ? patch.scoreBounds : patch.scoreBounds,
-				},
-			}),
-		),
+	storeUpdateMapMeta: (id: string, patch: MapMetaPatch) => typedError<null, string>(__TAURI_INVOKE("store_update_map_meta", { id, patch: ({...patch,settings:patch.settings==null?patch.settings:({...patch.settings,preferDirection:patch.settings.preferDirection==null?patch.settings.preferDirection:patch.settings.preferDirection}),scoreBounds:patch.scoreBounds==null?patch.scoreBounds:patch.scoreBounds}) })),
 	/**
 	 *  Update `last_opened_at` to the current timestamp. Used to sort the map
 	 *  list by recency in the dashboard.
 	 */
-	storeTouchMapOpened: (mapId: string) =>
-		typedError<null, string>(__TAURI_INVOKE("store_touch_map_opened", { mapId })),
+	storeTouchMapOpened: (mapId: string) => typedError<null, string>(__TAURI_INVOKE("store_touch_map_opened", { mapId })),
 	/**  Rename a folder across all maps that reference it. */
-	storeRenameFolder: (from: string, to: string) =>
-		typedError<null, string>(__TAURI_INVOKE("store_rename_folder", { from, to })),
+	storeRenameFolder: (from: string, to: string) => typedError<null, string>(__TAURI_INVOKE("store_rename_folder", { from, to })),
 	/**  Delete a folder by setting all its maps' folder to `NULL` (moves them to root). */
-	storeDeleteFolder: (name: string) =>
-		typedError<null, string>(__TAURI_INVOKE("store_delete_folder", { name })),
+	storeDeleteFolder: (name: string) => typedError<null, string>(__TAURI_INVOKE("store_delete_folder", { name })),
 	/**
 	 *  Look up a cached exact pano capture timestamp. Returns `None` on cache miss.
 	 *  The `pano_date_cache` table avoids re-running the expensive binary search
 	 *  RPC in `resolveExactTimestamp` for panos we've already resolved.
 	 */
-	storeGetPanoDate: (panoId: string) =>
-		typedError<number | null, string>(__TAURI_INVOKE("store_get_pano_date", { panoId })),
+	storeGetPanoDate: (panoId: string) => typedError<number | null, string>(__TAURI_INVOKE("store_get_pano_date", { panoId })),
 	/**  Cache an exact pano capture timestamp (unix millis) for future lookups. */
-	storeSetPanoDate: (panoId: string, timestamp: number) =>
-		typedError<null, string>(__TAURI_INVOKE("store_set_pano_date", { panoId, timestamp })),
+	storeSetPanoDate: (panoId: string, timestamp: number) => typedError<null, string>(__TAURI_INVOKE("store_set_pano_date", { panoId, timestamp })),
 	/**  List all user-created tables with their row counts. Excludes SQLite internals. */
 	storeDbTableInfo: () => typedError<DbTableInfo[], string>(__TAURI_INVOKE("store_db_table_info")),
 	/**
 	 *  Add new locations. IDs are allocated server-side (monotonic). Records an undo entry
 	 *  and clears the redo stack.
 	 */
-	storeAddLocations: (locations: Location_Deserialize[]) =>
-		typedError<MutationResult_Serialize, string>(
-			__TAURI_INVOKE("store_add_locations", { locations: locations.map((i) => i) }),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeAddLocations: (locations: Location_Deserialize[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_add_locations", { locations: locations.map(i=>i) })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**  Remove locations by ID. Snapshots the full location data for undo before deleting. */
-	storeRemoveLocations: (ids: number[]) =>
-		typedError<MutationResult_Serialize, string>(
-			__TAURI_INVOKE("store_remove_locations", { ids }),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeRemoveLocations: (ids: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_remove_locations", { ids })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**
 	 *  Apply partial patches to existing locations. `record_undo` defaults to true;
 	 *  set to false for ephemeral updates (e.g., plugin-driven batch modifications
 	 *  that manage their own undo).
 	 */
-	storeUpdateLocations: (
-		updates: [number, LocationPatch_Deserialize][],
-		recordUndo: boolean | null,
-	) =>
-		typedError<MutationResult_Serialize, string>(
-			__TAURI_INVOKE("store_update_locations", {
-				updates: updates.map((i) => [
-					i[0],
-					{
-						...i[1],
-						lat: i[1].lat == null ? i[1].lat : i[1].lat,
-						lng: i[1].lng == null ? i[1].lng : i[1].lng,
-						heading: i[1].heading == null ? i[1].heading : i[1].heading,
-						pitch: i[1].pitch == null ? i[1].pitch : i[1].pitch,
-						zoom: i[1].zoom == null ? i[1].zoom : i[1].zoom,
-					},
-				]),
-				recordUndo,
-			}),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeUpdateLocations: (updates: ([number, LocationPatch_Deserialize])[], recordUndo: boolean | null) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_update_locations", { updates: updates.map(i=>([i[0],({...i[1],lat:i[1].lat==null?i[1].lat:i[1].lat,lng:i[1].lng==null?i[1].lng:i[1].lng,heading:i[1].heading==null?i[1].heading:i[1].heading,pitch:i[1].pitch==null?i[1].pitch:i[1].pitch,zoom:i[1].zoom==null?i[1].zoom:i[1].zoom})])), recordUndo })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**
 	 *  Set (or clear) the active location. Fire-and-forget from JS; no re-render triggered.
 	 *  JS patches the cell buffer synchronously to hide/show the active marker.
 	 */
-	storeSetActive: (id: number | null) =>
-		typedError<null, string>(__TAURI_INVOKE("store_set_active", { id })),
+	storeSetActive: (id: number | null) => typedError<null, string>(__TAURI_INVOKE("store_set_active", { id })),
 	/**  Fetch a single location by ID. Returns `None` if the ID is dead or doesn't exist. */
-	storeGetLocation: (id: number) =>
-		typedError<
-			{
-				/**
-				 *  Monotonically increasing within a map. Zero is a sentinel meaning
-				 *  "not yet assigned" (used during import before IDs are allocated).
-				 */
-				id: number;
-				lat: number;
-				lng: number;
-				heading: number;
-				pitch: number;
-				/**  Street View zoom level (0-5), not map zoom. */
-				zoom: number;
-				panoId: string | null;
-				/**  Bitfield: bit 1 = LoadAsPanoId, bit 2 = Informational. */
-				flags: number;
-				/**  Tag IDs applied to this location. References `Tag.id`. */
-				tags: number[];
-				/**
-				 *  Arbitrary key-value metadata from imports (e.g. GeoGuessr extra fields).
-				 *  Not populated by the editor itself -- preserved round-trip from import data.
-				 */
-				extra?: any | null;
-				/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
-				createdAt: string;
-				modifiedAt?: string | null;
-			} | null,
-			string
-		>(__TAURI_INVOKE("store_get_location", { id })).then(
-			(v) => (v.status === "ok" ? { ...v, data: v.data == null ? v.data : v.data } : v) as typeof v,
-		),
+	storeGetLocation: (id: number) => typedError<{
+	/**
+	 *  Monotonically increasing within a map. Zero is a sentinel meaning
+	 *  "not yet assigned" (used during import before IDs are allocated).
+	 */
+	id: number,
+	lat: number,
+	lng: number,
+	heading: number,
+	pitch: number,
+	/**  Street View zoom level (0-5), not map zoom. */
+	zoom: number,
+	panoId: string | null,
+	/**  Bitfield: see [`LOAD_AS_PANO_ID`] and [`INFORMATIONAL`]. */
+	flags: number,
+	/**  Tag IDs applied to this location. References `Tag.id`. */
+	tags: number[],
+	/**  Arbitrary key-value metadata */
+	extra?: any | null,
+	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
+	createdAt: string,
+	modifiedAt?: string | null,
+} | null, string>(__TAURI_INVOKE("store_get_location", { id })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:v.data } : v) as typeof v)),
 	/**
 	 *  Write a single location as JSON to a temp file and return the path.
 	 *  Faster than invoke for the response payload (~10ms less IPC overhead).
 	 */
-	storeGetLocationFile: (id: number) =>
-		typedError<string | null, string>(__TAURI_INVOKE("store_get_location_file", { id })),
+	storeGetLocationFile: (id: number) => typedError<string | null, string>(__TAURI_INVOKE("store_get_location_file", { id })),
 	/**  Fetch multiple locations by ID. Silently skips IDs that don't exist. */
-	storeGetLocationsByIds: (ids: number[]) =>
-		typedError<Location_Serialize[], string>(
-			__TAURI_INVOKE("store_get_locations_by_ids", { ids }),
-		).then((v) => (v.status === "ok" ? { ...v, data: v.data.map((i) => i) } : v) as typeof v),
+	storeGetLocationsByIds: (ids: number[]) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_get_locations_by_ids", { ids })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
 	/**
 	 *  Dump every alive location to a temp JSON file. Returns the file path.
 	 *  Used by export and plugins that need the full dataset.
@@ -352,341 +157,124 @@ export const commands = {
 	/**  Return the number of alive locations (batch + adds - dead). */
 	storeLocationCount: () => typedError<number, string>(__TAURI_INVOKE("store_location_count")),
 	/**  Compute the bounding box [west, south, east, north] of all alive locations. O(N). */
-	storeBounds: () =>
-		typedError<[number, number, number, number] | null, string>(
-			__TAURI_INVOKE("store_bounds"),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? { ...v, data: v.data == null ? v.data : v.data.map((i) => i) }
-					: v) as typeof v,
-		),
+	storeBounds: () => typedError<[number, number, number, number] | null, string>(__TAURI_INVOKE("store_bounds")).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:v.data.map(i=>i) } : v) as typeof v)),
 	/**  Compute the bounding box of currently selected locations only. O(N). */
-	storeSelectionBounds: () =>
-		typedError<[number, number, number, number] | null, string>(
-			__TAURI_INVOKE("store_selection_bounds"),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? { ...v, data: v.data == null ? v.data : v.data.map((i) => i) }
-					: v) as typeof v,
-		),
+	storeSelectionBounds: () => typedError<[number, number, number, number] | null, string>(__TAURI_INVOKE("store_selection_bounds")).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:v.data.map(i=>i) } : v) as typeof v)),
 	/**
 	 *  Find all locations within `radius_m` metres of (`lat`, `lng`).
-	 *
+	 * 
 	 *  O(n) linear scan with a cheap bounding-box pre-filter (degree margin)
 	 *  that rejects 99.9%+ of points before haversine is called.
 	 *  At 1M locations this is sub-millisecond on a modern CPU.
 	 */
-	storeFindNearby: (lat: number, lng: number, radiusM: number) =>
-		typedError<Location_Serialize[], string>(
-			__TAURI_INVOKE("store_find_nearby", { lat, lng, radiusM }),
-		).then((v) => (v.status === "ok" ? { ...v, data: v.data.map((i) => i) } : v) as typeof v),
+	storeFindNearby: (lat: number, lng: number, radiusM: number) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_find_nearby", { lat, lng, radiusM })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
 	/**
 	 *  Collect all distinct values for an `extra` field across all alive locations. O(N).
 	 *  Used by the filter UI to populate dropdown options.
 	 */
-	storeExtraFieldValues: (field: string) =>
-		typedError<string[], string>(__TAURI_INVOKE("store_extra_field_values", { field })),
+	storeExtraFieldValues: (field: string) => typedError<string[], string>(__TAURI_INVOKE("store_extra_field_values", { field })),
 	/**
 	 *  Create tags by name. Deduplicates case-insensitively: if a tag with the same name
 	 *  already exists, it is made visible instead of creating a duplicate.
 	 */
-	storeCreateTags: (names: string[]) =>
-		typedError<MutationResult_Serialize, string>(
-			__TAURI_INVOKE("store_create_tags", { names }),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeCreateTags: (names: string[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_create_tags", { names })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**
 	 *  Update a tag's name and/or color. If the new name collides with an existing
 	 *  tag (case-insensitive), merges: remaps all locations from `tag_id` to the
 	 *  existing tag, removes `tag_id`. Returns MutationResult with `tags` populated.
 	 */
-	storeUpdateTag: (tagId: number, name: string | null, color: string | null) =>
-		typedError<MutationResult_Serialize, string>(
-			__TAURI_INVOKE("store_update_tag", { tagId, name, color }),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeUpdateTag: (tagId: number, name: string | null, color: string | null) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_update_tag", { tagId, name, color })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**
 	 *  Strip tags from all locations. Tags stay in `store.tags` with count=0 /
 	 *  visible=false so undo can revive them. Returns MutationResult with `tags`.
 	 */
-	storeDeleteTags: (tagIds: number[]) =>
-		typedError<MutationResult_Serialize, string>(
-			__TAURI_INVOKE("store_delete_tags", { tagIds }),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeDeleteTags: (tagIds: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_delete_tags", { tagIds })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**
 	 *  Persist tag ordering. `ordered_ids` specifies the desired order; each tag's
 	 *  `order` field is set to its index in the list.
 	 */
-	storeReorderTags: (orderedIds: number[]) =>
-		typedError<MutationResult_Serialize, string>(
-			__TAURI_INVOKE("store_reorder_tags", { orderedIds }),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeReorderTags: (orderedIds: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_reorder_tags", { orderedIds })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**  Pop the undo stack and reverse the last edit. Pushes the entry onto the redo stack. */
-	storeUndo: () =>
-		typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_undo")).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeUndo: () => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_undo")).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**  Pop the redo stack and replay the edit forward. Pushes the entry back onto undo. */
-	storeRedo: () =>
-		typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_redo")).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeRedo: () => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_redo")).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**  Clear both undo and redo stacks. Called after a commit to start fresh. */
 	storeResetUndo: () => typedError<null, string>(__TAURI_INVOKE("store_reset_undo")),
 	/**
 	 *  Compute the net diff since last commit by walking the undo stack.
 	 *  Returns (added, removed, modified) counts for the commit dialog.
 	 */
-	storeCommitDiff: () =>
-		typedError<[number, number, number], string>(__TAURI_INVOKE("store_commit_diff")),
+	storeCommitDiff: () => typedError<[number, number, number], string>(__TAURI_INVOKE("store_commit_diff")),
 	/**
 	 *  Replace all selections, resolve bitmasks against current data, and write a binary
 	 *  patch file for JS to apply to the render overlay. Returns per-selection counts.
 	 */
-	storeSyncSelections: (sels: SelectionInput[]) =>
-		typedError<SyncSelectionsResult, string>(__TAURI_INVOKE("store_sync_selections", { sels })),
+	storeSyncSelections: (sels: SelectionInput[]) => typedError<SyncSelectionsResult, string>(__TAURI_INVOKE("store_sync_selections", { sels })),
 	/**  Return the union of all currently selected location IDs. */
-	storeGetSelectedIdsList: () =>
-		typedError<number[], string>(__TAURI_INVOKE("store_get_selected_ids_list")),
+	storeGetSelectedIdsList: () => typedError<number[], string>(__TAURI_INVOKE("store_get_selected_ids_list")),
 	/**
 	 *  Resolve a single selection to its matching location IDs without persisting it.
 	 *  Used by plugins and one-off queries (e.g., tag merge, export filtered).
 	 */
-	storeResolveSelection: (props: SelectionProps) =>
-		typedError<number[], string>(__TAURI_INVOKE("store_resolve_selection", { props })),
+	storeResolveSelection: (props: SelectionProps) => typedError<number[], string>(__TAURI_INVOKE("store_resolve_selection", { props })),
 	/**
 	 *  Full render rebuild: single-pass over all alive locations, writes binary to a temp file.
 	 *  Returns the file path for JS to fetch via `mma-buf://`. Only called on map open or full reset.
 	 */
-	storeFillRenderFile: (req: RenderRequest) =>
-		typedError<string, string>(__TAURI_INVOKE("store_fill_render_file", { req })),
+	storeFillRenderFile: (req: RenderRequest) => typedError<string, string>(__TAURI_INVOKE("store_fill_render_file", { req })),
 	/**
 	 *  Resolve a deck.gl pick result (cell key + index within cell) to a location ID.
 	 *  Called on marker click to map the GPU pick back to a logical location.
 	 */
-	storeResolvePick: (cell: string, cellIndex: number) =>
-		typedError<number | null, string>(__TAURI_INVOKE("store_resolve_pick", { cell, cellIndex })),
+	storeResolvePick: (cell: string, cellIndex: number) => typedError<number | null, string>(__TAURI_INVOKE("store_resolve_pick", { cell, cellIndex })),
 	/**
 	 *  Parse a file (JSON or ZIP of JSONs) and return previews without persisting.
 	 *  Results are cached in `CACHED_PARSE` so `bulk_import_confirm` can skip re-parsing.
 	 *  ZIP files have each `.json` entry parsed in parallel via rayon.
 	 */
-	bulkImportPreview: (path: string) =>
-		typedError<ImportPreviewEntry[], string>(__TAURI_INVOKE("bulk_import_preview", { path })),
+	bulkImportPreview: (path: string) => typedError<ImportPreviewEntry[], string>(__TAURI_INVOKE("bulk_import_preview", { path })),
 	/**
 	 *  Persist selected maps from a previously previewed import.
 	 *  Uses the cached parse if available; otherwise re-parses the file.
 	 *  Each map gets a new UUID, Arrow IPC file, and SQLite row.
 	 *  Emits `bulk-import-progress` events per map for UI feedback.
 	 */
-	bulkImportConfirm: (path: string, selectedIndices: number[]) =>
-		typedError<ImportedMapInfo[], string>(
-			__TAURI_INVOKE("bulk_import_confirm", { path, selectedIndices }),
-		),
+	bulkImportConfirm: (path: string, selectedIndices: number[]) => typedError<ImportedMapInfo[], string>(__TAURI_INVOKE("bulk_import_confirm", { path, selectedIndices })),
 	/**
 	 *  Parse a file and return field-level statistics for the editor import dialog.
 	 *  Caches the parse result for `store_import_file` to consume.
 	 */
-	storeImportPreview: (path: string) =>
-		typedError<EditorImportPreview, string>(__TAURI_INVOKE("store_import_preview", { path })),
+	storeImportPreview: (path: string) => typedError<EditorImportPreview, string>(__TAURI_INVOKE("store_import_preview", { path })),
 	/**
 	 *  Commit a previously previewed editor import, optionally dropping fields.
 	 *  Consumes the cached parse from `store_import_preview`. Fields in
 	 *  `dropped_fields` (e.g. `"heading"`, `"extra.countryCode"`) are zeroed/removed.
 	 */
-	storeImportFile: (droppedFields: string[]) =>
-		typedError<EditorImportResult_Serialize, string>(
-			__TAURI_INVOKE("store_import_file", { droppedFields }),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: {
-								...v.data,
-								delta: {
-									...v.data.delta,
-									added: v.data.delta.added.map((i) => i),
-									updated: v.data.delta.updated.map((i) => ({
-										...i,
-										lng: i.lng == null ? i.lng : i.lng,
-										lat: i.lat == null ? i.lat : i.lat,
-										heading: i.heading == null ? i.heading : i.heading,
-									})),
-								},
-							},
-						}
-					: v) as typeof v,
-		),
+	storeImportFile: (droppedFields: string[]) => typedError<EditorImportResult_Serialize, string>(__TAURI_INVOKE("store_import_file", { droppedFields })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}) } : v) as typeof v)),
 	/**
 	 *  Parse raw text (JSON or CSV) as locations and import into the open map.
 	 *  Handles tag reconciliation, ID allocation, and render delta in one shot.
 	 */
-	storeImportPaste: (text: string) =>
-		typedError<[EditorImportResult_Serialize, number | null], string>(
-			__TAURI_INVOKE("store_import_paste", { text }),
-		).then(
-			(v) =>
-				(v.status === "ok"
-					? {
-							...v,
-							data: [
-								{
-									...v.data[0],
-									delta: {
-										...v.data[0].delta,
-										added: v.data[0].delta.added.map((i) => i),
-										updated: v.data[0].delta.updated.map((i) => ({
-											...i,
-											lng: i.lng == null ? i.lng : i.lng,
-											lat: i.lat == null ? i.lat : i.lat,
-											heading: i.heading == null ? i.heading : i.heading,
-										})),
-									},
-								},
-								v.data[1],
-							],
-						}
-					: v) as typeof v,
-		),
+	storeImportPaste: (text: string) => typedError<[EditorImportResult_Serialize, number | null], string>(__TAURI_INVOKE("store_import_paste", { text })).then((v) => ((v.status === "ok" ? { ...v, data: ([({...v.data[0],delta:({...v.data[0].delta,added:v.data[0].delta.added.map(i=>i),updated:v.data[0].delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))})}),v.data[1]]) } : v) as typeof v)),
 	/**
 	 *  Export locations as a map-making.app-compatible JSON file.
-	 *
+	 * 
 	 *  Produces `{name, customCoordinates: [...]}` with optional `extra` block
 	 *  containing tags (with colors as RGB arrays) and field definitions.
 	 *  Heading of exactly 0 is written as 0.001 when `export_unpanned` is set,
 	 *  matching the original app's convention for "no heading specified".
 	 */
-	storeExportJson: (opts: ExportOpts) =>
-		typedError<string, string>(__TAURI_INVOKE("store_export_json", { opts })),
+	storeExportJson: (opts: ExportOpts) => typedError<string, string>(__TAURI_INVOKE("store_export_json", { opts })),
 	/**  Export locations as a minimal lat/lng CSV file. */
-	storeExportCsv: (scope: number[] | null) =>
-		typedError<string, string>(__TAURI_INVOKE("store_export_csv", { scope })),
+	storeExportCsv: (scope: number[] | null) => typedError<string, string>(__TAURI_INVOKE("store_export_csv", { scope })),
 	/**
 	 *  Export locations as a GeoJSON FeatureCollection of Point features.
 	 *  Each feature carries its tag names in `properties.tags`.
 	 */
-	storeExportGeojson: (scope: number[] | null, tagsJson: string) =>
-		typedError<string, string>(__TAURI_INVOKE("store_export_geojson", { scope, tagsJson })),
+	storeExportGeojson: (scope: number[] | null, tagsJson: string) => typedError<string, string>(__TAURI_INVOKE("store_export_geojson", { scope, tagsJson })),
 	/**
 	 *  Export every map in the database as a deflate-compressed ZIP of JSON files.
-	 *
+	 * 
 	 *  Each map becomes one `{name}.json` file in the archive, with full location
 	 *  data, tags, and extra fields. Reads Arrow IPC files directly from disk
 	 *  (bypasses the in-memory store). Duplicate map names get a numeric suffix.
@@ -697,8 +285,7 @@ export const commands = {
 	 *  Delete all rows from a table. Returns the number of deleted rows.
 	 *  Used in the debug panel for cache/history cleanup.
 	 */
-	storeDbClearTable: (table: string) =>
-		typedError<number, string>(__TAURI_INVOKE("store_db_clear_table", { table })),
+	storeDbClearTable: (table: string) => typedError<number, string>(__TAURI_INVOKE("store_db_clear_table", { table })),
 	/**
 	 *  Compute aggregate database statistics (map/location/tag/commit counts,
 	 *  database file size, journal mode). Tag count is summed across all maps
@@ -707,33 +294,23 @@ export const commands = {
 	storeDbStats: () => typedError<DbStats, string>(__TAURI_INVOKE("store_db_stats")),
 	/**
 	 *  Records a panorama visit and evicts excess entries beyond `MAX_SEEN`.
-	 *
+	 * 
 	 *  Eviction deletes the oldest rows by `entered_at`, so the table acts as a
 	 *  bounded ring buffer without requiring explicit rotation.
 	 */
-	storeSeenWrite: (entry: SeenWriteEntry) =>
-		typedError<null, string>(__TAURI_INVOKE("store_seen_write", { entry })),
+	storeSeenWrite: (entry: SeenWriteEntry) => typedError<null, string>(__TAURI_INVOKE("store_seen_write", { entry })),
 	/**  Returns a page of seen entries, newest first, with optional filtering. */
-	storeSeenList: (
-		limit: number,
-		offset: number,
-		filter: {
-			country?: string | null;
-			mapId?: string | null;
-			search?: string | null;
-		} | null,
-	) =>
-		typedError<SeenEntry[], string>(
-			__TAURI_INVOKE("store_seen_list", { limit, offset, filter }),
-		).then((v) => (v.status === "ok" ? { ...v, data: v.data.map((i) => i) } : v) as typeof v),
+	storeSeenList: (limit: number, offset: number, filter: {
+	country?: string | null,
+	mapId?: string | null,
+	search?: string | null,
+} | null) => typedError<SeenEntry[], string>(__TAURI_INVOKE("store_seen_list", { limit, offset, filter })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
 	/**  Returns the total number of seen entries matching the filter (for pagination). */
-	storeSeenCount: (
-		filter: {
-			country?: string | null;
-			mapId?: string | null;
-			search?: string | null;
-		} | null,
-	) => typedError<number, string>(__TAURI_INVOKE("store_seen_count", { filter })),
+	storeSeenCount: (filter: {
+	country?: string | null,
+	mapId?: string | null,
+	search?: string | null,
+} | null) => typedError<number, string>(__TAURI_INVOKE("store_seen_count", { filter })),
 	/**
 	 *  Returns all distinct country codes present in the seen table, sorted alphabetically.
 	 *  Used to populate the country filter dropdown.
@@ -749,36 +326,30 @@ export const commands = {
 	storeSeenClear: () => typedError<null, string>(__TAURI_INVOKE("store_seen_clear")),
 	/**
 	 *  Create a new commit for a map.
-	 *
+	 * 
 	 *  1. Finds the current HEAD commit (parent).
 	 *  2. Bakes the overlay and snapshots all geohash blobs to the blob store.
 	 *  3. Computes a SHA-256 tree hash over sorted `(geohash, blob_hash)` pairs.
 	 *  4. Derives the commit ID from `tree_hash + parent + timestamp`.
 	 *  5. Batch-inserts `commit_trees` entries (200 per INSERT for SQLite perf).
-	 *
+	 * 
 	 *  Returns the new commit ID.
 	 */
-	storeCreateCommit: (
-		mapId: string,
-		message: string | null,
-		diff: {
-			added?: number;
-			removed?: number;
-			modified?: number;
-		} | null,
-	) => typedError<string, string>(__TAURI_INVOKE("store_create_commit", { mapId, message, diff })),
+	storeCreateCommit: (mapId: string, message: string | null, diff: {
+	added?: number,
+	removed?: number,
+	modified?: number,
+} | null) => typedError<string, string>(__TAURI_INVOKE("store_create_commit", { mapId, message, diff })),
 	/**  List all commits for a map, newest first. */
-	storeListCommits: (mapId: string) =>
-		typedError<CommitInfo[], string>(__TAURI_INVOKE("store_list_commits", { mapId })),
+	storeListCommits: (mapId: string) => typedError<CommitInfo[], string>(__TAURI_INVOKE("store_list_commits", { mapId })),
 	/**
 	 *  Restore a map to the state captured by a previous commit.
-	 *
+	 * 
 	 *  Reads the commit's blob entries from `commit_trees`, then delegates to
 	 *  `location_store::restore_inner` which reassembles the Arrow base batch
 	 *  from the blob store and resets the overlay. Clears undo/redo history.
 	 */
-	storeCheckoutCommit: (mapId: string, commitId: string) =>
-		typedError<null, string>(__TAURI_INVOKE("store_checkout_commit", { mapId, commitId })),
+	storeCheckoutCommit: (mapId: string, commitId: string) => typedError<null, string>(__TAURI_INVOKE("store_checkout_commit", { mapId, commitId })),
 };
 
 /* Types */
@@ -787,9 +358,9 @@ export const commands = {
  *  and pop the array to mirror the Rust-side swap-remove.
  */
 export type CellRemoval = {
-	cell: string;
-	cellIndex: number;
-	id: number;
+	cell: string,
+	cellIndex: number,
+	id: number,
 };
 
 /**
@@ -797,12 +368,12 @@ export type CellRemoval = {
  *  membership changes without a position change).
  */
 export type ColorPatchEntry = {
-	cell: string;
-	cellIndex: number;
-	r: number;
-	g: number;
-	b: number;
-	a: number;
+	cell: string,
+	cellIndex: number,
+	r: number,
+	g: number,
+	b: number,
+	a: number,
 };
 
 /**
@@ -811,40 +382,40 @@ export type ColorPatchEntry = {
  *  and provides them here so the commit can store them without recomputing.
  */
 export type CommitDiff = {
-	added?: number;
-	removed?: number;
-	modified?: number;
+	added?: number,
+	removed?: number,
+	modified?: number,
 };
 
 /**  Metadata for a single commit, returned to the frontend for the commit history UI. */
 export type CommitInfo = {
-	id: string;
-	mapId: string;
-	parentId: string | null;
-	message: string | null;
-	treeHash: string | null;
-	added: number;
-	removed: number;
-	modified: number;
-	locationCount: number;
-	createdAt: string;
+	id: string,
+	mapId: string,
+	parentId: string | null,
+	message: string | null,
+	treeHash: string | null,
+	added: number,
+	removed: number,
+	modified: number,
+	locationCount: number,
+	createdAt: string,
 };
 
 /**  Aggregate database statistics for the debug panel. */
 export type DbStats = {
-	maps: number;
-	locations: number;
-	tags: number;
-	commits: number;
-	dbSizeBytes: number;
-	journalMode: string;
-	foreignKeys: boolean;
+	maps: number,
+	locations: number,
+	tags: number,
+	commits: number,
+	dbSizeBytes: number,
+	journalMode: string,
+	foreignKeys: boolean,
 };
 
 /**  Row count for a single SQLite table, used in the debug diagnostics panel. */
 export type DbTableInfo = {
-	name: string;
-	rows: number;
+	name: string,
+	rows: number,
 };
 
 /**
@@ -853,10 +424,10 @@ export type DbTableInfo = {
  *  selectively drop fields (heading, panoId, etc.) before importing.
  */
 export type EditorImportPreview = {
-	locationCount: number;
-	tags: Tag[];
-	fields: FieldCount[];
-	warnings: string[];
+	locationCount: number,
+	tags: Tag[],
+	fields: FieldCount[],
+	warnings: string[],
 };
 
 /**
@@ -870,8 +441,8 @@ export type EditorImportResult = EditorImportResult_Serialize | EditorImportResu
  *  plus import-specific metadata.
  */
 export type EditorImportResult_Deserialize = {
-	importedCount: number;
-	warnings: string[];
+	importedCount: number,
+	warnings: string[],
 } & MutationResult_Deserialize;
 
 /**
@@ -879,8 +450,8 @@ export type EditorImportResult_Deserialize = {
  *  plus import-specific metadata.
  */
 export type EditorImportResult_Serialize = {
-	importedCount: number;
-	warnings: string[];
+	importedCount: number,
+	warnings: string[],
 } & MutationResult_Serialize;
 
 /**
@@ -888,18 +459,18 @@ export type EditorImportResult_Serialize = {
  *  whether the export covers all locations or a specific selection.
  */
 export type ExportOpts = {
-	exportZoom: boolean;
-	exportUnpanned: boolean;
-	exportExtras: boolean;
+	exportZoom: boolean,
+	exportUnpanned: boolean,
+	exportExtras: boolean,
 	/**  When `Some`, restricts export to these location IDs (e.g. current selection). */
-	scope: number[] | null;
-	mapName: string;
+	scope: number[] | null,
+	mapName: string,
 	/**
 	 *  Serialized `{id: {name, color}}` tag definitions from the store, used to
 	 *  convert numeric tag IDs back to human-readable names in the output.
 	 */
-	tagsJson: string;
-	extraFieldsJson: string | null;
+	tagsJson: string,
+	extraFieldsJson: string | null,
 };
 
 /**
@@ -908,10 +479,10 @@ export type ExportOpts = {
  *  provides display names.
  */
 export type ExtraFieldDef = {
-	type: ExtraFieldType;
-	label?: string | null;
-	values?: string[] | null;
-	labels?: { [key in string]: string } | null;
+	type: ExtraFieldType,
+	label?: string | null,
+	values?: string[] | null,
+	labels?: { [key in string]: string } | null,
 };
 
 /**
@@ -925,18 +496,18 @@ export type ExtraFieldType = "string" | "number" | "date" | "month" | "enum";
  *  the user see which optional fields exist and decide which to keep/drop.
  */
 export type FieldCount = {
-	key: string;
-	count: number;
+	key: string,
+	count: number,
 };
 
 /**  Reverse geocode result: nearest populated place to a coordinate. */
 export type GeoResult = {
-	city: string;
+	city: string,
 	/**  First-level administrative division (state, province, region). */
-	admin: string;
-	country: string;
+	admin: string,
+	country: string,
 	/**  ISO 3166-1 alpha-2 (e.g. "US", "FR"). */
-	country_code: string;
+	country_code: string,
 };
 
 /**
@@ -944,24 +515,24 @@ export type GeoResult = {
  *  Shown in the import dialog so the user can select which maps to import.
  */
 export type ImportPreviewEntry = {
-	name: string;
-	folder: string | null;
-	locationCount: number;
-	tagCount: number;
-	warnings: string[];
+	name: string,
+	folder: string | null,
+	locationCount: number,
+	tagCount: number,
+	warnings: string[],
 };
 
 /**  Result returned per map after a successful bulk import. */
 export type ImportedMapInfo = {
-	id: string;
-	name: string;
-	locationCount: number;
-	tagCount: number;
+	id: string,
+	name: string,
+	locationCount: number,
+	tagCount: number,
 };
 
 /**
  *  A single Street View location on a map.
- *
+ * 
  *  This is the atomic unit of data in the system. Locations are stored columnar
  *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
  *  within a map and assigned by the store's monotonic allocator.
@@ -979,17 +550,17 @@ export type LocationPatch = LocationPatch_Serialize | LocationPatch_Deserialize;
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
  */
 export type LocationPatch_Deserialize = {
-	lat?: number | null;
-	lng?: number | null;
-	heading?: number | null;
-	pitch?: number | null;
-	zoom?: number | null;
-	panoId?: string | null;
-	flags?: number | null;
-	tags?: number[] | null;
-	extra?: any | null;
-	createdAt?: string | null;
-	modifiedAt?: string | null;
+	lat?: number | null,
+	lng?: number | null,
+	heading?: number | null,
+	pitch?: number | null,
+	zoom?: number | null,
+	panoId?: string | null,
+	flags?: number | null,
+	tags?: number[] | null,
+	extra?: any | null,
+	createdAt?: string | null,
+	modifiedAt?: string | null,
 };
 
 /**
@@ -997,22 +568,22 @@ export type LocationPatch_Deserialize = {
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
  */
 export type LocationPatch_Serialize = {
-	lat: number | null;
-	lng: number | null;
-	heading: number | null;
-	pitch: number | null;
-	zoom: number | null;
-	panoId: string | null;
-	flags: number | null;
-	tags: number[] | null;
-	extra: any | null;
-	createdAt: string | null;
-	modifiedAt: string | null;
+	lat: number | null,
+	lng: number | null,
+	heading: number | null,
+	pitch: number | null,
+	zoom: number | null,
+	panoId: string | null,
+	flags: number | null,
+	tags: number[] | null,
+	extra: any | null,
+	createdAt: string | null,
+	modifiedAt: string | null,
 };
 
 /**
  *  A single Street View location on a map.
- *
+ * 
  *  This is the atomic unit of data in the system. Locations are stored columnar
  *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
  *  within a map and assigned by the store's monotonic allocator.
@@ -1022,31 +593,28 @@ export type Location_Deserialize = {
 	 *  Monotonically increasing within a map. Zero is a sentinel meaning
 	 *  "not yet assigned" (used during import before IDs are allocated).
 	 */
-	id?: number;
-	lat: number;
-	lng: number;
-	heading: number;
-	pitch: number;
+	id?: number,
+	lat: number,
+	lng: number,
+	heading: number,
+	pitch: number,
 	/**  Street View zoom level (0-5), not map zoom. */
-	zoom: number;
-	panoId: string | null;
-	/**  Bitfield: bit 1 = LoadAsPanoId, bit 2 = Informational. */
-	flags: number;
+	zoom: number,
+	panoId: string | null,
+	/**  Bitfield: see [`LOAD_AS_PANO_ID`] and [`INFORMATIONAL`]. */
+	flags: number,
 	/**  Tag IDs applied to this location. References `Tag.id`. */
-	tags: number[];
-	/**
-	 *  Arbitrary key-value metadata from imports (e.g. GeoGuessr extra fields).
-	 *  Not populated by the editor itself -- preserved round-trip from import data.
-	 */
-	extra?: any | null;
+	tags: number[],
+	/**  Arbitrary key-value metadata */
+	extra?: any | null,
 	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
-	createdAt: string;
-	modifiedAt?: string | null;
+	createdAt: string,
+	modifiedAt?: string | null,
 };
 
 /**
  *  A single Street View location on a map.
- *
+ * 
  *  This is the atomic unit of data in the system. Locations are stored columnar
  *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
  *  within a map and assigned by the store's monotonic allocator.
@@ -1056,30 +624,27 @@ export type Location_Serialize = {
 	 *  Monotonically increasing within a map. Zero is a sentinel meaning
 	 *  "not yet assigned" (used during import before IDs are allocated).
 	 */
-	id: number;
-	lat: number;
-	lng: number;
-	heading: number;
-	pitch: number;
+	id: number,
+	lat: number,
+	lng: number,
+	heading: number,
+	pitch: number,
 	/**  Street View zoom level (0-5), not map zoom. */
-	zoom: number;
-	panoId: string | null;
-	/**  Bitfield: bit 1 = LoadAsPanoId, bit 2 = Informational. */
-	flags: number;
+	zoom: number,
+	panoId: string | null,
+	/**  Bitfield: see [`LOAD_AS_PANO_ID`] and [`INFORMATIONAL`]. */
+	flags: number,
 	/**  Tag IDs applied to this location. References `Tag.id`. */
-	tags: number[];
-	/**
-	 *  Arbitrary key-value metadata from imports (e.g. GeoGuessr extra fields).
-	 *  Not populated by the editor itself -- preserved round-trip from import data.
-	 */
-	extra?: any | null;
+	tags: number[],
+	/**  Arbitrary key-value metadata */
+	extra?: any | null,
 	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
-	createdAt: string;
-	modifiedAt?: string | null;
+	createdAt: string,
+	modifiedAt?: string | null,
 };
 
 export type MapData = {
-	meta: MapMeta;
+	meta: MapMeta,
 };
 
 /**
@@ -1087,7 +652,7 @@ export type MapData = {
  *  but structured as an object to allow future extensions.
  */
 export type MapExtra = {
-	fields?: { [key in string]: ExtraFieldDef } | null;
+	fields?: { [key in string]: ExtraFieldDef } | null,
 };
 
 /**
@@ -1095,19 +660,19 @@ export type MapExtra = {
  *  JSON columns (settings, tags, extra, etc.) are parsed into typed structs.
  */
 export type MapMeta = {
-	id: string;
-	name: string;
-	description: string;
-	folder: string | null;
-	settings: MapSettings;
-	scoreBounds: ScoreBounds;
-	extra: MapExtra;
-	tags: { [key in string]: Tag };
-	labels: string[];
-	locationCount: number;
-	createdAt: string;
-	updatedAt: string;
-	lastOpenedAt: string | null;
+	id: string,
+	name: string,
+	description: string,
+	folder: string | null,
+	settings: MapSettings,
+	scoreBounds: ScoreBounds,
+	extra: MapExtra,
+	tags: { [key in string]: Tag },
+	labels: string[],
+	locationCount: number,
+	createdAt: string,
+	updatedAt: string,
+	lastOpenedAt: string | null,
 };
 
 /**
@@ -1115,14 +680,14 @@ export type MapMeta = {
  *  `folder: Some(None)` explicitly unsets the folder (moves to root).
  */
 export type MapMetaPatch = {
-	name?: string | null;
-	description?: string | null;
-	folder?: string | null;
-	settings?: MapSettings | null;
-	scoreBounds?: ScoreBounds | null;
-	extra?: MapExtra | null;
-	tags?: { [key in string]: Tag } | null;
-	labels?: string[] | null;
+	name?: string | null,
+	description?: string | null,
+	folder?: string | null,
+	settings?: MapSettings | null,
+	scoreBounds?: ScoreBounds | null,
+	extra?: MapExtra | null,
+	tags?: { [key in string]: Tag } | null,
+	labels?: string[] | null,
 };
 
 /**
@@ -1130,18 +695,18 @@ export type MapMetaPatch = {
  *  unofficial, camera type filters), export defaults, and metadata enrichment.
  */
 export type MapSettings = {
-	pointAlongRoad: boolean;
-	preferDirection: number | null;
-	preferOfficial: boolean;
-	preferHigherQuality: boolean;
-	onlyOfficial: boolean;
-	cameraTypes: string[] | null;
-	defaultPanoId: boolean;
-	exportZoom: boolean;
-	exportUnpanned: boolean;
-	enrichMetadata: boolean;
-	enrichFields: string[] | null;
-	generatedLocationTag: string | null;
+	pointAlongRoad: boolean,
+	preferDirection: number | null,
+	preferOfficial: boolean,
+	preferHigherQuality: boolean,
+	onlyOfficial: boolean,
+	cameraTypes: string[] | null,
+	defaultPanoId: boolean,
+	exportZoom: boolean,
+	exportUnpanned: boolean,
+	enrichMetadata: boolean,
+	enrichFields: string[] | null,
+	generatedLocationTag: string | null,
 };
 
 /**
@@ -1157,10 +722,10 @@ export type MutationResult = MutationResult_Serialize | MutationResult_Deseriali
  *  JS applies all of these atomically to stay in sync with the Rust state.
  */
 export type MutationResult_Deserialize = {
-	delta: RenderDelta_Deserialize;
-	selectionSync: SelectionSync | null;
-	newFieldDefs: { [key in string]: ExtraFieldDef } | null;
-	tags: { [key in number]: Tag } | null;
+	delta: RenderDelta_Deserialize,
+	selectionSync: SelectionSync | null,
+	newFieldDefs: { [key in string]: ExtraFieldDef } | null,
+	tags: { [key in number]: Tag } | null,
 } & StoreStatus;
 
 /**
@@ -1169,19 +734,19 @@ export type MutationResult_Deserialize = {
  *  JS applies all of these atomically to stay in sync with the Rust state.
  */
 export type MutationResult_Serialize = {
-	delta: RenderDelta_Serialize;
-	selectionSync: SelectionSync | null;
-	newFieldDefs: { [key in string]: ExtraFieldDef } | null;
-	tags: { [key in number]: Tag } | null;
+	delta: RenderDelta_Serialize,
+	selectionSync: SelectionSync | null,
+	newFieldDefs: { [key in string]: ExtraFieldDef } | null,
+	tags: { [key in number]: Tag } | null,
 } & StoreStatus;
 
 /**  Metadata for a user-installed plugin, read from `plugins/{id}/manifest.json`. */
 export type PluginManifest = {
-	id: string;
-	name: string;
-	description: string;
-	icon: string;
-	main: string;
+	id: string,
+	name: string,
+	description: string,
+	icon: string,
+	main: string,
 };
 
 /**
@@ -1189,9 +754,9 @@ export type PluginManifest = {
  *  optional holes). `extra_polygons` allows multipolygon selections (e.g., from GeoJSON import).
  */
 export type PolygonGeometry = {
-	coordinates: [number, number][][];
-	extraPolygons?: [number, number][][][] | null;
-	properties?: any | null;
+	coordinates: (([number, number])[])[],
+	extraPolygons?: ((([number, number])[])[])[] | null,
+	properties?: any | null,
 };
 
 /**
@@ -1207,11 +772,11 @@ export type RenderDelta = RenderDelta_Serialize | RenderDelta_Deserialize;
  *  `full_reset` signals JS to discard all cell data and re-fetch via `store_fill_render_file`.
  */
 export type RenderDelta_Deserialize = {
-	added: RenderEntry[];
-	updated: RenderPatchEntry[];
-	removed: CellRemoval[];
-	colorPatches: ColorPatchEntry[];
-	fullReset: boolean;
+	added: RenderEntry[],
+	updated: RenderPatchEntry[],
+	removed: CellRemoval[],
+	colorPatches: ColorPatchEntry[],
+	fullReset: boolean,
 };
 
 /**
@@ -1220,33 +785,33 @@ export type RenderDelta_Deserialize = {
  *  `full_reset` signals JS to discard all cell data and re-fetch via `store_fill_render_file`.
  */
 export type RenderDelta_Serialize = {
-	added: RenderEntry[];
-	updated: RenderPatchEntry[];
-	removed: CellRemoval[];
-	colorPatches: ColorPatchEntry[];
-	fullReset?: boolean;
+	added: RenderEntry[],
+	updated: RenderPatchEntry[],
+	removed: CellRemoval[],
+	colorPatches: ColorPatchEntry[],
+	fullReset?: boolean,
 };
 
 /**  A newly-added marker to a render cell: position, heading, and base color. */
 export type RenderEntry = {
-	cell: string;
-	id: number;
-	lng: number;
-	lat: number;
-	heading: number;
-	r: number;
-	g: number;
-	b: number;
-	a: number;
+	cell: string,
+	id: number,
+	lng: number,
+	lat: number,
+	heading: number,
+	r: number,
+	g: number,
+	b: number,
+	a: number,
 };
 
 /**  Partial update to an existing marker within its cell (position and/or heading changed). */
 export type RenderPatchEntry = {
-	cell: string;
-	cellIndex: number;
-	lng: number | null;
-	lat: number | null;
-	heading: number | null;
+	cell: string,
+	cellIndex: number,
+	lng: number | null,
+	lat: number | null,
+	heading: number | null,
 };
 
 /**
@@ -1255,17 +820,17 @@ export type RenderPatchEntry = {
  *  (no viewport culling -- all locations are rendered).
  */
 export type RenderRequest = {
-	west?: number;
-	south?: number;
-	east?: number;
-	north?: number;
-	selectedIds?: number[] | null;
-	markerStyle?: string;
+	west?: number,
+	south?: number,
+	east?: number,
+	north?: number,
+	selectedIds?: number[] | null,
+	markerStyle?: string,
 };
 
 /**  Result of `store_save_dirty`: how many bytes were written to the delta file. */
 export type SaveResult = {
-	savedChunks: number;
+	savedChunks: number,
 };
 
 /**
@@ -1276,19 +841,19 @@ export type ScoreBounds = string | [number, number, number, number];
 
 /**  A panorama visit record as returned to the frontend. */
 export type SeenEntry = {
-	id: number;
-	panoId: string;
-	lat: number;
-	lng: number;
-	heading: number;
-	pitch: number;
-	zoom: number;
-	enteredAt: number;
-	mapId: string | null;
-	locationId: number | null;
-	countryCode: string | null;
-	address: string | null;
-	thumbnail: string | null;
+	id: number,
+	panoId: string,
+	lat: number,
+	lng: number,
+	heading: number,
+	pitch: number,
+	zoom: number,
+	enteredAt: number,
+	mapId: string | null,
+	locationId: number | null,
+	countryCode: string | null,
+	address: string | null,
+	thumbnail: string | null,
 };
 
 /**
@@ -1296,9 +861,9 @@ export type SeenEntry = {
  *  `search` does a substring match on the `address` column.
  */
 export type SeenFilter = {
-	country?: string | null;
-	mapId?: string | null;
-	search?: string | null;
+	country?: string | null,
+	mapId?: string | null,
+	search?: string | null,
 };
 
 /**
@@ -1306,8 +871,8 @@ export type SeenFilter = {
  *  Name is resolved from the `maps` table when available, falling back to raw id.
  */
 export type SeenMapInfo = {
-	id: string;
-	name: string;
+	id: string,
+	name: string,
 };
 
 /**
@@ -1315,18 +880,18 @@ export type SeenMapInfo = {
  *  minus the auto-assigned `id`.
  */
 export type SeenWriteEntry = {
-	panoId: string;
-	lat: number;
-	lng: number;
-	heading: number;
-	pitch: number;
-	zoom: number;
-	enteredAt: number;
-	mapId: string | null;
-	locationId: number | null;
-	countryCode: string | null;
-	address: string | null;
-	thumbnail: string | null;
+	panoId: string,
+	lat: number,
+	lng: number,
+	heading: number,
+	pitch: number,
+	zoom: number,
+	enteredAt: number,
+	mapId: string | null,
+	locationId: number | null,
+	countryCode: string | null,
+	address: string | null,
+	thumbnail: string | null,
 };
 
 /**
@@ -1334,17 +899,17 @@ export type SeenWriteEntry = {
  *  so JS can diff selections across syncs. `color` is the RGB overlay color.
  */
 export type Selection = {
-	key: string;
-	color: [number, number, number];
-	props: SelectionProps;
+	key: string,
+	color: [number, number, number],
+	props: SelectionProps,
 	/**  JS-only: cached resolved count for sidebar display. Rust never sets this. */
-	count?: number | null;
+	count?: number | null,
 };
 
 /**  Input for `store_sync_selections`: selection criteria + display color. */
 export type SelectionInput = {
-	props: SelectionProps;
-	color: [number, number, number];
+	props: SelectionProps,
+	color: [number, number, number],
 };
 
 /**
@@ -1353,22 +918,7 @@ export type SelectionInput = {
  *   parallel batch scans. Composites (Intersection, Union, Invert) recursively resolve
  *  children. Duplicates uses a grid-accelerated spatial scan.
  */
-export type SelectionProps =
-	| { type: "Locations"; locations: number[]; name: string | null }
-	| { type: "Everything" }
-	| { type: "Polygon"; polygon: PolygonGeometry; includeInformational: boolean }
-	| { type: "Tag"; tagId: number }
-	| { type: "Untagged" }
-	| { type: "Unpanned" }
-	| { type: "PanoIds" }
-	| { type: "NotPanoIds" }
-	| { type: "Manual"; locations: number[] }
-	| { type: "Duplicates"; distance: number }
-	| { type: "ValidationState"; locations: number[]; state: number }
-	| { type: "Intersection"; selections: Selection[] }
-	| { type: "Union"; selections: Selection[] }
-	| { type: "Invert"; selections: Selection[] }
-	| { type: "Filter"; field: string; op: string; value: any; value2: any | null };
+export type SelectionProps = { type: "Locations"; locations: number[]; name: string | null } | { type: "Everything" } | { type: "Polygon"; polygon: PolygonGeometry; includeInformational: boolean } | { type: "Tag"; tagId: number } | { type: "Untagged" } | { type: "Unpanned" } | { type: "PanoIds" } | { type: "NotPanoIds" } | { type: "Manual"; locations: number[] } | { type: "Duplicates"; distance: number } | { type: "ValidationState"; locations: number[]; state: number } | { type: "Intersection"; selections: Selection[] } | { type: "Union"; selections: Selection[] } | { type: "Invert"; selections: Selection[] } | { type: "Filter"; field: string; op: string; value: any; value2: any | null };
 
 /**
  *  Selection bitmask sync payload. `patch_file` points to a temp binary that JS reads
@@ -1376,9 +926,9 @@ export type SelectionProps =
  *  match counts for sidebar display.
  */
 export type SelectionSync = {
-	counts: number[];
-	patchFile: string | null;
-	selectedCount: number;
+	counts: number[],
+	patchFile: string | null,
+	selectedCount: number,
 };
 
 /**
@@ -1386,63 +936,62 @@ export type SelectionSync = {
  *  detect stale responses and `canUndo`/`canRedo` for toolbar button state.
  */
 export type StoreStatus = {
-	version: number;
-	locationCount: number;
-	canUndo: boolean;
-	canRedo: boolean;
-	tagCounts: { [key in number]: number };
+	version: number,
+	locationCount: number,
+	canUndo: boolean,
+	canRedo: boolean,
+	tagCounts: { [key in number]: number },
 };
 
 /**  Lightweight status for polling: count, version, and whether unsaved changes exist. */
 export type SummaryResult = {
-	locationCount: number;
-	version: number;
-	dirtyCount: number;
+	locationCount: number,
+	version: number,
+	dirtyCount: number,
 };
 
 /**  Result of `store_sync_selections`: per-selection counts and the bitmask patch file path. */
 export type SyncSelectionsResult = {
-	counts: number[];
-	patchFile: string | null;
-	selectedCount: number;
+	counts: number[],
+	patchFile: string | null,
+	selectedCount: number,
 };
 
 /**
  *  A user-defined label that can be applied to any number of locations.
- *
+ * 
  *  Tags are stored in `MapMeta` and referenced by id in each `Location.tags`.
  *  The `count` field is maintained by callers during batch mutations, not by
  *  the overlay add/remove methods.
  */
 export type Tag = {
-	id: number;
-	name: string;
+	id: number,
+	name: string,
 	/**
 	 *  Hex color string (e.g. "#3a7fc2"). Generated deterministically from
 	 *  the tag name via `util::color_for_name` when not explicitly set.
 	 */
-	color: string;
-	visible?: boolean;
+	color: string,
+	visible?: boolean,
 	/**
 	 *  Display order in the sidebar tag list. `None` for legacy tags
 	 *  that predate ordered insertion.
 	 */
-	order?: number | null;
+	order?: number | null,
 	/**
 	 *  Number of locations currently carrying this tag. Denormalized for
 	 *  fast sidebar display -- kept in sync by callers after batch edits.
 	 */
-	count?: number;
+	count?: number,
 };
 
 /* Tauri Specta runtime */
-async function typedError<T, E>(
-	result: Promise<T>,
-): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
-	try {
-		return { status: "ok", data: await result };
-	} catch (e) {
-		if (e instanceof Error) throw e;
-		return { status: "error", error: e as any };
-	}
+async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
+    try {
+        return { status: "ok", data: await result };
+    } catch (e) {
+        if (e instanceof Error) throw e;
+        return { status: "error", error: e as any };
+    }
 }
+

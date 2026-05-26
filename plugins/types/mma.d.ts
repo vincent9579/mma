@@ -33,11 +33,19 @@ export type PluginBehavior = Partial<Plugin$1> & {
 	activate(): void | (() => void);
 };
 declare function registerPlugin(plugin: Plugin$1 | PluginBehavior): void;
+/**
+ *  A swap-removal from a render cell. JS must move the last element into `cell_index`
+ *  and pop the array to mirror the Rust-side swap-remove.
+ */
 export type CellRemoval = {
 	cell: string;
 	cellIndex: number;
 	id: number;
 };
+/**
+ *  Override the RGBA color of a single marker within a cell (used when selection
+ *  membership changes without a position change).
+ */
 export type ColorPatchEntry = {
 	cell: string;
 	cellIndex: number;
@@ -46,6 +54,7 @@ export type ColorPatchEntry = {
 	b: number;
 	a: number;
 };
+/**  Metadata for a single commit, returned to the frontend for the commit history UI. */
 export type CommitInfo = {
 	id: string;
 	mapId: string;
@@ -58,6 +67,7 @@ export type CommitInfo = {
 	locationCount: number;
 	createdAt: string;
 };
+/**  Aggregate database statistics for the debug panel. */
 export type DbStats = {
 	maps: number;
 	locations: number;
@@ -67,29 +77,53 @@ export type DbStats = {
 	journalMode: string;
 	foreignKeys: boolean;
 };
+/**  Row count for a single SQLite table, used in the debug diagnostics panel. */
 export type DbTableInfo = {
 	name: string;
 	rows: number;
 };
+/**
+ *  Preview data for importing a file into the currently open map.
+ *  Unlike bulk import, this shows per-field counts so the user can
+ *  selectively drop fields (heading, panoId, etc.) before importing.
+ */
 export type EditorImportPreview = {
 	locationCount: number;
 	tags: Tag[];
 	fields: FieldCount[];
 	warnings: string[];
 };
+/**
+ *  Combined result of an editor import: the mutation delta (for render pipeline)
+ *  plus import-specific metadata.
+ */
 export type EditorImportResult_Serialize = {
 	importedCount: number;
 	warnings: string[];
 } & MutationResult_Serialize;
+/**
+ *  Configuration for JSON export. Controls which fields are included and
+ *  whether the export covers all locations or a specific selection.
+ */
 export type ExportOpts = {
 	exportZoom: boolean;
 	exportUnpanned: boolean;
 	exportExtras: boolean;
+	/**  When `Some`, restricts export to these location IDs (e.g. current selection). */
 	scope: number[] | null;
 	mapName: string;
+	/**
+	 *  Serialized `{id: {name, color}}` tag definitions from the store, used to
+	 *  convert numeric tag IDs back to human-readable names in the output.
+	 */
 	tagsJson: string;
 	extraFieldsJson: string | null;
 };
+/**
+ *  Schema definition for a single `Location.extra` field. Stored in the map's
+ *  `extra.fields` JSON. For enum types, `values` lists valid options and `labels`
+ *  provides display names.
+ */
 export type ExtraFieldDef = {
 	type: ExtraFieldType;
 	label?: string | null;
@@ -98,11 +132,23 @@ export type ExtraFieldDef = {
 		[key in string]: string;
 	} | null;
 };
+/**
+ *  Type discriminant for `Location.extra` field definitions.
+ *  Determines how the field is displayed and filtered in the UI.
+ */
 export type ExtraFieldType = "string" | "number" | "date" | "month" | "enum";
+/**
+ *  Field presence count for the editor import preview dialog, letting
+ *  the user see which optional fields exist and decide which to keep/drop.
+ */
 export type FieldCount = {
 	key: string;
 	count: number;
 };
+/**
+ *  Summary of a single map found during bulk import preview.
+ *  Shown in the import dialog so the user can select which maps to import.
+ */
 export type ImportPreviewEntry = {
 	name: string;
 	folder: string | null;
@@ -110,12 +156,17 @@ export type ImportPreviewEntry = {
 	tagCount: number;
 	warnings: string[];
 };
+/**  Result returned per map after a successful bulk import. */
 export type ImportedMapInfo = {
 	id: string;
 	name: string;
 	locationCount: number;
 	tagCount: number;
 };
+/**
+ *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
+ *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+ */
 export type LocationPatch_Deserialize = {
 	lat?: number | null;
 	lng?: number | null;
@@ -129,42 +180,82 @@ export type LocationPatch_Deserialize = {
 	createdAt?: string | null;
 	modifiedAt?: string | null;
 };
+/**
+ *  A single Street View location on a map.
+ *
+ *  This is the atomic unit of data in the system. Locations are stored columnar
+ *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
+ *  within a map and assigned by the store's monotonic allocator.
+ */
 export type Location_Deserialize = {
+	/**
+	 *  Monotonically increasing within a map. Zero is a sentinel meaning
+	 *  "not yet assigned" (used during import before IDs are allocated).
+	 */
 	id?: number;
 	lat: number;
 	lng: number;
 	heading: number;
 	pitch: number;
+	/**  Street View zoom level (0-5), not map zoom. */
 	zoom: number;
 	panoId: string | null;
+	/**  Bitfield: see [`LOAD_AS_PANO_ID`] and [`INFORMATIONAL`]. */
 	flags: number;
+	/**  Tag IDs applied to this location. References `Tag.id`. */
 	tags: number[];
+	/**  Arbitrary key-value metadata */
 	extra?: any | null;
+	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
 	createdAt: string;
 	modifiedAt?: string | null;
 };
+/**
+ *  A single Street View location on a map.
+ *
+ *  This is the atomic unit of data in the system. Locations are stored columnar
+ *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
+ *  within a map and assigned by the store's monotonic allocator.
+ */
 export type Location_Serialize = {
+	/**
+	 *  Monotonically increasing within a map. Zero is a sentinel meaning
+	 *  "not yet assigned" (used during import before IDs are allocated).
+	 */
 	id: number;
 	lat: number;
 	lng: number;
 	heading: number;
 	pitch: number;
+	/**  Street View zoom level (0-5), not map zoom. */
 	zoom: number;
 	panoId: string | null;
+	/**  Bitfield: see [`LOAD_AS_PANO_ID`] and [`INFORMATIONAL`]. */
 	flags: number;
+	/**  Tag IDs applied to this location. References `Tag.id`. */
 	tags: number[];
+	/**  Arbitrary key-value metadata */
 	extra?: any | null;
+	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
 	createdAt: string;
 	modifiedAt?: string | null;
 };
 export type MapData = {
 	meta: MapMeta;
 };
+/**
+ *  Top-level `extra` JSON blob on a map row. Currently only holds field definitions,
+ *  but structured as an object to allow future extensions.
+ */
 export type MapExtra = {
 	fields?: {
 		[key in string]: ExtraFieldDef;
 	} | null;
 };
+/**
+ *  Full metadata for a map, deserialized from the SQLite `maps` row.
+ *  JSON columns (settings, tags, extra, etc.) are parsed into typed structs.
+ */
 export type MapMeta = {
 	id: string;
 	name: string;
@@ -182,6 +273,10 @@ export type MapMeta = {
 	updatedAt: string;
 	lastOpenedAt: string | null;
 };
+/**
+ *  Partial update for map metadata. Only non-`None` fields are written.
+ *  `folder: Some(None)` explicitly unsets the folder (moves to root).
+ */
 export type MapMetaPatch = {
 	name?: string | null;
 	description?: string | null;
@@ -194,6 +289,10 @@ export type MapMetaPatch = {
 	} | null;
 	labels?: string[] | null;
 };
+/**
+ *  Per-map editor preferences. Controls Street View lookup behavior (official vs
+ *  unofficial, camera type filters), export defaults, and metadata enrichment.
+ */
 export type MapSettings = {
 	pointAlongRoad: boolean;
 	preferDirection: number | null;
@@ -208,6 +307,11 @@ export type MapSettings = {
 	enrichFields: string[] | null;
 	generatedLocationTag: string | null;
 };
+/**
+ *  Unified response for every mutation IPC. Bundles the store status, render delta,
+ *  optional selection sync, optional new field definitions, and optional updated tags.
+ *  JS applies all of these atomically to stay in sync with the Rust state.
+ */
 export type MutationResult_Serialize = {
 	delta: RenderDelta_Serialize;
 	selectionSync: SelectionSync | null;
@@ -218,6 +322,7 @@ export type MutationResult_Serialize = {
 		[key in number]: Tag;
 	} | null;
 } & StoreStatus;
+/**  Metadata for a user-installed plugin, read from `plugins/{id}/manifest.json`. */
 export type PluginManifest = {
 	id: string;
 	name: string;
@@ -225,17 +330,26 @@ export type PluginManifest = {
 	icon: string;
 	main: string;
 };
+/**
+ *  GeoJSON-like polygon geometry. `coordinates` is the primary polygon (outer ring +
+ *  optional holes). `extra_polygons` allows multipolygon selections (e.g., from GeoJSON import).
+ */
 export type PolygonGeometry = {
-	coordinates: [
+	coordinates: (([
 		number,
 		number
-	][][];
-	extraPolygons?: [
+	])[])[];
+	extraPolygons?: ((([
 		number,
 		number
-	][][][] | null;
+	])[])[])[] | null;
 	properties?: any | null;
 };
+/**
+ *  Incremental render update sent to JS after a mutation. Contains adds, position/heading
+ *  patches, swap-removals, and color patches (for selection overlay changes).
+ *  `full_reset` signals JS to discard all cell data and re-fetch via `store_fill_render_file`.
+ */
 export type RenderDelta_Serialize = {
 	added: RenderEntry[];
 	updated: RenderPatchEntry[];
@@ -243,6 +357,7 @@ export type RenderDelta_Serialize = {
 	colorPatches: ColorPatchEntry[];
 	fullReset?: boolean;
 };
+/**  A newly-added marker to a render cell: position, heading, and base color. */
 export type RenderEntry = {
 	cell: string;
 	id: number;
@@ -254,6 +369,7 @@ export type RenderEntry = {
 	b: number;
 	a: number;
 };
+/**  Partial update to an existing marker within its cell (position and/or heading changed). */
 export type RenderPatchEntry = {
 	cell: string;
 	cellIndex: number;
@@ -261,6 +377,11 @@ export type RenderPatchEntry = {
 	lat: number | null;
 	heading: number | null;
 };
+/**
+ *  Parameters for a full render rebuild. `marker_style` ("arrow" or "pin") determines
+ *  whether heading angles are written. The bounding box fields are currently unused
+ *  (no viewport culling -- all locations are rendered).
+ */
 export type RenderRequest = {
 	west?: number;
 	south?: number;
@@ -269,15 +390,21 @@ export type RenderRequest = {
 	selectedIds?: number[] | null;
 	markerStyle?: string;
 };
+/**  Result of `store_save_dirty`: how many bytes were written to the delta file. */
 export type SaveResult = {
 	savedChunks: number;
 };
+/**
+ *  Score bounding box: either `"auto"` (computed from locations) or an
+ *  explicit `[south, west, north, east]` rectangle.
+ */
 export type ScoreBounds = string | [
 	number,
 	number,
 	number,
 	number
 ];
+/**  A panorama visit record as returned to the frontend. */
 export type SeenEntry = {
 	id: number;
 	panoId: string;
@@ -293,15 +420,27 @@ export type SeenEntry = {
 	address: string | null;
 	thumbnail: string | null;
 };
+/**
+ *  Optional filters for seen-history queries. All fields are AND-combined.
+ *  `search` does a substring match on the `address` column.
+ */
 export type SeenFilter = {
 	country?: string | null;
 	mapId?: string | null;
 	search?: string | null;
 };
+/**
+ *  Map id + display name pair for the "filter by map" dropdown.
+ *  Name is resolved from the `maps` table when available, falling back to raw id.
+ */
 export type SeenMapInfo = {
 	id: string;
 	name: string;
 };
+/**
+ *  Inbound payload for recording a new panorama visit. Same shape as `SeenEntry`
+ *  minus the auto-assigned `id`.
+ */
 export type SeenWriteEntry = {
 	panoId: string;
 	lat: number;
@@ -327,6 +466,7 @@ type Selection$1 = {
 	/**  JS-only: cached resolved count for sidebar display. Rust never sets this. */
 	count?: number | null;
 };
+/**  Input for `store_sync_selections`: selection criteria + display color. */
 export type SelectionInput = {
 	props: SelectionProps;
 	color: [
@@ -335,6 +475,12 @@ export type SelectionInput = {
 		number
 	];
 };
+/**
+ *  Discriminated union of all selection types. Serialized with `{ "type": "..." }` tag
+ *  for JS interop. Simple types (Tag, Untagged, PanoIds, etc.) resolve in O(N) with
+ *   parallel batch scans. Composites (Intersection, Union, Invert) recursively resolve
+ *  children. Duplicates uses a grid-accelerated spatial scan.
+ */
 export type SelectionProps = {
 	type: "Locations";
 	locations: number[];
@@ -382,11 +528,20 @@ export type SelectionProps = {
 	value: any;
 	value2: any | null;
 };
+/**
+ *  Selection bitmask sync payload. `patch_file` points to a temp binary that JS reads
+ *  via `mma-buf://` to update the selection overlay colors. `counts` gives per-selection
+ *  match counts for sidebar display.
+ */
 export type SelectionSync = {
 	counts: number[];
 	patchFile: string | null;
 	selectedCount: number;
 };
+/**
+ *  Metadata snapshot returned to JS after every mutation. JS uses `version` to
+ *  detect stale responses and `canUndo`/`canRedo` for toolbar button state.
+ */
 export type StoreStatus = {
 	version: number;
 	locationCount: number;
@@ -396,22 +551,43 @@ export type StoreStatus = {
 		[key in number]: number;
 	};
 };
+/**  Lightweight status for polling: count, version, and whether unsaved changes exist. */
 export type SummaryResult = {
 	locationCount: number;
 	version: number;
 	dirtyCount: number;
 };
+/**  Result of `store_sync_selections`: per-selection counts and the bitmask patch file path. */
 export type SyncSelectionsResult = {
 	counts: number[];
 	patchFile: string | null;
 	selectedCount: number;
 };
+/**
+ *  A user-defined label that can be applied to any number of locations.
+ *
+ *  Tags are stored in `MapMeta` and referenced by id in each `Location.tags`.
+ *  The `count` field is maintained by callers during batch mutations, not by
+ *  the overlay add/remove methods.
+ */
 export type Tag = {
 	id: number;
 	name: string;
+	/**
+	 *  Hex color string (e.g. "#3a7fc2"). Generated deterministically from
+	 *  the tag name via `util::color_for_name` when not explicitly set.
+	 */
 	color: string;
 	visible?: boolean;
+	/**
+	 *  Display order in the sidebar tag list. `None` for legacy tags
+	 *  that predate ordered insertion.
+	 */
 	order?: number | null;
+	/**
+	 *  Number of locations currently carrying this tag. Denormalized for
+	 *  fast sidebar display -- kept in sync by callers after batch edits.
+	 */
 	count?: number;
 };
 type Location$1 = Location_Serialize;
