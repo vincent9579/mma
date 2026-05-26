@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { ValidationState } from "@/store/selections";
 import { validateLocations, type ValidationProgress } from "@/lib/sv/validate";
-import { useCurrentMap, addSelection, fetchAllLocations } from "@/store/useMapStore";
+import { useCurrentMap, addSelections, fetchAllLocations } from "@/store/useMapStore";
 
 function ValidationContent() {
 	const map = useCurrentMap();
@@ -39,7 +39,7 @@ function ValidationContent() {
 					locations: results.get(state)!.map((l) => l.id),
 					state,
 				}));
-			if (batch.length > 0) addSelection(batch);
+			if (batch.length > 0) addSelections(batch);
 		} catch (e: unknown) {
 			if (!(e instanceof Error && e.name === "AbortError")) {
 				setError(e instanceof Error ? e.message : "Validation failed");

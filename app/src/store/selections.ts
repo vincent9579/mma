@@ -108,7 +108,7 @@ function dedupe(selections: Selection[]): Selection[] {
 	return map.size === selections.length ? selections : Array.from(map.values());
 }
 
-export function addSelections(
+export function addSelection(
 	map: MapData,
 	current: Selection[],
 	props: SelectionProps,
@@ -117,7 +117,7 @@ export function addSelections(
 }
 
 /** Remove a selection by key. Composites (Intersection/Union/Invert) unwrap their children back into the list. */
-export function removeSelections(current: Selection[], key: string): Selection[] {
+export function removeSelection(current: Selection[], key: string): Selection[] {
 	return current.flatMap((s) => {
 		if (s.key !== key) return [s];
 		if (s.props.type === "Invert" || s.props.type === "Intersection" || s.props.type === "Union")

@@ -44,8 +44,8 @@ import {
 	type Selection,
 	type SelectionProps,
 	type PolygonGeometry,
-	addSelections as addSel,
-	removeSelections as removeSel,
+	addSelection as addSel,
+	removeSelection as removeSel,
 	intersectSelections,
 	unionSelections,
 	invertSelections,
@@ -471,7 +471,7 @@ function syncMutationResult(r: MutationResult) {
 			const was = oldTags[id];
 			const now = r.tags[id];
 			if (was && was.visible !== false && (!now || now.visible === false)) {
-				removeSelection([`tag:${id}`]);
+				removeSelections([`tag:${id}`]);
 			}
 		}
 	}
@@ -708,7 +708,7 @@ async function applySelectionUpdate(updater: (m: MapData, sels: Selection[]) => 
 	emitEvent("selection:change", selections);
 }
 
-export function addSelection(props: SelectionProps[]) {
+export function addSelections(props: SelectionProps[]) {
 	return applySelectionUpdate((m, sels) => {
 		let result = sels;
 		for (const p of props) result = addSel(m, result, p);
@@ -716,7 +716,7 @@ export function addSelection(props: SelectionProps[]) {
 	});
 }
 
-export function removeSelection(keys: string[]) {
+export function removeSelections(keys: string[]) {
 	return applySelectionUpdate((_m, sels) => {
 		let result = sels;
 		for (const k of keys) result = removeSel(result, k);
@@ -745,35 +745,35 @@ export function toggleManualSelection(locationId: number) {
 }
 
 export function selectEverything() {
-	return addSelection([{ type: "Everything" }]);
+	return addSelections([{ type: "Everything" }]);
 }
 
 export function selectUntagged() {
-	return addSelection([{ type: "Untagged" }]);
+	return addSelections([{ type: "Untagged" }]);
 }
 
 export function selectUnpanned() {
-	return addSelection([{ type: "Unpanned" }]);
+	return addSelections([{ type: "Unpanned" }]);
 }
 
 export function selectPanoIds() {
-	return addSelection([{ type: "PanoIds" }]);
+	return addSelections([{ type: "PanoIds" }]);
 }
 
 export function selectNotPanoIds() {
-	return addSelection([{ type: "NotPanoIds" }]);
+	return addSelections([{ type: "NotPanoIds" }]);
 }
 
 export function selectDuplicates(distance: number) {
-	return addSelection([{ type: "Duplicates", distance }]);
+	return addSelections([{ type: "Duplicates", distance }]);
 }
 
 export function selectTag(tagId: number) {
-	return addSelection([{ type: "Tag", tagId }]);
+	return addSelections([{ type: "Tag", tagId }]);
 }
 
 export function selectPolygon(polygon: PolygonGeometry, includeInformational = false) {
-	return addSelection([{ type: "Polygon", polygon, includeInformational }]);
+	return addSelections([{ type: "Polygon", polygon, includeInformational }]);
 }
 
 export function selectFilter(
@@ -782,7 +782,7 @@ export function selectFilter(
 	value: unknown,
 	value2?: unknown,
 ) {
-	return addSelection([{ type: "Filter", field, op, value, value2 }]);
+	return addSelections([{ type: "Filter", field, op, value, value2 }]);
 }
 
 export function setPolygonName(key: string, name: string) {
@@ -791,7 +791,7 @@ export function setPolygonName(key: string, name: string) {
 
 // TODO: debounce — color picker fires this on every drag tick, triggering a full
 // store_sync_selections IPC each time. Laggy on large maps.
-export function setSelectionColor(entries: { key: string; color: [number, number, number] }[]) {
+export function setSelectionColors(entries: { key: string; color: [number, number, number] }[]) {
 	applySelectionUpdate((_m, sels) => {
 		let result = sels;
 		for (const { key, color } of entries) result = setSelColor(result, key, color);

@@ -5,7 +5,7 @@ import {
 	useSelectedLocationIds,
 	useSelections,
 	removeLocations,
-	removeSelection,
+	removeSelections,
 	resetSelections,
 	selectIntersection,
 	selectUnion,
@@ -15,7 +15,7 @@ import {
 	selectPanoIds,
 	selectNotPanoIds,
 	setPolygonName,
-	setSelectionColor,
+	setSelectionColors,
 	addTagToLocations,
 	createTags,
 	beginReview,
@@ -109,7 +109,7 @@ function SelectionRow({
 	const isDropTarget = drag != null && drag.key !== selection.key;
 	const handleColorChange = useCallback(
 		(c: { r: number; g: number; b: number }) => {
-			setSelectionColor([{ key: selection.key, color: [c.r, c.g, c.b] }]);
+			setSelectionColors([{ key: selection.key, color: [c.r, c.g, c.b] }]);
 		},
 		[selection.key],
 	);
@@ -981,7 +981,7 @@ export function MapOverview() {
 							<SelectionRow
 								key={sel.key}
 								selection={sel}
-								onRemove={() => removeSelection([sel.key])}
+								onRemove={() => removeSelections([sel.key])}
 							/>
 						))}
 					</div>

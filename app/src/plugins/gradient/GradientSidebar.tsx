@@ -179,8 +179,8 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 						color: gradientColor(preset.stops, i / (bucketCount - 1)),
 					});
 				}
-				await MMA.addSelection(props);
-				MMA.setSelectionColor(colors);
+				await MMA.addSelections(props);
+				MMA.setSelectionColors(colors);
 			} else {
 				// Enum/string: one bucket per distinct value
 				const distinct = [...new Set(values.map((v) => String(v.raw)))].sort();
@@ -198,8 +198,8 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 						distinct.length === 1 ? 0.5 : i / (distinct.length - 1),
 					),
 				}));
-				await MMA.addSelection(props);
-				MMA.setSelectionColor(colors);
+				await MMA.addSelections(props);
+				MMA.setSelectionColors(colors);
 			}
 			setApplied(true);
 		} finally {

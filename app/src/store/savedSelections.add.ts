@@ -2,7 +2,7 @@ import type { MapData } from "@/types";
 import type { Selection, SelectionProps, PolygonGeometry, FilterOp } from "./selections";
 import { buildSelection } from "./selections";
 import { getSettings, setSetting } from "./settings.add";
-import { addSelection } from "./useMapStore";
+import { addSelections } from "./useMapStore";
 
 export interface SavedSelectionItem {
 	props: SavedSelectionProps;
@@ -169,6 +169,6 @@ export function applySavedSelection(saved: SavedSelection, map: MapData): number
 		const props = savedToSelectionProps(item.props, map);
 		if (props) batch.push(props);
 	}
-	if (batch.length > 0) addSelection(batch);
+	if (batch.length > 0) addSelections(batch);
 	return batch.length;
 }

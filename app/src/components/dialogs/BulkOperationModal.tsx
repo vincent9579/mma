@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import {
 	getCurrentMap,
-	addSelection,
+	addSelections,
 	fetchAllLocations,
 	fetchLocationsByIds,
 	batchUpdateLocations,
@@ -398,7 +398,7 @@ function BulkProgress({
 						locations: results.get(state)!.map((l) => l.id),
 						state,
 					}));
-				if (batch.length > 0) addSelection(batch);
+				if (batch.length > 0) addSelections(batch);
 			} else if (operation === "enrich") {
 				const er = await enrichAll(locations, {
 					signal: controller.signal,
@@ -460,7 +460,7 @@ function BulkProgress({
 					<EnrichSummary
 						result={enrichResult}
 						onSelect={(ids, _label) => {
-							addSelection([{ type: "Manual", locations: ids }]);
+							addSelections([{ type: "Manual", locations: ids }]);
 						}}
 					/>
 				) : status === "done" && operation === "clearFields" ? (
