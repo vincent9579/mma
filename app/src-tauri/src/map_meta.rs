@@ -454,6 +454,7 @@ pub fn store_update_map_meta(
     let now = now_iso();
     sets.push("updated_at = ?".to_string());
     values.push(Box::new(now));
+    let id_clone = id.clone();
     values.push(Box::new(id));
 
     let sql = format!(
@@ -465,10 +466,12 @@ pub fn store_update_map_meta(
     conn.execute(&sql, param_refs.as_slice())
         .map_err(|e| e.to_string())?;
     if let Some(ref extra) = patch.extra {
-        let mut store = state.lock().map_err(|e| e.to_string())?;
-        store.known_field_keys = extra.fields.as_ref()
-            .map(|f| f.keys().cloned().collect())
-            .unwrap_or_default();
+        let mut mgr = state.lock().map_err(|e| e.to_string())?;
+        if let Ok(store) = mgr.store_for_map(&id_clone) {
+            store.known_field_keys = extra.fields.as_ref()
+                .map(|f| f.keys().cloned().collect())
+                .unwrap_or_default();
+        }
     }
     Ok(())
 }

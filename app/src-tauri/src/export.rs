@@ -39,133 +39,135 @@ mod tests;
 #[tauri::command]
 #[specta::specta]
 pub fn store_export_json(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     opts: ExportOpts,
 ) -> Result<String, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
+    with_store!(webview, state, |store| {
+        let tag_defs: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_str(&opts.tags_json).unwrap_or_default();
+        let id_to_name: std::collections::HashMap<u32, String> = tag_defs.iter()
+            .filter_map(|(k, v)| {
+                let id = k.parse::<u32>().ok()?;
+                let name = v.get("name")?.as_str()?.to_string();
+                Some((id, name))
+            })
+            .collect();
 
-    let tag_defs: std::collections::HashMap<String, serde_json::Value> =
-        serde_json::from_str(&opts.tags_json).unwrap_or_default();
-    let id_to_name: std::collections::HashMap<u32, String> = tag_defs.iter()
-        .filter_map(|(k, v)| {
-            let id = k.parse::<u32>().ok()?;
-            let name = v.get("name")?.as_str()?.to_string();
-            Some((id, name))
-        })
-        .collect();
+        let locs = match &opts.scope {
+            Some(ids) => {
+                let set: std::collections::HashSet<u32> = ids.iter().copied().collect();
+                store.collect_all_locations().into_iter().filter(|l| set.contains(&l.id)).collect::<Vec<_>>()
+            }
+            None => store.collect_all_locations(),
+        };
 
-    let locs = match &opts.scope {
-        Some(ids) => {
-            let set: std::collections::HashSet<u32> = ids.iter().copied().collect();
-            store.collect_all_locations().into_iter().filter(|l| set.contains(&l.id)).collect::<Vec<_>>()
+        let mut coords = Vec::with_capacity(locs.len());
+        for loc in &locs {
+            let pinned = loc.flags & LOAD_AS_PANO_ID != 0;
+            let mut c = serde_json::Map::new();
+            c.insert("lat".into(), serde_json::json!(loc.lat));
+            c.insert("lng".into(), serde_json::json!(loc.lng));
+            let heading = if opts.export_unpanned && loc.heading == 0.0 { 0.001 } else { loc.heading };
+            c.insert("heading".into(), serde_json::json!(heading));
+            c.insert("pitch".into(), serde_json::json!(loc.pitch));
+            c.insert("zoom".into(), serde_json::json!(if opts.export_zoom { loc.zoom } else { 0.0 }));
+            c.insert("panoId".into(), if pinned { serde_json::json!(loc.pano_id) } else { serde_json::Value::Null });
+            c.insert("countryCode".into(), loc.extra.as_ref().and_then(|e| e.get("countryCode").cloned()).unwrap_or(serde_json::Value::Null));
+            c.insert("stateCode".into(), loc.extra.as_ref().and_then(|e| e.get("stateCode").cloned()).unwrap_or(serde_json::Value::Null));
+
+            if opts.export_extras {
+                let mut extra = serde_json::Map::new();
+                if let Some(ref e) = loc.extra {
+                    for (k, v) in e {
+                        if k == "countryCode" || k == "stateCode" { continue; }
+                        extra.insert(k.clone(), v.clone());
+                    }
+                }
+                if !loc.tags.is_empty() {
+                    let names: Vec<serde_json::Value> = loc.tags.iter()
+                        .map(|id| serde_json::json!(id_to_name.get(id).cloned().unwrap_or_else(|| id.to_string())))
+                        .collect();
+                    extra.insert("tags".into(), serde_json::json!(names));
+                }
+                if !pinned && loc.pano_id.is_some() {
+                    extra.insert("panoId".into(), serde_json::json!(loc.pano_id));
+                }
+                if !extra.is_empty() {
+                    c.insert("extra".into(), serde_json::Value::Object(extra));
+                }
+            }
+            coords.push(serde_json::Value::Object(c));
         }
-        None => store.collect_all_locations(),
-    };
 
-    let mut coords = Vec::with_capacity(locs.len());
-    for loc in &locs {
-        let pinned = loc.flags & LOAD_AS_PANO_ID != 0;
-        let mut c = serde_json::Map::new();
-        c.insert("lat".into(), serde_json::json!(loc.lat));
-        c.insert("lng".into(), serde_json::json!(loc.lng));
-        let heading = if opts.export_unpanned && loc.heading == 0.0 { 0.001 } else { loc.heading };
-        c.insert("heading".into(), serde_json::json!(heading));
-        c.insert("pitch".into(), serde_json::json!(loc.pitch));
-        c.insert("zoom".into(), serde_json::json!(if opts.export_zoom { loc.zoom } else { 0.0 }));
-        c.insert("panoId".into(), if pinned { serde_json::json!(loc.pano_id) } else { serde_json::Value::Null });
-        c.insert("countryCode".into(), loc.extra.as_ref().and_then(|e| e.get("countryCode").cloned()).unwrap_or(serde_json::Value::Null));
-        c.insert("stateCode".into(), loc.extra.as_ref().and_then(|e| e.get("stateCode").cloned()).unwrap_or(serde_json::Value::Null));
+        let mut parts = serde_json::Map::new();
+        if !opts.map_name.is_empty() {
+            parts.insert("name".into(), serde_json::json!(opts.map_name));
+        }
+        parts.insert("customCoordinates".into(), serde_json::Value::Array(coords));
 
         if opts.export_extras {
             let mut extra = serde_json::Map::new();
-            if let Some(ref e) = loc.extra {
-                for (k, v) in e {
-                    if k == "countryCode" || k == "stateCode" { continue; }
-                    extra.insert(k.clone(), v.clone());
+            if !tag_defs.is_empty() {
+                let mut converted = serde_json::Map::new();
+                for v in tag_defs.values() {
+                    if let (Some(name), Some(color)) = (v.get("name").and_then(|n| n.as_str()), v.get("color").and_then(|c| c.as_str())) {
+                        let mut entry = serde_json::Map::new();
+                        if let Some(rgb) = hex_to_rgb(color) {
+                            entry.insert("color".into(), serde_json::json!([rgb[0], rgb[1], rgb[2]]));
+                        }
+                        converted.insert(name.to_string(), serde_json::Value::Object(entry));
+                    }
+                }
+                if !converted.is_empty() {
+                    extra.insert("tags".into(), serde_json::Value::Object(converted));
                 }
             }
-            if !loc.tags.is_empty() {
-                let names: Vec<serde_json::Value> = loc.tags.iter()
-                    .map(|id| serde_json::json!(id_to_name.get(id).cloned().unwrap_or_else(|| id.to_string())))
-                    .collect();
-                extra.insert("tags".into(), serde_json::json!(names));
-            }
-            if !pinned && loc.pano_id.is_some() {
-                extra.insert("panoId".into(), serde_json::json!(loc.pano_id));
+            if let Some(ref fields_json) = opts.extra_fields_json {
+                if let Ok(fields) = serde_json::from_str::<serde_json::Value>(fields_json) {
+                    extra.insert("fields".into(), fields);
+                }
             }
             if !extra.is_empty() {
-                c.insert("extra".into(), serde_json::Value::Object(extra));
+                parts.insert("extra".into(), serde_json::Value::Object(extra));
             }
         }
-        coords.push(serde_json::Value::Object(c));
-    }
 
-    let mut parts = serde_json::Map::new();
-    if !opts.map_name.is_empty() {
-        parts.insert("name".into(), serde_json::json!(opts.map_name));
-    }
-    parts.insert("customCoordinates".into(), serde_json::Value::Array(coords));
+        let json = serde_json::to_string(&serde_json::Value::Object(parts)).map_err(|e| e.to_string())?;
 
-    if opts.export_extras {
-        let mut extra = serde_json::Map::new();
-        if !tag_defs.is_empty() {
-            let mut converted = serde_json::Map::new();
-            for v in tag_defs.values() {
-                if let (Some(name), Some(color)) = (v.get("name").and_then(|n| n.as_str()), v.get("color").and_then(|c| c.as_str())) {
-                    let mut entry = serde_json::Map::new();
-                    if let Some(rgb) = hex_to_rgb(color) {
-                        entry.insert("color".into(), serde_json::json!([rgb[0], rgb[1], rgb[2]]));
-                    }
-                    converted.insert(name.to_string(), serde_json::Value::Object(entry));
-                }
-            }
-            if !converted.is_empty() {
-                extra.insert("tags".into(), serde_json::Value::Object(converted));
-            }
-        }
-        if let Some(ref fields_json) = opts.extra_fields_json {
-            if let Ok(fields) = serde_json::from_str::<serde_json::Value>(fields_json) {
-                extra.insert("fields".into(), fields);
-            }
-        }
-        if !extra.is_empty() {
-            parts.insert("extra".into(), serde_json::Value::Object(extra));
-        }
-    }
-
-    let json = serde_json::to_string(&serde_json::Value::Object(parts)).map_err(|e| e.to_string())?;
-
-    let path = std::env::temp_dir().join(format!("mma_export_{}.json", std::process::id()));
-    std::fs::write(&path, &json).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().into_owned())
+        let path = std::env::temp_dir().join(format!("mma_export_{}.json", std::process::id()));
+        std::fs::write(&path, &json).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    })
 }
 
 /// Export locations as a minimal lat/lng CSV file.
 #[tauri::command]
 #[specta::specta]
 pub fn store_export_csv(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     scope: Option<Vec<u32>>,
 ) -> Result<String, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
+    with_store!(webview, state, |store| {
+        let locs = match &scope {
+            Some(ids) => {
+                let set: std::collections::HashSet<u32> = ids.iter().copied().collect();
+                store.collect_all_locations().into_iter().filter(|l| set.contains(&l.id)).collect::<Vec<_>>()
+            }
+            None => store.collect_all_locations(),
+        };
 
-    let locs = match &scope {
-        Some(ids) => {
-            let set: std::collections::HashSet<u32> = ids.iter().copied().collect();
-            store.collect_all_locations().into_iter().filter(|l| set.contains(&l.id)).collect::<Vec<_>>()
+        let mut buf = String::with_capacity(locs.len() * 30);
+        buf.push_str("lat,lng\n");
+        for loc in &locs {
+            buf.push_str(&format!("{},{}\n", loc.lat, loc.lng));
         }
-        None => store.collect_all_locations(),
-    };
 
-    let mut buf = String::with_capacity(locs.len() * 30);
-    buf.push_str("lat,lng\n");
-    for loc in &locs {
-        buf.push_str(&format!("{},{}\n", loc.lat, loc.lng));
-    }
-
-    let path = std::env::temp_dir().join(format!("mma_export_{}.csv", std::process::id()));
-    std::fs::write(&path, &buf).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().into_owned())
+        let path = std::env::temp_dir().join(format!("mma_export_{}.csv", std::process::id()));
+        std::fs::write(&path, &buf).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    })
 }
 
 /// Export locations as a GeoJSON FeatureCollection of Point features.
@@ -173,11 +175,12 @@ pub fn store_export_csv(
 #[tauri::command]
 #[specta::specta]
 pub fn store_export_geojson(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     scope: Option<Vec<u32>>,
     tags_json: String,
 ) -> Result<String, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
+    with_store!(webview, state, |store| {
 
     let tag_defs: std::collections::HashMap<String, serde_json::Value> =
         serde_json::from_str(&tags_json).unwrap_or_default();
@@ -214,6 +217,8 @@ pub fn store_export_geojson(
     let path = std::env::temp_dir().join(format!("mma_export_{}.geojson", std::process::id()));
     std::fs::write(&path, &json).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().into_owned())
+
+    })
 }
 
 /// Export every map in the database as a deflate-compressed ZIP of JSON files.

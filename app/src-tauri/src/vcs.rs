@@ -84,7 +84,7 @@ pub fn store_create_commit(
         .ok();
 
     // 2. Snapshot blobs via the store
-    let entries = location_store::snapshot_inner(&app, &state)?;
+    let entries = location_store::snapshot_inner(&app, &state, &map_id)?;
 
     // 3. Compute tree hash
     let mut sorted = entries.clone();

@@ -970,6 +970,7 @@ fn add_parsed_to_store(
 #[specta::specta]
 pub fn store_import_file(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, location_store::StoreState>,
     dropped_fields: Vec<String>,
 ) -> Result<EditorImportResult, String> {
@@ -994,15 +995,16 @@ pub fn store_import_file(
     }
     log::debug!("[import] parse=cached locs={}", parsed.locations.len());
 
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let mutation = add_parsed_to_store(&app, &mut store, &mut parsed)?;
+    with_store!(webview, state, |store| {
+        let mutation = add_parsed_to_store(&app, store, &mut parsed)?;
 
-    log::debug!("[import] total={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
+        log::debug!("[import] total={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
 
-    Ok(EditorImportResult {
-        imported_count: parsed.locations.len() as u32,
-        warnings: parsed.warnings,
-        mutation,
+        Ok(EditorImportResult {
+            imported_count: parsed.locations.len() as u32,
+            warnings: parsed.warnings,
+            mutation,
+        })
     })
 }
 
@@ -1012,6 +1014,7 @@ pub fn store_import_file(
 #[specta::specta]
 pub fn store_import_paste(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, location_store::StoreState>,
     text: String,
 ) -> Result<(EditorImportResult, Option<u32>), String> {
@@ -1023,18 +1026,19 @@ pub fn store_import_paste(
     }
     log::debug!("[paste-import] parse={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
 
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let mutation = add_parsed_to_store(&app, &mut store, &mut parsed)?;
+    with_store!(webview, state, |store| {
+        let mutation = add_parsed_to_store(&app, store, &mut parsed)?;
 
-    log::debug!("[paste-import] total={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
+        log::debug!("[paste-import] total={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
 
-    let single_id = if parsed.locations.len() == 1 { parsed.locations.first().map(|l| l.id) } else { None };
+        let single_id = if parsed.locations.len() == 1 { parsed.locations.first().map(|l| l.id) } else { None };
 
-    Ok((EditorImportResult {
-        imported_count: parsed.locations.len() as u32,
-        warnings: parsed.warnings,
-        mutation,
-    }, single_id))
+        Ok((EditorImportResult {
+            imported_count: parsed.locations.len() as u32,
+            warnings: parsed.warnings,
+            mutation,
+        }, single_id))
+    })
 }
 
 #[cfg(test)]

@@ -7,16 +7,17 @@
 use tauri::Manager;
 
 mod fast_io;
-mod import;
-mod location_store;
-mod map_meta;
-mod selections;
-mod arrow_bridge;
-mod export;
-mod geocoder;
-mod seen;
 mod types;
 mod util;
+mod arrow_bridge;
+mod selections;
+#[macro_use]
+mod location_store;
+mod import;
+mod export;
+mod map_meta;
+mod geocoder;
+mod seen;
 mod vcs;
 
 /// Write arbitrary text content to a named temp file (`mma_{name}`). Returns the path.
@@ -370,7 +371,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .manage(location_store::StoreState::new(location_store::Store::new()))
+        .manage(location_store::StoreState::new(location_store::StoreManager::new()))
         .invoke_handler({
             let mut specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
                 .dangerously_cast_bigints_to_number()

@@ -466,7 +466,7 @@ impl Store {
         }
 
         let patch_file = if num_cells > 0 {
-            let path = std::env::temp_dir().join("mma_sel_patches.bin");
+            let path = std::env::temp_dir().join(format!("mma_sel_{}.bin", self.map_id.as_deref().unwrap_or("default")));
             let _ = std::fs::write(&path, &buf);
             Some(path.to_string_lossy().into_owned())
         } else {
@@ -562,7 +562,7 @@ impl Store {
         }
 
         let patch_file = if num_cells > 0 {
-            let path = std::env::temp_dir().join("mma_sel_patches.bin");
+            let path = std::env::temp_dir().join(format!("mma_sel_{}.bin", self.map_id.as_deref().unwrap_or("default")));
             let _ = std::fs::write(&path, &buf);
             Some(path.to_string_lossy().into_owned())
         } else {
@@ -892,8 +892,51 @@ impl Store {
     }
 }
 
-/// Tauri managed state: a mutex-wrapped `Store` shared across all IPC commands.
-pub type StoreState = Mutex<Store>;
+/// Manages multiple open `Store` instances, keyed by map ID, with a
+/// window-label-to-map-ID registry so each Tauri webview operates on
+/// its own map without clobbering others.
+pub struct StoreManager {
+    pub(crate) stores: HashMap<String, Store>,
+    pub(crate) window_map: HashMap<String, String>,
+}
+
+impl StoreManager {
+    pub fn new() -> Self {
+        Self {
+            stores: HashMap::new(),
+            window_map: HashMap::new(),
+        }
+    }
+
+    pub fn store_for_window(&mut self, label: &str) -> Result<&mut Store, String> {
+        let map_id = self.window_map.get(label)
+            .ok_or_else(|| format!("no map open in window '{label}'"))?
+            .clone();
+        self.stores.get_mut(&map_id)
+            .ok_or_else(|| format!("store not found for map '{map_id}'"))
+    }
+
+    pub fn store_for_map(&mut self, map_id: &str) -> Result<&mut Store, String> {
+        self.stores.get_mut(map_id)
+            .ok_or_else(|| format!("no store for map '{map_id}'"))
+    }
+
+    pub fn map_id_for_window(&self, label: &str) -> Result<String, String> {
+        self.window_map.get(label)
+            .cloned()
+            .ok_or_else(|| format!("no map open in window '{label}'"))
+    }
+}
+
+pub type StoreState = Mutex<StoreManager>;
+
+macro_rules! with_store {
+    ($webview:expr, $state:expr, |$store:ident| $body:block) => {{
+        let mut mgr = $state.lock().map_err(|e| e.to_string())?;
+        let $store = mgr.store_for_window($webview.label())?;
+        $body
+    }};
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1070,6 +1113,7 @@ pub struct LocationPatch {
 #[specta::specta]
 pub async fn store_open_map(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     map_id: String,
 ) -> Result<StoreStatus, String> {
@@ -1201,20 +1245,18 @@ pub async fn store_open_map(
 
     let (batch, mmap_handle, geohash_index, max_id, undo, redo) = result;
 
-    let mut store = state.lock().map_err(|e| e.to_string())?;
     let count = batch.num_rows();
+    let mut store = Store::new();
     store.bump();
     store.map_id = Some(map_id.clone());
     store.next_id = max_id + 1;
     store.batch = Some(batch);
     store.mmap_handle = mmap_handle;
-    store.clear_overlay();
     store.alive_count = count;
     {
         let conn = fast_io::open_db(&app)?;
         conn.execute("UPDATE maps SET location_count = ?1 WHERE id = ?2",
             rusqlite::params![count, map_id]).map_err(|e| e.to_string())?;
-        // Load tags from SQLite into Store, compute counts from batch
         let mut tags = read_tags_json(&conn, &map_id);
         for tag in tags.values_mut() { tag.count = 0; }
         let mut max_tag_id: u32 = tags.keys().max().copied().unwrap_or(0);
@@ -1245,7 +1287,6 @@ pub async fn store_open_map(
         store.tags = tags;
         store.tags_dirty = false;
         store.next_tag_id = max_tag_id + 1;
-        // Populate known_field_keys from persisted field defs
         let extra_str: String = conn.query_row(
             "SELECT extra FROM maps WHERE id = ?1",
             rusqlite::params![map_id],
@@ -1257,18 +1298,14 @@ pub async fn store_open_map(
             .unwrap_or_default();
     }
     store.geohash_index = geohash_index;
-    store.dirty_geohashes.clear();
-    store.committed_blobs.clear();
-    store.selections.clear();
-    store.selection_loc_sets.clear();
-    store.selected_ids.clear();
-    store.selected_colors.clear();
-    store.active_id = None;
-    store.selection_version += 1;
     store.undo_stack = undo;
     store.redo_stack = redo;
 
-    Ok(store.store_status())
+    let status = store.store_status();
+    let mut mgr = state.lock().map_err(|e| e.to_string())?;
+    mgr.window_map.insert(webview.label().to_string(), map_id.clone());
+    mgr.stores.insert(map_id, store);
+    Ok(status)
 }
 
 /// Close the current map: bake overlay, flush Arrow + tags + edit history to disk, then
@@ -1277,19 +1314,28 @@ pub async fn store_open_map(
 #[specta::specta]
 pub fn store_close_map(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
 ) -> Result<(), String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    if let Some(ref map_id) = store.map_id.clone() {
+    let mut mgr = state.lock().map_err(|e| e.to_string())?;
+    let label = webview.label().to_string();
+    let map_id = match mgr.window_map.remove(&label) {
+        Some(id) => id,
+        None => return Ok(()),
+    };
+    let still_open = mgr.window_map.values().any(|v| v == &map_id);
+    if still_open {
+        return Ok(());
+    }
+    if let Some(mut store) = mgr.stores.remove(&map_id) {
         if store.dirty {
             store.bake_overlay();
-            // Drop mmap before writing (Windows holds exclusive file lock)
             store.mmap_handle = None;
             if let Some(ref batch) = store.batch {
-                let path = fast_io::arrow_path(&app, map_id)?;
+                let path = fast_io::arrow_path(&app, &map_id)?;
                 fast_io::write_arrow_ipc(&path, batch)?;
             }
-            let delta_path = fast_io::arrow_delta_path(&app, map_id)?;
+            let delta_path = fast_io::arrow_delta_path(&app, &map_id)?;
             let _ = std::fs::remove_file(delta_path);
         }
         let count = store.alive_count;
@@ -1297,28 +1343,10 @@ pub fn store_close_map(
         conn.execute("UPDATE maps SET location_count = ?1 WHERE id = ?2", rusqlite::params![count, map_id])
             .map_err(|e| e.to_string())?;
         if store.tags_dirty {
-            write_tags_json(&conn, map_id, &store.tags)?;
-            store.tags_dirty = false;
+            write_tags_json(&conn, &map_id, &store.tags)?;
         }
-        save_edit_history_inner(&app, map_id, &store.undo_stack, &store.redo_stack)?;
+        save_edit_history_inner(&app, &map_id, &store.undo_stack, &store.redo_stack)?;
     }
-    store.map_id = None;
-    store.batch = None;
-    store.mmap_handle = None;
-    store.clear_overlay();
-    store.alive_count = 0;
-    store.tags.clear();
-    store.tags_dirty = false;
-    store.geohash_index.clear();
-    store.dirty_geohashes.clear();
-    store.render_cells = [const { None }; 32];
-    store.id_to_cell_idx.clear();
-    store.selected_ids.clear();
-    store.selected_colors.clear();
-    store.active_id = None;
-    store.undo_stack.clear();
-    store.redo_stack.clear();
-    store.known_field_keys.clear();
     Ok(())
 }
 
@@ -1351,58 +1379,62 @@ pub(crate) fn auto_register_extras(
 #[specta::specta]
 pub fn store_add_locations(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     mut locations: Vec<Location>,
 ) -> Result<MutationResult, String> {
     let _t = std::time::Instant::now();
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let _lock = _t.elapsed().as_millis();
-    for loc in &mut locations {
-        loc.id = store.alloc_id();
-    }
-    store.push_undo(EditEntry { created: locations.clone(), removed: Vec::new() });
-    store.redo_stack.clear();
-    for loc in &locations {
-        store.mark_dirty(loc.lat, loc.lng);
-    }
-    store.add_tag_counts(&locations);
-    let added = locations.clone();
-    for loc in locations {
-        store.overlay_add(loc);
-    }
-    let mut result = store.finish_mutation(ChangeSet { added: added.clone(), ..Default::default() });
-    let extras: Vec<&serde_json::Map<String, serde_json::Value>> = added.iter()
-        .filter_map(|l| l.extra.as_ref())
-        .collect();
-    auto_register_extras(&app, &mut store, &extras, &mut result);
-    log::debug!("[cmd] store_add_locations lock={}ms total={}ms", _lock, _t.elapsed().as_millis());
-    Ok(result)
+    with_store!(webview, state, |store| {
+        let _lock = _t.elapsed().as_millis();
+        for loc in &mut locations {
+            loc.id = store.alloc_id();
+        }
+        store.push_undo(EditEntry { created: locations.clone(), removed: Vec::new() });
+        store.redo_stack.clear();
+        for loc in &locations {
+            store.mark_dirty(loc.lat, loc.lng);
+        }
+        store.add_tag_counts(&locations);
+        let added = locations.clone();
+        for loc in locations {
+            store.overlay_add(loc);
+        }
+        let mut result = store.finish_mutation(ChangeSet { added: added.clone(), ..Default::default() });
+        let extras: Vec<&serde_json::Map<String, serde_json::Value>> = added.iter()
+            .filter_map(|l| l.extra.as_ref())
+            .collect();
+        auto_register_extras(&app, store, &extras, &mut result);
+        log::debug!("[cmd] store_add_locations lock={}ms total={}ms", _lock, _t.elapsed().as_millis());
+        Ok(result)
+    })
 }
 
 /// Remove locations by ID. Snapshots the full location data for undo before deleting.
 #[tauri::command]
 #[specta::specta]
 pub fn store_remove_locations(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     ids: Vec<u32>,
 ) -> Result<MutationResult, String> {
     let _t = std::time::Instant::now();
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let mut removed_locs = Vec::new();
-    for &id in &ids {
-        if let Some(loc) = store.get_loc_by_id(id) {
-            removed_locs.push(loc);
+    with_store!(webview, state, |store| {
+        let mut removed_locs = Vec::new();
+        for &id in &ids {
+            if let Some(loc) = store.get_loc_by_id(id) {
+                removed_locs.push(loc);
+            }
         }
-    }
-    store.remove_tag_counts(&removed_locs);
-    store.overlay_remove(&removed_locs);
+        store.remove_tag_counts(&removed_locs);
+        store.overlay_remove(&removed_locs);
 
-    let removed_ids: Vec<u32> = removed_locs.iter().map(|l| l.id).collect();
-    store.push_undo(EditEntry { created: Vec::new(), removed: removed_locs });
-    store.redo_stack.clear();
+        let removed_ids: Vec<u32> = removed_locs.iter().map(|l| l.id).collect();
+        store.push_undo(EditEntry { created: Vec::new(), removed: removed_locs });
+        store.redo_stack.clear();
 
-    log::debug!("[cmd] store_remove_locations total={}ms ids={}", _t.elapsed().as_millis(), ids.len());
-    Ok(store.finish_mutation(ChangeSet { removed: removed_ids, ..Default::default() }))
+        log::debug!("[cmd] store_remove_locations total={}ms ids={}", _t.elapsed().as_millis(), ids.len());
+        Ok(store.finish_mutation(ChangeSet { removed: removed_ids, ..Default::default() }))
+    })
 }
 
 /// Apply partial patches to existing locations. `record_undo` defaults to true;
@@ -1412,48 +1444,50 @@ pub fn store_remove_locations(
 #[specta::specta]
 pub fn store_update_locations(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     updates: Vec<(u32, LocationPatch)>,
     record_undo: Option<bool>,
 ) -> Result<MutationResult, String> {
     let record_undo = record_undo.unwrap_or(true);
     let _t = std::time::Instant::now();
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let mut updated: Vec<(Location, Location)> = Vec::new();
-    let any_tags = updates.iter().any(|(_, p)| p.tags.is_some());
-    let any_extras = updates.iter().any(|(_, p)| p.extra.is_some());
-    for (id, patch) in &updates {
-        if let Some(old) = store.get_loc_by_id(*id) {
-            store.overlay_update(*id, patch);
-            let new_loc = store.get_loc_by_id(*id).unwrap();
-            updated.push((old, new_loc));
+    with_store!(webview, state, |store| {
+        let mut updated: Vec<(Location, Location)> = Vec::new();
+        let any_tags = updates.iter().any(|(_, p)| p.tags.is_some());
+        let any_extras = updates.iter().any(|(_, p)| p.extra.is_some());
+        for (id, patch) in &updates {
+            if let Some(old) = store.get_loc_by_id(*id) {
+                store.overlay_update(*id, patch);
+                let new_loc = store.get_loc_by_id(*id).unwrap();
+                updated.push((old, new_loc));
+            }
         }
-    }
-    if any_tags {
-        let old_locs: Vec<Location> = updated.iter().map(|(o, _)| o.clone()).collect();
-        let new_locs: Vec<Location> = updated.iter().map(|(_, n)| n.clone()).collect();
-        store.remove_tag_counts(&old_locs);
-        store.add_tag_counts(&new_locs);
-    }
-    if record_undo {
-        let (changed_old, changed_new): (Vec<_>, Vec<_>) = updated.iter()
-            .filter(|(o, n)| o != n)
-            .map(|(o, n)| (o.clone(), n.clone()))
-            .unzip();
-        if !changed_old.is_empty() {
-            store.push_undo(EditEntry { created: changed_new, removed: changed_old });
-            store.redo_stack.clear();
+        if any_tags {
+            let old_locs: Vec<Location> = updated.iter().map(|(o, _)| o.clone()).collect();
+            let new_locs: Vec<Location> = updated.iter().map(|(_, n)| n.clone()).collect();
+            store.remove_tag_counts(&old_locs);
+            store.add_tag_counts(&new_locs);
         }
-    }
-    let mut result = store.finish_mutation(ChangeSet { updated: updated.clone(), ..Default::default() });
-    if any_extras {
-        let extras: Vec<&serde_json::Map<String, serde_json::Value>> = updated.iter()
-            .filter_map(|(_, n)| n.extra.as_ref())
-            .collect();
-        auto_register_extras(&app, &mut store, &extras, &mut result);
-    }
-    log::debug!("[cmd] store_update_locations n={} undo={} total={}ms", updates.len(), record_undo, _t.elapsed().as_millis());
-    Ok(result)
+        if record_undo {
+            let (changed_old, changed_new): (Vec<_>, Vec<_>) = updated.iter()
+                .filter(|(o, n)| o != n)
+                .map(|(o, n)| (o.clone(), n.clone()))
+                .unzip();
+            if !changed_old.is_empty() {
+                store.push_undo(EditEntry { created: changed_new, removed: changed_old });
+                store.redo_stack.clear();
+            }
+        }
+        let mut result = store.finish_mutation(ChangeSet { updated: updated.clone(), ..Default::default() });
+        if any_extras {
+            let extras: Vec<&serde_json::Map<String, serde_json::Value>> = updated.iter()
+                .filter_map(|(_, n)| n.extra.as_ref())
+                .collect();
+            auto_register_extras(&app, store, &extras, &mut result);
+        }
+        log::debug!("[cmd] store_update_locations n={} undo={} total={}ms", updates.len(), record_undo, _t.elapsed().as_millis());
+        Ok(result)
+    })
 }
 
 /// Update a tag's name and/or color. If the new name collides with an existing
@@ -1462,13 +1496,14 @@ pub fn store_update_locations(
 #[tauri::command]
 #[specta::specta]
 pub fn store_update_tag(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     tag_id: u32,
     name: Option<String>,
     color: Option<String>,
 ) -> Result<MutationResult, String> {
     let _t = std::time::Instant::now();
-    let mut store = state.lock().map_err(|e| e.to_string())?;
+    with_store!(webview, state, |store| {
 
     if !store.tags.contains_key(&tag_id) { return Err("tag not found".into()); }
 
@@ -1534,6 +1569,8 @@ pub fn store_update_tag(
     let mut result = store.finish_mutation(changeset);
     result.tags = Some(store.tags.clone());
     Ok(result)
+
+    })
 }
 
 /// Strip tags from all locations. Tags stay in `store.tags` with count=0 /
@@ -1541,47 +1578,48 @@ pub fn store_update_tag(
 #[tauri::command]
 #[specta::specta]
 pub fn store_delete_tags(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     tag_ids: Vec<u32>,
 ) -> Result<MutationResult, String> {
     let _t = std::time::Instant::now();
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-
-    let tag_set: HashSet<u32> = tag_ids.iter().copied().collect();
-    let view = store.loc_view();
-    let mut affected_ids = HashSet::new();
-    for &tid in &tag_set {
-        affected_ids.extend(selections::resolve(&view, &SelectionProps::Tag { tag_id: tid }));
-    }
-    drop(view);
-
-    let mut updated: Vec<(Location, Location)> = Vec::new();
-    for &id in &affected_ids {
-        if let Some(old) = store.get_loc_by_id(id) {
-            let mut new_loc = old.clone();
-            new_loc.tags.retain(|t| !tag_set.contains(t));
-            updated.push((old, new_loc));
+    with_store!(webview, state, |store| {
+        let tag_set: HashSet<u32> = tag_ids.iter().copied().collect();
+        let view = store.loc_view();
+        let mut affected_ids = HashSet::new();
+        for &tid in &tag_set {
+            affected_ids.extend(selections::resolve(&view, &SelectionProps::Tag { tag_id: tid }));
         }
-    }
-    let old_locs: Vec<Location> = updated.iter().map(|(o, _)| o.clone()).collect();
-    store.remove_tag_counts(&old_locs);
-    for (_, new_loc) in &updated {
-        let patch = LocationPatch { tags: Some(new_loc.tags.clone()), ..Default::default() };
-        store.overlay_update(new_loc.id, &patch);
-    }
-    let new_locs: Vec<Location> = updated.iter().map(|(_, n)| n.clone()).collect();
-    store.add_tag_counts(&new_locs);
-    let (changed_old, changed_new): (Vec<_>, Vec<_>) = updated.iter()
-        .filter(|(o, n)| o != n)
-        .map(|(o, n)| (o.clone(), n.clone()))
-        .unzip();
-    if !changed_old.is_empty() {
-        store.push_undo(EditEntry { created: changed_new, removed: changed_old });
-        store.redo_stack.clear();
-    }
+        drop(view);
 
-    log::debug!("[cmd] store_delete_tags n={} locs={} total={}ms", tag_set.len(), affected_ids.len(), _t.elapsed().as_millis());
-    Ok(store.finish_mutation(ChangeSet { updated, ..Default::default() }))
+        let mut updated: Vec<(Location, Location)> = Vec::new();
+        for &id in &affected_ids {
+            if let Some(old) = store.get_loc_by_id(id) {
+                let mut new_loc = old.clone();
+                new_loc.tags.retain(|t| !tag_set.contains(t));
+                updated.push((old, new_loc));
+            }
+        }
+        let old_locs: Vec<Location> = updated.iter().map(|(o, _)| o.clone()).collect();
+        store.remove_tag_counts(&old_locs);
+        for (_, new_loc) in &updated {
+            let patch = LocationPatch { tags: Some(new_loc.tags.clone()), ..Default::default() };
+            store.overlay_update(new_loc.id, &patch);
+        }
+        let new_locs: Vec<Location> = updated.iter().map(|(_, n)| n.clone()).collect();
+        store.add_tag_counts(&new_locs);
+        let (changed_old, changed_new): (Vec<_>, Vec<_>) = updated.iter()
+            .filter(|(o, n)| o != n)
+            .map(|(o, n)| (o.clone(), n.clone()))
+            .unzip();
+        if !changed_old.is_empty() {
+            store.push_undo(EditEntry { created: changed_new, removed: changed_old });
+            store.redo_stack.clear();
+        }
+
+        log::debug!("[cmd] store_delete_tags n={} locs={} total={}ms", tag_set.len(), affected_ids.len(), _t.elapsed().as_millis());
+        Ok(store.finish_mutation(ChangeSet { updated, ..Default::default() }))
+    })
 }
 
 /// Set (or clear) the active location. Fire-and-forget from JS; no re-render triggered.
@@ -1589,23 +1627,27 @@ pub fn store_delete_tags(
 #[tauri::command]
 #[specta::specta]
 pub fn store_set_active(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     id: Option<u32>,
 ) -> Result<(), String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    store.active_id = id;
-    Ok(())
+    with_store!(webview, state, |store| {
+        store.active_id = id;
+        Ok(())
+    })
 }
 
 /// Fetch a single location by ID. Returns `None` if the ID is dead or doesn't exist.
 #[tauri::command]
 #[specta::specta]
 pub fn store_get_location(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     id: u32,
 ) -> Result<Option<Location>, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
-    Ok(store.get_loc_by_id(id))
+    with_store!(webview, state, |store| {
+        Ok(store.get_loc_by_id(id))
+    })
 }
 
 /// Write a single location as JSON to a temp file and return the path.
@@ -1613,37 +1655,41 @@ pub fn store_get_location(
 #[tauri::command]
 #[specta::specta]
 pub fn store_get_location_file(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     id: u32,
 ) -> Result<Option<String>, String> {
     let _t = std::time::Instant::now();
-    let store = state.lock().map_err(|e| e.to_string())?;
-    let loc = match store.get_loc_by_id(id) {
-        Some(l) => l,
-        None => return Ok(None),
-    };
-    let json = serde_json::to_vec(&loc).map_err(|e| e.to_string())?;
-    let path = std::env::temp_dir().join(format!("mma_loc_{id}.json"));
-    std::fs::write(&path, &json).map_err(|e| e.to_string())?;
-    log::debug!("[cmd] store_get_location_file total={}ms bytes={}", _t.elapsed().as_millis(), json.len());
-    Ok(Some(path.to_string_lossy().into_owned()))
+    with_store!(webview, state, |store| {
+        let loc = match store.get_loc_by_id(id) {
+            Some(l) => l,
+            None => return Ok(None),
+        };
+        let json = serde_json::to_vec(&loc).map_err(|e| e.to_string())?;
+        let path = std::env::temp_dir().join(format!("mma_loc_{id}.json"));
+        std::fs::write(&path, &json).map_err(|e| e.to_string())?;
+        log::debug!("[cmd] store_get_location_file total={}ms bytes={}", _t.elapsed().as_millis(), json.len());
+        Ok(Some(path.to_string_lossy().into_owned()))
+    })
 }
 
 /// Fetch multiple locations by ID. Silently skips IDs that don't exist.
 #[tauri::command]
 #[specta::specta]
 pub fn store_get_locations_by_ids(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     ids: Vec<u32>,
 ) -> Result<Vec<Location>, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
-    let mut result = Vec::with_capacity(ids.len());
-    for &id in &ids {
-        if let Some(loc) = store.get_loc_by_id(id) {
-            result.push(loc);
+    with_store!(webview, state, |store| {
+        let mut result = Vec::with_capacity(ids.len());
+        for &id in &ids {
+            if let Some(loc) = store.get_loc_by_id(id) {
+                result.push(loc);
+            }
         }
-    }
-    Ok(result)
+        Ok(result)
+    })
 }
 
 /// Dump every alive location to a temp JSON file. Returns the file path.
@@ -1652,15 +1698,18 @@ pub fn store_get_locations_by_ids(
 #[specta::specta]
 pub fn store_get_all_locations(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
 ) -> Result<String, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
-    let locs = store.collect_all_locations();
-    let json = serde_json::to_vec(&locs).map_err(|e| e.to_string())?;
-    let path = app.path().temp_dir().map_err(|e| e.to_string())?
-        .join("mma_all_locations.json");
-    std::fs::write(&path, &json).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().into_owned())
+    with_store!(webview, state, |store| {
+        let locs = store.collect_all_locations();
+        let map_id_str = store.map_id.as_deref().unwrap_or("default");
+        let json = serde_json::to_vec(&locs).map_err(|e| e.to_string())?;
+        let path = app.path().temp_dir().map_err(|e| e.to_string())?
+            .join(format!("mma_all_{map_id_str}.json"));
+        std::fs::write(&path, &json).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    })
 }
 
 /// Msgpack-serialized overlay state written to the `.delta` file on autosave.
@@ -1678,12 +1727,14 @@ struct DeltaOverlay {
 #[specta::specta]
 pub async fn store_save_dirty(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
 ) -> Result<SaveResult, String> {
     let _t = std::time::Instant::now();
     log::debug!("[cmd] store_save_dirty ENTER");
     let (map_id, delta_data, alive, tags_json) = {
-        let mut store = state.lock().map_err(|e| e.to_string())?;
+        let mut mgr = state.lock().map_err(|e| e.to_string())?;
+    let store = mgr.store_for_window(webview.label())?;
         let map_id = store.map_id.clone().ok_or("no map open")?;
         if !store.dirty && !store.tags_dirty {
             return Ok(SaveResult { saved_chunks: 0 });
@@ -1738,16 +1789,18 @@ pub async fn store_save_dirty(
 #[tauri::command]
 #[specta::specta]
 pub fn store_get_summary(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
 ) -> Result<SummaryResult, String> {
     let _t = std::time::Instant::now();
-    let store = state.lock().map_err(|e| e.to_string())?;
-    let count = store.alive_count;
-    log::debug!("[cmd] store_get_summary total={}ms alive_count={}", _t.elapsed().as_millis(), count);
-    Ok(SummaryResult {
-        location_count: count,
-        version: store.version,
-        dirty_count: if store.dirty { 1 } else { 0 },
+    with_store!(webview, state, |store| {
+        let count = store.alive_count;
+        log::debug!("[cmd] store_get_summary total={}ms alive_count={}", _t.elapsed().as_millis(), count);
+        Ok(SummaryResult {
+            location_count: count,
+            version: store.version,
+            dirty_count: if store.dirty { 1 } else { 0 },
+        })
     })
 }
 
@@ -1805,30 +1858,30 @@ fn save_arrow_inner(store: &Store, app: &tauri::AppHandle, map_id: &str) -> Resu
 #[specta::specta]
 pub fn store_bake_and_save(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
 ) -> Result<(), String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let map_id = store.map_id.clone().ok_or("no map open")?;
-    store.bake_overlay();
-    // Drop mmap before writing (Windows holds exclusive file lock)
-    store.mmap_handle = None;
-    save_arrow_inner(&store, &app, &map_id)?;
-    // Re-mmap the written file
-    let path = fast_io::arrow_path(&app, &map_id)?;
-    if path.exists() {
-        let (batch, handle) = fast_io::read_arrow_ipc_mmap(&path)?;
-        store.batch = Some(batch);
-        store.mmap_handle = Some(handle);
-    }
-    let count = store.batch.as_ref().map_or(0, |b| b.num_rows());
-    let conn = fast_io::open_db(&app)?;
-    conn.execute("UPDATE maps SET location_count = ?1 WHERE id = ?2", rusqlite::params![count, map_id])
-        .map_err(|e| e.to_string())?;
-    if store.tags_dirty {
-        write_tags_json(&conn, &map_id, &store.tags)?;
-        store.tags_dirty = false;
-    }
-    Ok(())
+    with_store!(webview, state, |store| {
+        let map_id = store.map_id.clone().ok_or("no map open")?;
+        store.bake_overlay();
+        store.mmap_handle = None;
+        save_arrow_inner(&store, &app, &map_id)?;
+        let path = fast_io::arrow_path(&app, &map_id)?;
+        if path.exists() {
+            let (batch, handle) = fast_io::read_arrow_ipc_mmap(&path)?;
+            store.batch = Some(batch);
+            store.mmap_handle = Some(handle);
+        }
+        let count = store.batch.as_ref().map_or(0, |b| b.num_rows());
+        let conn = fast_io::open_db(&app)?;
+        conn.execute("UPDATE maps SET location_count = ?1 WHERE id = ?2", rusqlite::params![count, map_id])
+            .map_err(|e| e.to_string())?;
+        if store.tags_dirty {
+            write_tags_json(&conn, &map_id, &store.tags)?;
+            store.tags_dirty = false;
+        }
+        Ok(())
+    })
 }
 
 /// One geohash cell's content-addressed blob in a VCS commit.
@@ -1847,10 +1900,11 @@ pub struct CommitBlobEntry {
 pub(crate) fn snapshot_inner(
     app: &tauri::AppHandle,
     state: &StoreState,
+    map_id: &str,
 ) -> Result<Vec<CommitBlobEntry>, String> {
     let _t = std::time::Instant::now();
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    store.map_id.as_ref().ok_or("no map open")?;
+    let mut mgr = state.lock().map_err(|e| e.to_string())?;
+    let store = mgr.store_for_map(map_id)?;
     let batch = store.batch.as_ref().ok_or("no data loaded")?;
     if batch.num_rows() == 0 {
         store.committed_blobs.clear();
@@ -2140,16 +2194,19 @@ fn build_cell_render_buffers(store: &mut Store, req: &RenderRequest) -> Vec<u8> 
 #[specta::specta]
 pub async fn store_fill_render_file(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     req: RenderRequest,
 ) -> Result<String, String> {
     log::debug!("[cmd] store_fill_render_file ENTER");
-    let buf = {
-        let mut store = state.lock().map_err(|e| e.to_string())?;
-        build_cell_render_buffers(&mut store, &req)
+    let (buf, map_id_str) = {
+        let mut mgr = state.lock().map_err(|e| e.to_string())?;
+        let store = mgr.store_for_window(webview.label())?;
+        let mid = store.map_id.clone().unwrap_or_default();
+        (build_cell_render_buffers(store, &req), mid)
     };
     let path = app.path().temp_dir().map_err(|e| e.to_string())?
-        .join("mma_render_buffer.bin");
+        .join(format!("mma_render_{map_id_str}.bin"));
     tokio::task::spawn_blocking(move || {
         std::fs::write(&path, &buf).map_err(|e| e.to_string())?;
         Ok(path.to_string_lossy().into_owned())
@@ -2163,14 +2220,16 @@ pub async fn store_fill_render_file(
 #[tauri::command]
 #[specta::specta]
 pub fn store_resolve_pick(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     cell: String,
     cell_index: u32,
 ) -> Result<Option<u32>, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
-    let ci = cell_idx_from_key(&cell).ok_or("invalid cell key")?;
-    Ok(store.render_cells[ci as usize].as_ref()
-        .and_then(|cr| cr.id_order.get(cell_index as usize).copied()))
+    with_store!(webview, state, |store| {
+        let ci = cell_idx_from_key(&cell).ok_or("invalid cell key")?;
+        Ok(store.render_cells[ci as usize].as_ref()
+            .and_then(|cr| cr.id_order.get(cell_index as usize).copied()))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -2180,63 +2239,67 @@ pub fn store_resolve_pick(
 /// Pop the undo stack and reverse the last edit. Pushes the entry onto the redo stack.
 #[tauri::command]
 #[specta::specta]
-pub fn store_undo(state: tauri::State<'_, StoreState>) -> Result<MutationResult, String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let _t = std::time::Instant::now();
-    let entry = store.undo_stack.pop().ok_or("nothing to undo")?;
-    log::debug!("[UNDO] stack_depth={} created={} removed={}",
-        store.undo_stack.len(), entry.created.len(), entry.removed.len());
-    let changes = apply_edit_reverse(&mut store, &entry);
-    log::debug!("[UNDO] apply_edit={}ms changes: +{} ~{} -{}", _t.elapsed().as_millis(), changes.added.len(), changes.updated.len(), changes.removed.len());
-    store.redo_stack.push(entry);
-    Ok(store.finish_mutation(changes))
+pub fn store_undo(webview: tauri::Webview, state: tauri::State<'_, StoreState>) -> Result<MutationResult, String> {
+    with_store!(webview, state, |store| {
+        let _t = std::time::Instant::now();
+        let entry = store.undo_stack.pop().ok_or("nothing to undo")?;
+        log::debug!("[UNDO] stack_depth={} created={} removed={}",
+            store.undo_stack.len(), entry.created.len(), entry.removed.len());
+        let changes = apply_edit_reverse(store, &entry);
+        log::debug!("[UNDO] apply_edit={}ms changes: +{} ~{} -{}", _t.elapsed().as_millis(), changes.added.len(), changes.updated.len(), changes.removed.len());
+        store.redo_stack.push(entry);
+        Ok(store.finish_mutation(changes))
+    })
 }
 
 /// Pop the redo stack and replay the edit forward. Pushes the entry back onto undo.
 #[tauri::command]
 #[specta::specta]
-pub fn store_redo(state: tauri::State<'_, StoreState>) -> Result<MutationResult, String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    let _t = std::time::Instant::now();
-    let entry = store.redo_stack.pop().ok_or("nothing to redo")?;
-    log::debug!("[REDO] stack_depth={} created={} removed={}",
-        store.redo_stack.len(), entry.created.len(), entry.removed.len());
-    let changes = apply_edit_forward(&mut store, &entry);
-    log::debug!("[REDO] apply_edit={}ms changes: +{} ~{} -{}", _t.elapsed().as_millis(), changes.added.len(), changes.updated.len(), changes.removed.len());
-    store.push_undo(entry);
-    Ok(store.finish_mutation(changes))
+pub fn store_redo(webview: tauri::Webview, state: tauri::State<'_, StoreState>) -> Result<MutationResult, String> {
+    with_store!(webview, state, |store| {
+        let _t = std::time::Instant::now();
+        let entry = store.redo_stack.pop().ok_or("nothing to redo")?;
+        log::debug!("[REDO] stack_depth={} created={} removed={}",
+            store.redo_stack.len(), entry.created.len(), entry.removed.len());
+        let changes = apply_edit_forward(store, &entry);
+        log::debug!("[REDO] apply_edit={}ms changes: +{} ~{} -{}", _t.elapsed().as_millis(), changes.added.len(), changes.updated.len(), changes.removed.len());
+        store.push_undo(entry);
+        Ok(store.finish_mutation(changes))
+    })
 }
 
 /// Compute the net diff since last commit by walking the undo stack.
 /// Returns (added, removed, modified) counts for the commit dialog.
 #[tauri::command]
 #[specta::specta]
-pub fn store_commit_diff(state: tauri::State<'_, StoreState>) -> Result<(u32, u32, u32), String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
-    let mut added = HashSet::new();
-    let mut removed = HashSet::new();
-    let mut modified = HashSet::new();
-    for entry in &store.undo_stack {
-        for loc in &entry.removed {
-            if added.remove(&loc.id) { modified.remove(&loc.id); }
-            else { removed.insert(&loc.id); }
+pub fn store_commit_diff(webview: tauri::Webview, state: tauri::State<'_, StoreState>) -> Result<(u32, u32, u32), String> {
+    with_store!(webview, state, |store| {
+        let mut added = HashSet::new();
+        let mut removed = HashSet::new();
+        let mut modified = HashSet::new();
+        for entry in &store.undo_stack {
+            for loc in &entry.removed {
+                if added.remove(&loc.id) { modified.remove(&loc.id); }
+                else { removed.insert(&loc.id); }
+            }
+            for loc in &entry.created {
+                if removed.remove(&loc.id) { modified.insert(&loc.id); }
+                else if !added.contains(&loc.id) && !modified.contains(&loc.id) { added.insert(&loc.id); }
+            }
         }
-        for loc in &entry.created {
-            if removed.remove(&loc.id) { modified.insert(&loc.id); }
-            else if !added.contains(&loc.id) && !modified.contains(&loc.id) { added.insert(&loc.id); }
-        }
-    }
-    Ok((added.len() as u32, removed.len() as u32, modified.len() as u32))
+        Ok((added.len() as u32, removed.len() as u32, modified.len() as u32))
+    })
 }
 
 /// Clear both undo and redo stacks. Called after a commit to start fresh.
 #[tauri::command]
 #[specta::specta]
-pub fn store_reset_undo(state: tauri::State<'_, StoreState>) -> Result<(), String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    store.undo_stack.clear();
-    store.redo_stack.clear();
-    Ok(())
+pub fn store_reset_undo(webview: tauri::Webview, state: tauri::State<'_, StoreState>) -> Result<(), String> {
+    with_store!(webview, state, |store| {
+        store.undo_stack.clear();
+        store.redo_stack.clear();
+        Ok(())
+    })
 }
 
 /// Core edit primitive: atomically remove then create locations, updating tags, overlay, and
@@ -2315,42 +2378,43 @@ pub(crate) fn write_tags_json(conn: &rusqlite::Connection, map_id: &str, tags: &
 #[tauri::command]
 #[specta::specta]
 pub fn store_create_tags(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     names: Vec<String>,
 ) -> Result<MutationResult, String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-
-    let mut name_to_id: HashMap<String, u32> = HashMap::new();
-    for (&id, entry) in &store.tags {
-        name_to_id.insert(entry.name.to_lowercase(), id);
-    }
-
-    for name in &names {
-        if let Some(&id) = name_to_id.get(&name.to_lowercase()) {
-            let tag = store.tags.get_mut(&id).unwrap();
-            if !tag.visible {
-                tag.visible = true;
-            }
-        } else {
-            let id = store.alloc_tag_id();
-            let color = util::color_for_name(name);
-            let order = Some(store.tags.len() as u32);
-            let tag = Tag { id, name: name.clone(), color, visible: true, order, count: 0 };
-            store.tags.insert(id, tag.clone());
-            name_to_id.insert(name.to_lowercase(), id);
+    with_store!(webview, state, |store| {
+        let mut name_to_id: HashMap<String, u32> = HashMap::new();
+        for (&id, entry) in &store.tags {
+            name_to_id.insert(entry.name.to_lowercase(), id);
         }
-    }
 
-    if !names.is_empty() {
-        store.tags_dirty = true;
-    }
+        for name in &names {
+            if let Some(&id) = name_to_id.get(&name.to_lowercase()) {
+                let tag = store.tags.get_mut(&id).unwrap();
+                if !tag.visible {
+                    tag.visible = true;
+                }
+            } else {
+                let id = store.alloc_tag_id();
+                let color = util::color_for_name(name);
+                let order = Some(store.tags.len() as u32);
+                let tag = Tag { id, name: name.clone(), color, visible: true, order, count: 0 };
+                store.tags.insert(id, tag.clone());
+                name_to_id.insert(name.to_lowercase(), id);
+            }
+        }
 
-    Ok(MutationResult {
-        status: store.store_status(),
-        delta: RenderDelta::default(),
-        selection_sync: None,
-        new_field_defs: None,
-        tags: Some(store.tags.clone()),
+        if !names.is_empty() {
+            store.tags_dirty = true;
+        }
+
+        Ok(MutationResult {
+            status: store.store_status(),
+            delta: RenderDelta::default(),
+            selection_sync: None,
+            new_field_defs: None,
+            tags: Some(store.tags.clone()),
+        })
     })
 }
 
@@ -2359,116 +2423,121 @@ pub fn store_create_tags(
 #[tauri::command]
 #[specta::specta]
 pub fn store_reorder_tags(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     ordered_ids: Vec<u32>,
 ) -> Result<MutationResult, String> {
-    let mut store = state.lock().map_err(|e| e.to_string())?;
-    for (i, &id) in ordered_ids.iter().enumerate() {
-        if let Some(tag) = store.tags.get_mut(&id) {
-            tag.order = Some(i as u32);
+    with_store!(webview, state, |store| {
+        for (i, &id) in ordered_ids.iter().enumerate() {
+            if let Some(tag) = store.tags.get_mut(&id) {
+                tag.order = Some(i as u32);
+            }
         }
-    }
-    store.tags_dirty = true;
-    Ok(MutationResult {
-        status: store.store_status(),
-        delta: RenderDelta::default(),
-        selection_sync: None,
-        new_field_defs: None,
-        tags: Some(store.tags.clone()),
+        store.tags_dirty = true;
+        Ok(MutationResult {
+            status: store.store_status(),
+            delta: RenderDelta::default(),
+            selection_sync: None,
+            new_field_defs: None,
+            tags: Some(store.tags.clone()),
+        })
     })
 }
 
 /// Compute the bounding box [west, south, east, north] of all alive locations. O(N).
 #[tauri::command]
 #[specta::specta]
-pub fn store_bounds(state: tauri::State<'_, StoreState>) -> Result<Option<[f64; 4]>, String> {
+pub fn store_bounds(webview: tauri::Webview, state: tauri::State<'_, StoreState>) -> Result<Option<[f64; 4]>, String> {
     let _t = std::time::Instant::now();
-    let store = state.lock().map_err(|e| e.to_string())?;
-    if store.batch.is_none() && store.overlay_adds.is_empty() { return Ok(None); }
+    with_store!(webview, state, |store| {
+        if store.batch.is_none() && store.overlay_adds.is_empty() { return Ok(None); }
 
-    let (mut w, mut s, mut e, mut n) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    let mut count = 0usize;
+        let (mut w, mut s, mut e, mut n) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        let mut count = 0usize;
 
-    if let Some(ref b) = store.batch {
-        let lats = col_lat(b);
-        let lngs = col_lng(b);
-        let ids = col_id(b);
-        for i in 0..b.num_rows() {
-            let id = ids.value(i);
-            if store.overlay_dead.contains(&id) { continue; }
-            let (lat, lng) = if let Some(p) = store.overlay_patches.get(&id) {
-                (p.lat, p.lng)
-            } else {
-                (lats.value(i), lngs.value(i))
-            };
-            if lng < w { w = lng; }
-            if lat < s { s = lat; }
-            if lng > e { e = lng; }
-            if lat > n { n = lat; }
+        if let Some(ref b) = store.batch {
+            let lats = col_lat(b);
+            let lngs = col_lng(b);
+            let ids = col_id(b);
+            for i in 0..b.num_rows() {
+                let id = ids.value(i);
+                if store.overlay_dead.contains(&id) { continue; }
+                let (lat, lng) = if let Some(p) = store.overlay_patches.get(&id) {
+                    (p.lat, p.lng)
+                } else {
+                    (lats.value(i), lngs.value(i))
+                };
+                if lng < w { w = lng; }
+                if lat < s { s = lat; }
+                if lng > e { e = lng; }
+                if lat > n { n = lat; }
+                count += 1;
+            }
+        }
+        for loc in &store.overlay_adds {
+            if loc.lng < w { w = loc.lng; }
+            if loc.lat < s { s = loc.lat; }
+            if loc.lng > e { e = loc.lng; }
+            if loc.lat > n { n = loc.lat; }
             count += 1;
         }
-    }
-    for loc in &store.overlay_adds {
-        if loc.lng < w { w = loc.lng; }
-        if loc.lat < s { s = loc.lat; }
-        if loc.lng > e { e = loc.lng; }
-        if loc.lat > n { n = loc.lat; }
-        count += 1;
-    }
 
-    log::debug!("[cmd] store_bounds total={}ms count={}", _t.elapsed().as_millis(), count);
-    if count == 0 { Ok(None) } else { Ok(Some([w, s, e, n])) }
+        log::debug!("[cmd] store_bounds total={}ms count={}", _t.elapsed().as_millis(), count);
+        if count == 0 { Ok(None) } else { Ok(Some([w, s, e, n])) }
+    })
 }
 
 /// Compute the bounding box of currently selected locations only. O(N).
 #[tauri::command]
 #[specta::specta]
-pub fn store_selection_bounds(state: tauri::State<'_, StoreState>) -> Result<Option<[f64; 4]>, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
-    if store.selected_ids.is_empty() { return Ok(None); }
+pub fn store_selection_bounds(webview: tauri::Webview, state: tauri::State<'_, StoreState>) -> Result<Option<[f64; 4]>, String> {
+    with_store!(webview, state, |store| {
+        if store.selected_ids.is_empty() { return Ok(None); }
 
-    let (mut w, mut s, mut e, mut n) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    let mut count = 0usize;
+        let (mut w, mut s, mut e, mut n) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        let mut count = 0usize;
 
-    if let Some(ref b) = store.batch {
-        let lats = col_lat(b);
-        let lngs = col_lng(b);
-        let ids = col_id(b);
-        for i in 0..b.num_rows() {
-            let id = ids.value(i);
-            if !store.selected_ids.contains(&id) { continue; }
-            if store.overlay_dead.contains(&id) { continue; }
-            let (lat, lng) = if let Some(p) = store.overlay_patches.get(&id) {
-                (p.lat, p.lng)
-            } else {
-                (lats.value(i), lngs.value(i))
-            };
-            if lng < w { w = lng; }
-            if lat < s { s = lat; }
-            if lng > e { e = lng; }
-            if lat > n { n = lat; }
+        if let Some(ref b) = store.batch {
+            let lats = col_lat(b);
+            let lngs = col_lng(b);
+            let ids = col_id(b);
+            for i in 0..b.num_rows() {
+                let id = ids.value(i);
+                if !store.selected_ids.contains(&id) { continue; }
+                if store.overlay_dead.contains(&id) { continue; }
+                let (lat, lng) = if let Some(p) = store.overlay_patches.get(&id) {
+                    (p.lat, p.lng)
+                } else {
+                    (lats.value(i), lngs.value(i))
+                };
+                if lng < w { w = lng; }
+                if lat < s { s = lat; }
+                if lng > e { e = lng; }
+                if lat > n { n = lat; }
+                count += 1;
+            }
+        }
+        for loc in &store.overlay_adds {
+            if !store.selected_ids.contains(&loc.id) { continue; }
+            if loc.lng < w { w = loc.lng; }
+            if loc.lat < s { s = loc.lat; }
+            if loc.lng > e { e = loc.lng; }
+            if loc.lat > n { n = loc.lat; }
             count += 1;
         }
-    }
-    for loc in &store.overlay_adds {
-        if !store.selected_ids.contains(&loc.id) { continue; }
-        if loc.lng < w { w = loc.lng; }
-        if loc.lat < s { s = loc.lat; }
-        if loc.lng > e { e = loc.lng; }
-        if loc.lat > n { n = loc.lat; }
-        count += 1;
-    }
 
-    log::debug!("[cmd] store_selection_bounds total count={}", count);
-    if count == 0 { Ok(None) } else { Ok(Some([w, s, e, n])) }
+        log::debug!("[cmd] store_selection_bounds total count={}", count);
+        if count == 0 { Ok(None) } else { Ok(Some([w, s, e, n])) }
+    })
 }
 
 /// Return the number of alive locations (batch + adds - dead).
 #[tauri::command]
 #[specta::specta]
-pub fn store_location_count(state: tauri::State<'_, StoreState>) -> Result<u32, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
-    Ok(store.alive_count as u32)
+pub fn store_location_count(webview: tauri::Webview, state: tauri::State<'_, StoreState>) -> Result<u32, String> {
+    with_store!(webview, state, |store| {
+        Ok(store.alive_count as u32)
+    })
 }
 
 
@@ -2476,9 +2545,9 @@ pub fn store_location_count(state: tauri::State<'_, StoreState>) -> Result<u32, 
 /// Used by the filter UI to populate dropdown options.
 #[tauri::command]
 #[specta::specta]
-pub fn store_extra_field_values(state: tauri::State<'_, StoreState>, field: String) -> Result<Vec<String>, String> {
+pub fn store_extra_field_values(webview: tauri::Webview, state: tauri::State<'_, StoreState>, field: String) -> Result<Vec<String>, String> {
     let _t = std::time::Instant::now();
-    let store = state.lock().map_err(|e| e.to_string())?;
+    with_store!(webview, state, |store| {
     let mut seen = std::collections::BTreeSet::new();
 
     let mut scan_extra_json = |json_str: &str| {
@@ -2530,6 +2599,8 @@ pub fn store_extra_field_values(state: tauri::State<'_, StoreState>, field: Stri
 
     log::debug!("[cmd] store_extra_field_values field={} total={}ms", field, _t.elapsed().as_millis());
     Ok(seen.into_iter().collect())
+
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -2563,12 +2634,15 @@ pub struct SyncSelectionsResult {
 #[specta::specta]
 pub async fn store_sync_selections(
     app: tauri::AppHandle,
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     sels: Vec<SelectionInput>,
 ) -> Result<SyncSelectionsResult, String> {
     let _t = std::time::Instant::now();
-    let (counts, buf, selected_count, num_cells) = {
-        let mut store = state.lock().map_err(|e| e.to_string())?;
+    let (counts, buf, selected_count, num_cells, map_id_str) = {
+        let mut mgr = state.lock().map_err(|e| e.to_string())?;
+    let store = mgr.store_for_window(webview.label())?;
+    let map_id_str = store.map_id.clone().unwrap_or_default();
 
         let num_sels = sels.len();
 
@@ -2652,12 +2726,12 @@ pub async fn store_sync_selections(
             store.overlay_dead.len(), store.alive_count, render_total,
             masks.first().map_or(0, |m| m.len()), counts);
 
-        (counts, buf, selected_count, num_cells)
+        (counts, buf, selected_count, num_cells, map_id_str)
     };
 
     let patch_file = if num_cells > 0 {
         let path = app.path().temp_dir().map_err(|e| e.to_string())?
-            .join("mma_sel_patches.bin");
+            .join(format!("mma_sel_{map_id_str}.bin"));
         let p = path.clone();
         tokio::task::spawn_blocking(move || {
             std::fs::write(&p, &buf).map_err(|e| e.to_string())
@@ -2673,19 +2747,21 @@ pub async fn store_sync_selections(
 /// Return the union of all currently selected location IDs.
 #[tauri::command]
 #[specta::specta]
-pub fn store_get_selected_ids_list(state: tauri::State<'_, StoreState>) -> Result<Vec<u32>, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
-    Ok(store.selected_ids.iter().copied().collect())
+pub fn store_get_selected_ids_list(webview: tauri::Webview, state: tauri::State<'_, StoreState>) -> Result<Vec<u32>, String> {
+    with_store!(webview, state, |store| {
+        Ok(store.selected_ids.iter().copied().collect())
+    })
 }
 
 /// Resolve a single selection to its matching location IDs without persisting it.
 /// Used by plugins and one-off queries (e.g., tag merge, export filtered).
 #[tauri::command]
 #[specta::specta]
-pub fn store_resolve_selection(state: tauri::State<'_, StoreState>, props: SelectionProps) -> Result<Vec<u32>, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
-    let view = store.loc_view();
-    Ok(selections::resolve(&view, &props))
+pub fn store_resolve_selection(webview: tauri::Webview, state: tauri::State<'_, StoreState>, props: SelectionProps) -> Result<Vec<u32>, String> {
+    with_store!(webview, state, |store| {
+        let view = store.loc_view();
+        Ok(selections::resolve(&view, &props))
+    })
 }
 
 /// Find all locations within `radius_m` metres of (`lat`, `lng`).
@@ -2698,12 +2774,13 @@ pub fn store_resolve_selection(state: tauri::State<'_, StoreState>, props: Selec
 #[tauri::command]
 #[specta::specta]
 pub fn store_find_nearby(
+    webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     lat: f64,
     lng: f64,
     radius_m: f64,
 ) -> Result<Vec<Location>, String> {
-    let store = state.lock().map_err(|e| e.to_string())?;
+    with_store!(webview, state, |store| {
     let deg_margin = radius_m / 111_000.0 * 1.5;
     let mut result = Vec::new();
 
@@ -2746,6 +2823,7 @@ pub fn store_find_nearby(
     }
 
     Ok(result)
+    })
 }
 
 // ---------------------------------------------------------------------------
