@@ -833,7 +833,7 @@ declare enum ValidationState {
 	Unofficial = 5,
 	GoodcamAvailable = 6
 }
-export type FilterOp = "eq" | "neq" | "gt" | "lt" | "gte" | "lte" | "between" | "has" | "nothas";
+export type FilterOp = "eq" | "neq" | "gt" | "lt" | "gte" | "lte" | "between" | "between_anyyear" | "has" | "nothas";
 export interface SavedSelectionItem {
 	props: SavedSelectionProps;
 	color: [
