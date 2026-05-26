@@ -20,6 +20,7 @@ export interface AppSettings {
 	showCar: boolean;
 	showCrosshair: boolean;
 	showCompass: boolean;
+	showCompassTape: boolean;
 	showZoom: boolean;
 	showReturnToSpawn: boolean;
 	showJumpButtons: boolean;
@@ -60,6 +61,7 @@ const DEFAULTS: AppSettings = {
 	showCar: true,
 	showCrosshair: false,
 	showCompass: true,
+	showCompassTape: false,
 	showZoom: true,
 	showReturnToSpawn: true,
 	showJumpButtons: true,

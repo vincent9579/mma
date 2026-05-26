@@ -309,7 +309,8 @@ function ViewerControlsSection() {
 	const controls: { key: keyof typeof s; label: string }[] = [
 		{ key: "showFullscreenButton", label: "Fullscreen button" },
 		{ key: "showJumpButtons", label: "Jump forward/backward buttons" },
-		{ key: "showCompass", label: "Compass" },
+		{ key: "showCompass", label: "Compass (wind rose)" },
+		{ key: "showCompassTape", label: "Compass (heading tape)" },
 		{ key: "showZoom", label: "Zoom controls" },
 		{ key: "showReturnToSpawn", label: "Return to spawn button" },
 		{ key: "showMapLinks", label: "Map links (open in maps, copy link)" },

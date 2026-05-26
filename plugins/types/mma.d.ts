@@ -900,6 +900,7 @@ export interface AppSettings {
 	showCar: boolean;
 	showCrosshair: boolean;
 	showCompass: boolean;
+	showCompassTape: boolean;
 	showZoom: boolean;
 	showReturnToSpawn: boolean;
 	showJumpButtons: boolean;
@@ -1114,6 +1115,7 @@ declare const mma: {
 		showCar: boolean;
 		showCrosshair: boolean;
 		showCompass: boolean;
+		showCompassTape: boolean;
 		showZoom: boolean;
 		showReturnToSpawn: boolean;
 		showJumpButtons: boolean;
