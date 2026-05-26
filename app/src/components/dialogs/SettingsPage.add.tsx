@@ -10,6 +10,7 @@ import {
 	resetBinding,
 	resetAllBindings,
 	getConflicts,
+	getAltSlowConflict,
 	isCustomized,
 	type HotkeyAction,
 	type HotkeyGroup,
@@ -66,7 +67,12 @@ function buildComboString(e: KeyboardEvent): string | null {
 const BLOCKED_COMBOS = new Set(["Mod++", "Mod+-"]);
 
 function getBlockedReason(e: KeyboardEvent): string | null {
-	if (e.altKey) return "Alt is reserved as a slow modifier for map/pano navigation";
+	if (e.altKey) {
+		const conflict = getAltSlowConflict(e.key);
+		if (conflict) {
+			return `Alt+${e.key} conflicts with "${conflict.label}" (Alt is the slow modifier for navigation)`;
+		}
+	}
 	const combo = buildComboString(e);
 	if (combo && BLOCKED_COMBOS.has(combo)) return "Intercepted by the app window before shortcuts can reach it";
 	return null;

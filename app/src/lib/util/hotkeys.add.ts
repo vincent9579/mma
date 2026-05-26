@@ -62,6 +62,7 @@ export interface HotkeyDef {
 	label: string;
 	group: HotkeyGroup;
 	defaultBinding: string;
+	altSlow?: boolean;
 }
 
 // Raw input bindings only. Command-level bindings are derived from the command registry.
@@ -190,12 +191,12 @@ const RAW_HOTKEY_DEFS: HotkeyDef[] = [
 		group: "Review",
 		defaultBinding: "Mod+ArrowLeft",
 	},
-	{ action: "panLeft", label: "Pan left", group: "Map Navigation", defaultBinding: "a" },
-	{ action: "panRight", label: "Pan right", group: "Map Navigation", defaultBinding: "d" },
-	{ action: "panUp", label: "Pan up", group: "Map Navigation", defaultBinding: "w" },
-	{ action: "panDown", label: "Pan down", group: "Map Navigation", defaultBinding: "s" },
-	{ action: "mapZoomIn", label: "Zoom in", group: "Map Navigation", defaultBinding: "Shift+w" },
-	{ action: "mapZoomOut", label: "Zoom out", group: "Map Navigation", defaultBinding: "Shift+s" },
+	{ action: "panLeft", label: "Pan left", group: "Map Navigation", defaultBinding: "a", altSlow: true },
+	{ action: "panRight", label: "Pan right", group: "Map Navigation", defaultBinding: "d", altSlow: true },
+	{ action: "panUp", label: "Pan up", group: "Map Navigation", defaultBinding: "w", altSlow: true },
+	{ action: "panDown", label: "Pan down", group: "Map Navigation", defaultBinding: "s", altSlow: true },
+	{ action: "mapZoomIn", label: "Zoom in", group: "Map Navigation", defaultBinding: "Shift+w", altSlow: true },
+	{ action: "mapZoomOut", label: "Zoom out", group: "Map Navigation", defaultBinding: "Shift+s", altSlow: true },
 	{ action: "mapZoomBounds", label: "Zoom to bounds", group: "Map Navigation", defaultBinding: "Shift+q" },
 	{ action: "mapZoomReset", label: "Zoom all the way out", group: "Map Navigation", defaultBinding: "Shift+0" },
 	{
@@ -203,31 +204,36 @@ const RAW_HOTKEY_DEFS: HotkeyDef[] = [
 		label: "Look left",
 		group: "Location Editor",
 		defaultBinding: "ArrowLeft",
+		altSlow: true,
 	},
 	{
 		action: "panoLookRight",
 		label: "Look right",
 		group: "Location Editor",
 		defaultBinding: "ArrowRight",
+		altSlow: true,
 	},
-	{ action: "panoLookUp", label: "Look up", group: "Location Editor", defaultBinding: "ArrowUp" },
+	{ action: "panoLookUp", label: "Look up", group: "Location Editor", defaultBinding: "ArrowUp", altSlow: true },
 	{
 		action: "panoLookDown",
 		label: "Look down",
 		group: "Location Editor",
 		defaultBinding: "ArrowDown",
+		altSlow: true,
 	},
 	{
 		action: "panoMoveForward",
 		label: "Move forward",
 		group: "Location Editor",
 		defaultBinding: "Shift+ArrowUp",
+		altSlow: true,
 	},
 	{
 		action: "panoMoveBackward",
 		label: "Move backward",
 		group: "Location Editor",
 		defaultBinding: "Shift+ArrowDown",
+		altSlow: true,
 	},
 	{
 		action: "jumpForward",
@@ -309,6 +315,17 @@ export function getBinding(action: HotkeyAction | string): string {
 
 export function isCustomized(action: HotkeyAction): boolean {
 	return action in overrides;
+}
+
+export function getAltSlowConflict(key: string): HotkeyDef | undefined {
+	const k = key.toLowerCase();
+	return RAW_HOTKEY_DEFS.find((d) => {
+		if (!d.altSlow) return false;
+		const binding = getBinding(d.action);
+		if (!binding) return false;
+		const parts = binding.split("+");
+		return parts[parts.length - 1].toLowerCase() === k;
+	});
 }
 
 export function getConflicts(action: string, binding: string): HotkeyDef[] {
