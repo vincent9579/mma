@@ -41,7 +41,6 @@ export interface AppSettings {
 	enableSeenThumbnails: boolean;
 	seenResolution: SeenResolution;
 	mapPanSpeed: number;
-	mapZoomSpeed: number;
 	panoLookSpeed: number;
 	slowModifier: number;
 	showFps: boolean;
@@ -82,7 +81,6 @@ const DEFAULTS: AppSettings = {
 	enableSeenThumbnails: true,
 	seenResolution: "medium" as SeenResolution,
 	mapPanSpeed: 6,
-	mapZoomSpeed: 1,
 	panoLookSpeed: 3,
 	slowModifier: 4,
 	showFps: false,

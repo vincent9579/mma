@@ -1471,7 +1471,7 @@ export function MapEmbed() {
 			if (nav.held.has("panUp")) dy -= (s.mapPanSpeed * dt) / slow;
 			if (nav.held.has("panDown")) dy += (s.mapPanSpeed * dt) / slow;
 
-			const zoomStep = (s.mapZoomSpeed * 0.02 * dt) / slow;
+			const zoomStep = (0.02 * dt) / slow;
 			if (nav.held.has("mapZoomIn")) nav.zoom += zoomStep;
 			if (nav.held.has("mapZoomOut")) nav.zoom = Math.max(1, nav.zoom - zoomStep);
 
