@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { resolveExactTimestamp } from "@/lib/sv/exactDate.add";
-import { getActiveLocation } from "@/store/useMapStore";
+import { useActiveLocation } from "@/store/useMapStore";
 
 export function useExactDate(
 	panoId: string | null,
@@ -9,6 +9,12 @@ export function useExactDate(
 	yearMonth: string | null,
 	enabled: boolean,
 ) {
+	// Subscribe to the active location reactively so extra.datetime updates
+	// when switching locations. The other deps (panoId, lat, lng, yearMonth)
+	// come from viewer state — which pano in the time slider is being viewed.
+	const location = useActiveLocation();
+	const existingDatetime = location?.extra?.datetime as number | undefined;
+
 	const [state, setState] = useState<{
 		ts: number | null;
 		loading: boolean;
@@ -20,9 +26,8 @@ export function useExactDate(
 	});
 
 	useEffect(() => {
-		const existing = getActiveLocation()?.extra?.datetime as number | undefined;
-		if (existing != null) {
-			setState({ ts: existing, loading: false, error: false });
+		if (existingDatetime != null) {
+			setState({ ts: existingDatetime, loading: false, error: false });
 			return;
 		}
 		if (!enabled || !panoId || !yearMonth) {
@@ -45,7 +50,7 @@ export function useExactDate(
 		return () => {
 			cancelled = true;
 		};
-	}, [panoId, lat, lng, yearMonth, enabled]);
+	}, [panoId, lat, lng, yearMonth, enabled, existingDatetime]);
 
 	return state;
 }
