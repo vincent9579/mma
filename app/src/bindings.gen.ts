@@ -80,7 +80,7 @@ export const commands = {
 	 *  on the in-memory store when extra fields change, so auto-registration
 	 *  doesn't re-discover fields the user explicitly defined.
 	 */
-	storeUpdateMapMeta: (id: string, patch: MapMetaPatch) => typedError<null, string>(__TAURI_INVOKE("store_update_map_meta", { id, patch: ({...patch,settings:patch.settings==null?patch.settings:({...patch.settings,preferDirection:patch.settings.preferDirection==null?patch.settings.preferDirection:patch.settings.preferDirection}),scoreBounds:patch.scoreBounds==null?patch.scoreBounds:patch.scoreBounds}) })),
+	storeUpdateMapMeta: (id: string, patch: MapMetaPatch_Deserialize) => typedError<null, string>(__TAURI_INVOKE("store_update_map_meta", { id, patch: ({...patch,settings:patch.settings==null?patch.settings:({...patch.settings,preferDirection:patch.settings.preferDirection==null?patch.settings.preferDirection:patch.settings.preferDirection}),scoreBounds:patch.scoreBounds==null?patch.scoreBounds:patch.scoreBounds}) })),
 	/**
 	 *  Update `last_opened_at` to the current timestamp. Used to sort the map
 	 *  list by recency in the dashboard.
@@ -671,7 +671,13 @@ export type MapMeta = {
  *  Partial update for map metadata. Only non-`None` fields are written.
  *  `folder: Some(None)` explicitly unsets the folder (moves to root).
  */
-export type MapMetaPatch = {
+export type MapMetaPatch = MapMetaPatch_Serialize | MapMetaPatch_Deserialize;
+
+/**
+ *  Partial update for map metadata. Only non-`None` fields are written.
+ *  `folder: Some(None)` explicitly unsets the folder (moves to root).
+ */
+export type MapMetaPatch_Deserialize = {
 	name?: string | null,
 	description?: string | null,
 	folder?: string | null,
@@ -680,6 +686,21 @@ export type MapMetaPatch = {
 	extra?: MapExtra | null,
 	tags?: { [key in string]: Tag } | null,
 	labels?: string[] | null,
+};
+
+/**
+ *  Partial update for map metadata. Only non-`None` fields are written.
+ *  `folder: Some(None)` explicitly unsets the folder (moves to root).
+ */
+export type MapMetaPatch_Serialize = {
+	name: string | null,
+	description: string | null,
+	folder: string | null,
+	settings: MapSettings | null,
+	scoreBounds: ScoreBounds | null,
+	extra: MapExtra | null,
+	tags: { [key in string]: Tag } | null,
+	labels: string[] | null,
 };
 
 /**

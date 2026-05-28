@@ -274,6 +274,7 @@ pub struct MapMetaPatch {
     pub name: Option<String>,
     pub description: Option<String>,
     #[serde(deserialize_with = "deserialize_double_option", default)]
+    #[specta(type = Option<String>)]
     pub folder: Option<Option<String>>,
     pub settings: Option<MapSettings>,
     pub score_bounds: Option<ScoreBounds>,
