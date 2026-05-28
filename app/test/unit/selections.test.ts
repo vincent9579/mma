@@ -303,7 +303,7 @@ describe("selectionDisplayName", () => {
 			op: "eq",
 			value: "BR",
 		});
-		expect(selectionDisplayName(map, sel)).toBe("countryCode = BR");
+		expect(selectionDisplayName(map, sel)).toBe("Country code = BR");
 	});
 
 	it("display name for Filter between", () => {
@@ -315,7 +315,7 @@ describe("selectionDisplayName", () => {
 			value: 0,
 			value2: 3000,
 		});
-		expect(selectionDisplayName(map, sel)).toBe("altitude between 0..3000");
+		expect(selectionDisplayName(map, sel)).toBe("Altitude between 0..3000");
 	});
 });
 
