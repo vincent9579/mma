@@ -45,8 +45,8 @@ describe("parsePanoDate", () => {
 });
 
 describe("svSearchRadius", () => {
-	it("returns at least 25", () => {
-		expect(svSearchRadius(0, 20)).toBeGreaterThanOrEqual(25);
+	it("is unclamped at high zoom (the 25m floor now lives in the caller)", () => {
+		expect(svSearchRadius(0, 20)).toBeLessThan(1);
 	});
 
 	it("larger at low zoom", () => {
