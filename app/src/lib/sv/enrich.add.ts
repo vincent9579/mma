@@ -53,7 +53,7 @@ export async function enrich(
 	}
 	const map = getCurrentMap();
 	if (!map || !(map.meta.settings.enrichMetadata ?? true)) return false;
-	const enrichFields = map.meta.settings.enrichFields;
+	const enrichFields = map.meta.settings.enrichFields ?? null;
 	const patch = buildPatch(data, loc, enrichFields);
 	if (patch) patchLocationExtra(loc, patch);
 
@@ -85,7 +85,7 @@ export async function enrichAll(
 	const result: EnrichResult = { metaSuccess: [], metaFailed: [], dateSuccess: [], dateFailed: [] };
 	const map = getCurrentMap();
 	if (!map) return result;
-	const enrichFields = map.meta.settings.enrichFields;
+	const enrichFields = map.meta.settings.enrichFields ?? null;
 	const exactDates = isFieldEnabled(enrichFields, "datetime");
 
 	const scopeIds = locations.map((l) => l.id);
@@ -173,7 +173,7 @@ export async function enrichAll(
 					const tz = resolveTimezone(loc.lat, loc.lng);
 					const datePatch = filterEnrichPatch(
 						{ datetime: ts, timezone: tz },
-						freshMap!.meta.settings.enrichFields,
+						freshMap!.meta.settings.enrichFields ?? null,
 					);
 					if (Object.keys(datePatch).length > 0) patchLocationExtra(loc, datePatch);
 					result.dateSuccess.push(loc.id);

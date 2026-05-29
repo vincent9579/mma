@@ -18,11 +18,11 @@ use crate::util::now_iso;
 
 /// Per-map editor preferences. Controls Street View lookup behavior (official vs
 /// unofficial, camera type filters), export defaults, and metadata enrichment.
-#[derive(Clone, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(default, rename_all = "camelCase")]
 pub struct MapSettings {
     pub point_along_road: bool,
-    pub prefer_direction: Option<f64>,
+    pub prefer_direction: Option<String>,
     pub prefer_official: bool,
     pub prefer_higher_quality: bool,
     pub only_official: bool,
@@ -34,6 +34,32 @@ pub struct MapSettings {
     pub enrich_metadata: bool,
     pub enrich_fields: Option<Vec<String>>,
     pub generated_location_tag: Option<String>,
+}
+
+/// Canonical default map settings.
+impl Default for MapSettings {
+    fn default() -> Self {
+        Self {
+            point_along_road: true,
+            prefer_direction: None,
+            prefer_official: true,
+            prefer_higher_quality: false,
+            only_official: false,
+            camera_types: None,
+            default_pano_id: false,
+            export_zoom: false,
+            export_unpanned: true,
+            search_radius: None,
+            enrich_metadata: false,
+            enrich_fields: None,
+            generated_location_tag: None,
+        }
+    }
+}
+
+/// Serialized default settings JSON for a new map row.
+pub fn default_settings_json() -> String {
+    serde_json::to_string(&MapSettings::default()).expect("MapSettings serializes")
 }
 
 /// Type discriminant for `Location.extra` field definitions.
@@ -352,8 +378,6 @@ pub fn store_get_map(app: tauri::AppHandle, id: String) -> Result<Option<MapData
     }
 }
 
-const DEFAULT_SETTINGS: &str = r#"{"pointAlongRoad":true,"preferDirection":null,"preferOfficial":true,"preferHigherQuality":false,"onlyOfficial":false,"cameraTypes":null,"defaultPanoId":false,"exportZoom":false,"exportUnpanned":true,"enrichMetadata":false}"#;
-
 /// Create a new empty map with default settings. Returns the full metadata
 /// (including the generated UUID) so the frontend can navigate to it immediately.
 #[tauri::command]
@@ -368,7 +392,7 @@ pub fn store_create_map(
     let now = now_iso();
     conn.execute(
         "INSERT INTO maps (id, name, folder, settings, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![id, name, folder, DEFAULT_SETTINGS, now, now],
+        params![id, name, folder, default_settings_json(), now, now],
     )
     .map_err(|e| e.to_string())?;
 

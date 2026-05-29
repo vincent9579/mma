@@ -30,8 +30,6 @@ struct CachedImport {
     maps: Vec<ParsedMap>,
 }
 
-const DEFAULT_SETTINGS: &str = r#"{"pointAlongRoad":true,"preferDirection":null,"preferOfficial":true,"preferHigherQuality":false,"onlyOfficial":false,"cameraTypes":null,"defaultPanoId":false,"exportZoom":false,"exportUnpanned":true,"enrichMetadata":true}"#;
-
 // ---------------------------------------------------------------------------
 // Types returned to JS
 // ---------------------------------------------------------------------------
@@ -648,7 +646,7 @@ fn write_map_to_db(conn: &Connection, app: &tauri::AppHandle, mut map: ParsedMap
     // Insert map with location_count + tags
     tx.execute(
         "INSERT INTO maps (id, name, description, folder, settings, score_bounds, extra, tags, location_count, created_at, updated_at) VALUES (?1, ?2, '', ?3, ?4, '\"auto\"', ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![map_id, map.name, map.folder, DEFAULT_SETTINGS, extra_json, tags_json, loc_count, now, now],
+        rusqlite::params![map_id, map.name, map.folder, crate::map_meta::default_settings_json(), extra_json, tags_json, loc_count, now, now],
     ).map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;

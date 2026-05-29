@@ -431,7 +431,6 @@ export async function updateMapLabels(id: string, labels: string[]) {
 
 export async function updateMapMeta(patch: MapMetaPatch) {
 	if (!currentMapId || !currentMap) return;
-	await cmd.storeUpdateMapMeta(currentMapId, patch);
 	if (patch.name != null) currentMap.meta.name = patch.name;
 	if (patch.description != null) currentMap.meta.description = patch.description;
 	if (patch.folder !== undefined) currentMap.meta.folder = patch.folder;
@@ -439,6 +438,7 @@ export async function updateMapMeta(patch: MapMetaPatch) {
 	if (patch.scoreBounds != null) currentMap.meta.scoreBounds = patch.scoreBounds;
 	if (patch.extra != null) currentMap.meta.extra = patch.extra;
 	refreshAfterMutation();
+	await cmd.storeUpdateMapMeta(currentMapId, patch);
 	await invalidateMapList();
 }
 

@@ -59,16 +59,16 @@ export const commands = {
 	/**  Lightweight status query: location count, version, and dirty flag. */
 	storeGetSummary: () => typedError<SummaryResult, string>(__TAURI_INVOKE("store_get_summary")),
 	/**  Return metadata for every map in the database. */
-	storeListMaps: () => typedError<MapMeta[], string>(__TAURI_INVOKE("store_list_maps")).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>({...i,settings:({...i.settings,preferDirection:i.settings.preferDirection==null?i.settings.preferDirection:i.settings.preferDirection})})) } : v) as typeof v)),
+	storeListMaps: () => typedError<MapMeta[], string>(__TAURI_INVOKE("store_list_maps")),
 	/**  Fetch a single map's metadata by ID. Returns `None` if not found. */
 	storeGetMap: (id: string) => typedError<{
 	meta: MapMeta,
-} | null, string>(__TAURI_INVOKE("store_get_map", { id })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:({...v.data,meta:({...v.data.meta,settings:({...v.data.meta.settings,preferDirection:v.data.meta.settings.preferDirection==null?v.data.meta.settings.preferDirection:v.data.meta.settings.preferDirection})})}) } : v) as typeof v)),
+} | null, string>(__TAURI_INVOKE("store_get_map", { id })),
 	/**
 	 *  Create a new empty map with default settings. Returns the full metadata
 	 *  (including the generated UUID) so the frontend can navigate to it immediately.
 	 */
-	storeCreateMap: (name: string, folder: string | null) => typedError<MapData, string>(__TAURI_INVOKE("store_create_map", { name, folder })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,meta:({...v.data.meta,settings:({...v.data.meta.settings,preferDirection:v.data.meta.settings.preferDirection==null?v.data.meta.settings.preferDirection:v.data.meta.settings.preferDirection})})}) } : v) as typeof v)),
+	storeCreateMap: (name: string, folder: string | null) => typedError<MapData, string>(__TAURI_INVOKE("store_create_map", { name, folder })),
 	/**
 	 *  Delete a map and all associated data: SQLite rows (maps, edit_history,
 	 *  commits, orphaned commit_trees) and Arrow IPC files on disk.
@@ -80,7 +80,7 @@ export const commands = {
 	 *  on the in-memory store when extra fields change, so auto-registration
 	 *  doesn't re-discover fields the user explicitly defined.
 	 */
-	storeUpdateMapMeta: (id: string, patch: MapMetaPatch_Deserialize) => typedError<null, string>(__TAURI_INVOKE("store_update_map_meta", { id, patch: ({...patch,settings:patch.settings==null?patch.settings:({...patch.settings,preferDirection:patch.settings.preferDirection==null?patch.settings.preferDirection:patch.settings.preferDirection}),scoreBounds:patch.scoreBounds==null?patch.scoreBounds:patch.scoreBounds}) })),
+	storeUpdateMapMeta: (id: string, patch: MapMetaPatch_Deserialize) => typedError<null, string>(__TAURI_INVOKE("store_update_map_meta", { id, patch: ({...patch,scoreBounds:patch.scoreBounds==null?patch.scoreBounds:patch.scoreBounds}) })),
 	/**
 	 *  Update `last_opened_at` to the current timestamp. Used to sort the map
 	 *  list by recency in the dashboard.
@@ -708,19 +708,19 @@ export type MapMetaPatch_Serialize = {
  *  unofficial, camera type filters), export defaults, and metadata enrichment.
  */
 export type MapSettings = {
-	pointAlongRoad: boolean,
-	preferDirection: number | null,
-	preferOfficial: boolean,
-	preferHigherQuality: boolean,
-	onlyOfficial: boolean,
-	cameraTypes: string[] | null,
-	defaultPanoId: boolean,
-	exportZoom: boolean,
-	exportUnpanned: boolean,
-	searchRadius: number | null,
-	enrichMetadata: boolean,
-	enrichFields: string[] | null,
-	generatedLocationTag: string | null,
+	pointAlongRoad?: boolean,
+	preferDirection?: string | null,
+	preferOfficial?: boolean,
+	preferHigherQuality?: boolean,
+	onlyOfficial?: boolean,
+	cameraTypes?: string[] | null,
+	defaultPanoId?: boolean,
+	exportZoom?: boolean,
+	exportUnpanned?: boolean,
+	searchRadius?: number | null,
+	enrichMetadata?: boolean,
+	enrichFields?: string[] | null,
+	generatedLocationTag?: string | null,
 };
 
 /**

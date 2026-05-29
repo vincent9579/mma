@@ -8,6 +8,7 @@ import { EnrichInfoButton } from "@/components/editor/map/EnrichInfoButton";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiCogOutline } from "@mdi/js";
 import { type SvColor, SV_COLORS, type MapTypeKey } from "./mapSettingsTypes";
+import { useMapSetting } from "./useMapSetting";
 
 const MAP_TYPE_LABELS: Record<MapTypeKey, string> = {
 	map: "Map",
@@ -49,33 +50,15 @@ export interface LayerConfig {
 
 export type MarkerStyle = "pin" | "circle" | "arrow";
 
+/** App-level (localStorage) prefs the panel renders. Per-map settings are read
+ *  directly via `useMapSetting`, not passed in. */
 export interface MapSettingsDropdownProps {
-	pointAlongRoad: boolean;
-	setPointAlongRoad: (v: boolean) => void;
-	preferDirection: string | null;
-	setPreferDirection: (v: string | null) => void;
-	preferOfficial: boolean;
-	setPreferOfficial: (v: boolean) => void;
-	preferHigherQuality: boolean;
-	setPreferHigherQuality: (v: boolean) => void;
-	onlyOfficial: boolean;
-	setOnlyOfficial: (v: boolean) => void;
-	defaultPanoId: boolean;
-	setDefaultPanoId: (v: boolean) => void;
-	searchRadius: number | null;
-	setSearchRadius: (v: number | null) => void;
 	markerStyle: MarkerStyle;
 	setMarkerStyle: (v: MarkerStyle) => void;
 	showPerfectScoreCircle: boolean;
 	setShowPerfectScoreCircle: (v: boolean) => void;
 	showPreviews: boolean;
 	setShowPreviews: (v: boolean) => void;
-	enrichMetadata: boolean;
-	setEnrichMetadata: (v: boolean) => void;
-	enrichFields: string[] | null;
-	setEnrichFields: (v: string[] | null) => void;
-	generatedLocationTag: string | null;
-	setGeneratedLocationTag: (v: string | null) => void;
 }
 
 function SearchRadiusSlider({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
@@ -337,6 +320,16 @@ export function MapTypeDropdown({ layerConfig }: { layerConfig: LayerConfig }) {
 
 export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDropdownProps }) {
 	const showExactDate = useSetting("showExactDate");
+	const [pointAlongRoad, setPointAlongRoad] = useMapSetting("pointAlongRoad");
+	const [preferDirection, setPreferDirection] = useMapSetting("preferDirection");
+	const [preferOfficial, setPreferOfficial] = useMapSetting("preferOfficial");
+	const [preferHigherQuality, setPreferHigherQuality] = useMapSetting("preferHigherQuality");
+	const [onlyOfficial, setOnlyOfficial] = useMapSetting("onlyOfficial");
+	const [defaultPanoId, setDefaultPanoId] = useMapSetting("defaultPanoId");
+	const [searchRadius, setSearchRadius] = useMapSetting("searchRadius");
+	const [enrichMetadata, setEnrichMetadata] = useMapSetting("enrichMetadata");
+	const [enrichFields, setEnrichFields] = useMapSetting("enrichFields");
+	const [generatedLocationTag, setGeneratedLocationTag] = useMapSetting("generatedLocationTag");
 	const [isOpen, setIsOpen] = useState(false);
 	const [showManageFields, setShowManageFields] = useState(false);
 	const [showEnrichFields, setShowEnrichFields] = useState(false);
@@ -381,17 +374,17 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 						<label className="settings-popup__item">
 							<input
 								type="checkbox"
-								checked={s.pointAlongRoad}
-								onChange={(e) => s.setPointAlongRoad(e.target.checked)}
+								checked={pointAlongRoad}
+								onChange={(e) => setPointAlongRoad(e.target.checked)}
 							/>
 							Point view along the road by default
 						</label>
-						{s.pointAlongRoad && (
+						{pointAlongRoad && (
 							<label className="settings-popup__item settings-popup__select">
 								Direction:{" "}
 								<select
-									value={s.preferDirection ?? ""}
-									onChange={(e) => s.setPreferDirection(e.target.value || null)}
+									value={preferDirection ?? ""}
+									onChange={(e) => setPreferDirection(e.target.value || null)}
 								>
 									<option value="">None</option>
 									<option value="forwards">Forwards</option>
@@ -407,36 +400,36 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 						<label className="settings-popup__item">
 							<input
 								type="checkbox"
-								checked={s.preferOfficial}
-								onChange={(e) => s.setPreferOfficial(e.target.checked)}
+								checked={preferOfficial}
+								onChange={(e) => setPreferOfficial(e.target.checked)}
 							/>
 							Prefer official coverage over unofficial
 						</label>
 						<label className="settings-popup__item">
 							<input
 								type="checkbox"
-								checked={s.preferHigherQuality}
-								onChange={(e) => s.setPreferHigherQuality(e.target.checked)}
+								checked={preferHigherQuality}
+								onChange={(e) => setPreferHigherQuality(e.target.checked)}
 							/>
 							Prefer higher quality over newer images
 						</label>
 						<label className="settings-popup__item">
 							<input
 								type="checkbox"
-								checked={s.onlyOfficial}
-								onChange={(e) => s.setOnlyOfficial(e.target.checked)}
+								checked={onlyOfficial}
+								onChange={(e) => setOnlyOfficial(e.target.checked)}
 							/>
 							Disallow unofficial coverage
 						</label>
 						<label className="settings-popup__item">
 							<input
 								type="checkbox"
-								checked={s.defaultPanoId}
-								onChange={(e) => s.setDefaultPanoId(e.target.checked)}
+								checked={defaultPanoId}
+								onChange={(e) => setDefaultPanoId(e.target.checked)}
 							/>
 							Use Pano ID locations by default
 						</label>
-						<SearchRadiusSlider value={s.searchRadius} onChange={s.setSearchRadius} />
+						<SearchRadiusSlider value={searchRadius} onChange={setSearchRadius} />
 					</fieldset>
 					<fieldset className="fieldset">
 						<legend className="fieldset__header">
@@ -453,12 +446,12 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 						<label className="settings-popup__item">
 							<input
 								type="checkbox"
-								checked={s.enrichMetadata}
-								onChange={(e) => s.setEnrichMetadata(e.target.checked)}
+								checked={enrichMetadata}
+								onChange={(e) => setEnrichMetadata(e.target.checked)}
 							/>
 							Enrich locations with metadata
 							<EnrichInfoButton />
-							{s.enrichMetadata && (
+							{enrichMetadata && (
 								<button
 									className="icon-button"
 									title="Configure enrichment fields"
@@ -483,8 +476,8 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 							<input
 								className="input"
 								type="text"
-								value={s.generatedLocationTag ?? ""}
-								onChange={(e) => s.setGeneratedLocationTag(e.target.value || null)}
+								value={generatedLocationTag ?? ""}
+								onChange={(e) => setGeneratedLocationTag(e.target.value || null)}
 								placeholder="None"
 							/>
 						</label>
@@ -535,7 +528,7 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 					</p>
 					{getEnrichFieldOptions().map((f) => {
 						const exactDateOff = !showExactDate && (f.key === "datetime" || f.key === "timezone");
-						const enabled = !exactDateOff && (!s.enrichFields || s.enrichFields.includes(f.key));
+						const enabled = !exactDateOff && (!enrichFields || enrichFields.includes(f.key));
 						return (
 							<label key={f.key} className="settings-popup__item" style={{ display: "flex", alignItems: "center", gap: ".5rem", ...(exactDateOff ? { opacity: 0.5 } : undefined) }}>
 								<input
@@ -544,11 +537,11 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 									disabled={exactDateOff}
 									onChange={(e) => {
 										const allKeys = getAllEnrichKeys();
-										const current = s.enrichFields ?? [...allKeys];
+										const current = enrichFields ?? [...allKeys];
 										const next = e.target.checked
 											? [...current, f.key]
 											: current.filter((k) => k !== f.key);
-										s.setEnrichFields(
+										setEnrichFields(
 											next.length === allKeys.length ? null : next,
 										);
 									}}

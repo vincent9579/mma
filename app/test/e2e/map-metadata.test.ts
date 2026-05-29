@@ -40,7 +40,7 @@ describe("Map metadata persistence", () => {
 			await api.updateMapMeta({
 				settings: {
 					pointAlongRoad: true,
-					preferDirection: 1,
+					preferDirection: "north",
 					preferOfficial: true,
 					preferHigherQuality: false,
 					onlyOfficial: false,
@@ -63,7 +63,7 @@ describe("Map metadata persistence", () => {
 			async (api) => api.getCurrentMap()!.meta.settings,
 		);
 		expect(settings.pointAlongRoad).toBe(true);
-		expect(settings.preferDirection).toBe(1);
+		expect(settings.preferDirection).toBe("north");
 		expect(settings.preferOfficial).toBe(true);
 		expect(settings.exportZoom).toBe(true);
 	});

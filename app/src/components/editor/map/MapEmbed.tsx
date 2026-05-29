@@ -74,7 +74,7 @@ import {
 	type MarkerStyle,
 } from "@/components/editor/map/MapSettingsPanel";
 import type { SvColor, MapTypeKey } from "@/components/editor/map/mapSettingsTypes";
-import { useMapSettings } from "@/components/editor/map/useMapSettings";
+import { useMapSetting } from "@/components/editor/map/useMapSetting";
 
 const DARK_MODE_STYLES: MapStyle[] = [
 	{ elementType: "geometry", stylers: [{ color: "#242f3e" }] },
@@ -363,18 +363,13 @@ export function MapEmbed() {
 	const coordDisplayRef = useRef<HTMLSpanElement>(null);
 	const [mapZoom, setMapZoom] = useState(2);
 
-	// Per-map settings (from map.meta.settings, persisted to DB)
-	const ms = map?.meta.settings;
-	const mapSettings = useMapSettings(ms, map?.meta.settings);
-	const {
-		pointAlongRoad,
-		preferDirection,
-		preferOfficial,
-		onlyOfficial,
-		preferHigherQuality,
-		defaultPanoId,
-		searchRadius,
-	} = mapSettings;
+	const [pointAlongRoad] = useMapSetting("pointAlongRoad");
+	const [preferDirection] = useMapSetting("preferDirection");
+	const [preferOfficial] = useMapSetting("preferOfficial");
+	const [onlyOfficial] = useMapSetting("onlyOfficial");
+	const [preferHigherQuality] = useMapSetting("preferHigherQuality");
+	const [defaultPanoId] = useMapSetting("defaultPanoId");
+	const [searchRadius] = useMapSetting("searchRadius");
 	const [customStyles, setCustomStyles] = useState<{ name: string; style: MapStyle[] }[]>(() => {
 		try {
 			return JSON.parse(localStorage.getItem("mma_custom_styles") ?? "[]");
@@ -1629,7 +1624,6 @@ export function MapEmbed() {
 				>
 					<MapSettingsDropdown
 						settings={{
-							...mapSettings,
 							markerStyle,
 							setMarkerStyle,
 							showPerfectScoreCircle,
