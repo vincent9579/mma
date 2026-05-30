@@ -451,20 +451,18 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 							/>
 							Enrich locations with metadata
 							<EnrichInfoButton />
-							{enrichMetadata && (
-								<button
-									className="icon-button"
-									title="Configure enrichment fields"
-									style={{ padding: 0, color: "#888", flexShrink: 0 }}
-									onClick={(e) => {
-										e.preventDefault();
-										setShowEnrichFields(true);
-										setIsOpen(false);
-									}}
-								>
-									<Icon path={mdiCogOutline} size={14} />
-								</button>
-							)}
+							<button
+								className="icon-button"
+								title="Configure enrichment fields"
+								style={{ padding: 0, color: "#888", flexShrink: 0 }}
+								onClick={(e) => {
+									e.preventDefault();
+									setShowEnrichFields(true);
+									setIsOpen(false);
+								}}
+							>
+								<Icon path={mdiCogOutline} size={14} />
+							</button>
 						</label>
 					</fieldset>
 					<fieldset className="fieldset">
@@ -524,7 +522,7 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 			<Dialog open={showEnrichFields} onOpenChange={setShowEnrichFields}>
 				<DialogContent title="Enrichment fields">
 					<p style={{ margin: "0 0 .5rem", fontSize: ".85rem", color: "#888" }}>
-						Choose which metadata fields to fetch when enriching locations.
+						Choose which metadata fields to add when enriching locations.
 					</p>
 					{getEnrichFieldOptions().map((f) => {
 						const exactDateOff = !showExactDate && (f.key === "datetime" || f.key === "timezone");
