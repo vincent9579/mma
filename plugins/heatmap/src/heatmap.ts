@@ -7,6 +7,7 @@ export interface HeatmapSettings {
 	radiusPixels: number;
 	opacity: number;
 	threshold: number;
+	gradientIndex: number;
 }
 
 export const DEFAULT_SETTINGS: HeatmapSettings = {
@@ -15,7 +16,45 @@ export const DEFAULT_SETTINGS: HeatmapSettings = {
 	radiusPixels: 30,
 	opacity: 0.6,
 	threshold: 0.05,
+	gradientIndex: 0,
 };
+
+type RGB = [number, number, number];
+
+export interface HeatmapGradient {
+	name: string;
+	stops: RGB[];
+}
+
+export const GRADIENTS: HeatmapGradient[] = [
+	// deck.gl's built-in default colorRange (6-step ColorBrewer YlOrRd) — the original look.
+	{ name: "Classic", stops: [[255, 255, 178], [254, 217, 118], [254, 178, 76], [253, 141, 60], [240, 59, 32], [189, 0, 38]] },
+	{ name: "Viridis", stops: [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]] },
+	{ name: "Heat", stops: [[0, 0, 255], [0, 255, 255], [0, 255, 0], [255, 255, 0], [255, 0, 0]] },
+	{ name: "Blue-Red", stops: [[66, 133, 244], [234, 67, 53]] },
+	{ name: "Green-Yellow-Red", stops: [[52, 168, 83], [251, 188, 4], [234, 67, 53]] },
+	{ name: "Purple-Orange", stops: [[136, 84, 208], [255, 152, 0]] },
+];
+
+// deck.gl's HeatmapLayer builds a continuous color texture from colorRange, so a
+// handful of evenly-sampled stops gives a smooth ramp.
+function sampleColorRange(stops: RGB[], n = 6): RGB[] {
+	if (stops.length === 1) return Array.from({ length: n }, () => stops[0]);
+	const out: RGB[] = [];
+	for (let i = 0; i < n; i++) {
+		const t = (i / (n - 1)) * (stops.length - 1);
+		const idx = Math.min(Math.floor(t), stops.length - 2);
+		const f = t - idx;
+		const a = stops[idx];
+		const b = stops[idx + 1];
+		out.push([
+			Math.round(a[0] + (b[0] - a[0]) * f),
+			Math.round(a[1] + (b[1] - a[1]) * f),
+			Math.round(a[2] + (b[2] - a[2]) * f),
+		]);
+	}
+	return out;
+}
 
 interface LocPoint {
 	lat: number;
@@ -73,6 +112,7 @@ function rebuild() {
 		intensity: settings.intensity,
 		threshold: settings.threshold,
 		opacity: settings.opacity,
+		colorRange: sampleColorRange((GRADIENTS[settings.gradientIndex] ?? GRADIENTS[0]).stops),
 		debounceTimeout: 100,
 	});
 

@@ -928,8 +928,35 @@ var DEFAULT_SETTINGS = {
   intensity: 1,
   radiusPixels: 30,
   opacity: 0.6,
-  threshold: 0.05
+  threshold: 0.05,
+  gradientIndex: 0
 };
+var GRADIENTS = [
+  // deck.gl's built-in default colorRange (6-step ColorBrewer YlOrRd) — the original look.
+  { name: "Classic", stops: [[255, 255, 178], [254, 217, 118], [254, 178, 76], [253, 141, 60], [240, 59, 32], [189, 0, 38]] },
+  { name: "Viridis", stops: [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]] },
+  { name: "Heat", stops: [[0, 0, 255], [0, 255, 255], [0, 255, 0], [255, 255, 0], [255, 0, 0]] },
+  { name: "Blue-Red", stops: [[66, 133, 244], [234, 67, 53]] },
+  { name: "Green-Yellow-Red", stops: [[52, 168, 83], [251, 188, 4], [234, 67, 53]] },
+  { name: "Purple-Orange", stops: [[136, 84, 208], [255, 152, 0]] }
+];
+function sampleColorRange(stops, n = 6) {
+  if (stops.length === 1) return Array.from({ length: n }, () => stops[0]);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1) * (stops.length - 1);
+    const idx = Math.min(Math.floor(t), stops.length - 2);
+    const f = t - idx;
+    const a = stops[idx];
+    const b = stops[idx + 1];
+    out.push([
+      Math.round(a[0] + (b[0] - a[0]) * f),
+      Math.round(a[1] + (b[1] - a[1]) * f),
+      Math.round(a[2] + (b[2] - a[2]) * f)
+    ]);
+  }
+  return out;
+}
 var overlay = null;
 var locStore = null;
 var settings = { ...DEFAULT_SETTINGS };
@@ -974,6 +1001,7 @@ function rebuild() {
     intensity: settings.intensity,
     threshold: settings.threshold,
     opacity: settings.opacity,
+    colorRange: sampleColorRange((GRADIENTS[settings.gradientIndex] ?? GRADIENTS[0]).stops),
     debounceTimeout: 100
   });
   overlay.setProps({ layers: [layer] });
@@ -1053,6 +1081,13 @@ var CSS = `
   text-decoration: underline;
 }
 .heatmap-sidebar__reset:hover { color: var(--text-primary, #fff); }
+.heatmap-sidebar__gradients { display: flex; flex-direction: column; gap: 4px; }
+.heatmap-sidebar__gradient {
+  background: none; border: 2px solid transparent; border-radius: 4px;
+  padding: 2px; cursor: pointer; width: 100%;
+}
+.heatmap-sidebar__gradient--active { border-color: var(--accent-color, #4a9eff); }
+.heatmap-sidebar__gradient-bar { height: 14px; border-radius: 2px; }
 `;
 var styleEl = null;
 function injectCSS() {
@@ -1157,6 +1192,29 @@ function HeatmapSidebar({ onClose }) {
             onChange: (v) => setSlider("threshold", v)
           }
         )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "heatmap-sidebar__section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "heatmap-sidebar__section-title", children: "Gradient" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "heatmap-sidebar__gradients", children: GRADIENTS.map((g, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            className: `heatmap-sidebar__gradient ${i === s.gradientIndex ? "heatmap-sidebar__gradient--active" : ""}`,
+            onClick: () => updateSettings({ gradientIndex: i }),
+            title: g.name,
+            children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "div",
+              {
+                className: "heatmap-sidebar__gradient-bar",
+                style: {
+                  background: `linear-gradient(to right, ${g.stops.map(
+                    (c, si) => `rgb(${c[0]},${c[1]},${c[2]}) ${si / (g.stops.length - 1) * 100}%`
+                  ).join(", ")})`
+                }
+              }
+            )
+          },
+          g.name
+        )) })
       ] })
     ] })
   ] });

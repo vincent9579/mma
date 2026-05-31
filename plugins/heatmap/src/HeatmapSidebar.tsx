@@ -5,6 +5,7 @@ import {
 	getLocationCount,
 	setOnSettingsChange,
 	DEFAULT_SETTINGS,
+	GRADIENTS,
 	type HeatmapSettings,
 } from "./heatmap";
 
@@ -50,6 +51,13 @@ const CSS = `
   text-decoration: underline;
 }
 .heatmap-sidebar__reset:hover { color: var(--text-primary, #fff); }
+.heatmap-sidebar__gradients { display: flex; flex-direction: column; gap: 4px; }
+.heatmap-sidebar__gradient {
+  background: none; border: 2px solid transparent; border-radius: 4px;
+  padding: 2px; cursor: pointer; width: 100%;
+}
+.heatmap-sidebar__gradient--active { border-color: var(--accent-color, #4a9eff); }
+.heatmap-sidebar__gradient-bar { height: 14px; border-radius: 2px; }
 `;
 
 let styleEl: HTMLStyleElement | null = null;
@@ -136,6 +144,32 @@ export function HeatmapSidebar({ onClose }: { onClose: () => void }) {
 						onChange={(v) => setSlider("opacity", v)} />
 					<Slider label="Threshold" value={s.threshold} min={0} max={1} step={0.01}
 						onChange={(v) => setSlider("threshold", v)} />
+				</div>
+
+				<div className="heatmap-sidebar__section">
+					<p className="heatmap-sidebar__section-title">Gradient</p>
+					<div className="heatmap-sidebar__gradients">
+						{GRADIENTS.map((g, i) => (
+							<button
+								key={g.name}
+								className={`heatmap-sidebar__gradient ${i === s.gradientIndex ? "heatmap-sidebar__gradient--active" : ""}`}
+								onClick={() => updateSettings({ gradientIndex: i })}
+								title={g.name}
+							>
+								<div
+									className="heatmap-sidebar__gradient-bar"
+									style={{
+										background: `linear-gradient(to right, ${g.stops
+											.map(
+												(c, si) =>
+													`rgb(${c[0]},${c[1]},${c[2]}) ${(si / (g.stops.length - 1)) * 100}%`,
+											)
+											.join(", ")})`,
+									}}
+								/>
+							</button>
+						))}
+					</div>
 				</div>
 			</div>
 		</section>
