@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lerp, gradientColor, isNumericField } from "@/plugins/gradient/gradientMath";
+import { lerp, gradientColor, isNumericField, fieldScale } from "@/plugins/gradient/gradientMath";
 
 describe("lerp", () => {
 	it("t=0 returns first color", () => {
@@ -119,5 +119,26 @@ describe("isNumericField", () => {
 
 	it("month type returns false", () => {
 		expect(isNumericField({ type: "month" })).toBe(false);
+	});
+});
+
+describe("fieldScale", () => {
+	it("maps months to an ordinal month count (proportional to time)", () => {
+		const jan2010 = fieldScale("2010-01", "month")!;
+		const jan2011 = fieldScale("2011-01", "month")!;
+		const jul2010 = fieldScale("2010-07", "month")!;
+		expect(jan2011 - jan2010).toBe(12);
+		expect(jul2010 - jan2010).toBe(6);
+	});
+
+	it("parses numeric strings to their value", () => {
+		expect(fieldScale("80", "string")).toBe(80);
+		expect(fieldScale("300", "string")).toBe(300);
+	});
+
+	it("returns null for non-numeric categories", () => {
+		expect(fieldScale("gen4", "enum")).toBeNull();
+		expect(fieldScale("", "string")).toBeNull();
+		expect(fieldScale("2010-XX", "month")).toBeNull();
 	});
 });

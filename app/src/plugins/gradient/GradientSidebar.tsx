@@ -3,7 +3,8 @@ import { Icon } from "@/components/primitives/Icon";
 import { mdiArrowLeft } from "@mdi/js";
 import type { ExtraFieldDef } from "@/types";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
-import { gradientColor, isNumericField } from "./gradientMath";
+import { compareNatural } from "@/lib/util/util";
+import { gradientColor, isNumericField, fieldScale } from "./gradientMath";
 import "./gradient.css";
 
 interface GradientPreset {
@@ -68,7 +69,6 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 	const [presetIdx, setPresetIdx] = useState(0);
 	const [bucketCount, setBucketCount] = useState(10);
 	const [applying, setApplying] = useState(false);
-	const [applied, setApplied] = useState(false);
 
 	const map = MMA.getCurrentMap();
 
@@ -97,7 +97,6 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 	const applyGradient = useCallback(async () => {
 		if (!fieldOpt || !map) return;
 		setApplying(true);
-		setApplied(false);
 		try {
 			const { fetchAllLocations } = await import("@/store/useMapStore");
 			const locs = await fetchAllLocations();
@@ -143,8 +142,15 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 				await MMA.addSelections(props);
 				MMA.setSelectionColors(colors);
 			} else {
-				// Enum/string: one bucket per distinct value
-				const distinct = [...new Set(values.map((v) => String(v.raw)))].sort();
+				// Enum/string/month: one bucket per distinct value, ordered naturally
+				const distinct = [...new Set(values.map((v) => String(v.raw)))].sort(compareNatural);
+				// If the values are numeric/date-parseable, place colors proportional to the
+				// actual value (so e.g. 2023 sits far from 2010). Otherwise space them evenly.
+				const fieldType = fieldOpt.def?.type;
+				const scales = distinct.map((v) => fieldScale(v, fieldType));
+				const proportional = distinct.length > 1 && scales.every((s) => s !== null);
+				const lo = proportional ? Math.min(...(scales as number[])) : 0;
+				const hi = proportional ? Math.max(...(scales as number[])) : 0;
 				const props = distinct.map((v) => ({
 					type: "Filter" as const,
 					field: fieldKey,
@@ -156,13 +162,16 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 					key: `filter:${fieldKey}:eq:${v}`,
 					color: gradientColor(
 						preset.stops,
-						distinct.length === 1 ? 0.5 : i / (distinct.length - 1),
+						proportional && hi > lo
+							? ((scales[i] as number) - lo) / (hi - lo)
+							: distinct.length === 1
+								? 0.5
+								: i / (distinct.length - 1),
 					),
 				}));
 				await MMA.addSelections(props);
 				MMA.setSelectionColors(colors);
 			}
-			setApplied(true);
 		} finally {
 			setApplying(false);
 		}
@@ -191,13 +200,11 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 								value={fieldKey}
 								onChange={(e) => {
 									setFieldKey(e.target.value);
-									setApplied(false);
 								}}
 							>
 								{fields.map((f) => (
 									<option key={f.key} value={f.key}>
 										{f.label}
-										{f.numeric ? "" : " (categorical)"}
 									</option>
 								))}
 							</select>
@@ -212,7 +219,6 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 										className={`gradient-sidebar__preset ${i === presetIdx ? "gradient-sidebar__preset--active" : ""}`}
 										onClick={() => {
 											setPresetIdx(i);
-											setApplied(false);
 										}}
 										title={p.name}
 									>
@@ -242,7 +248,6 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 											className={`gradient-sidebar__bucket-btn ${n === bucketCount ? "gradient-sidebar__bucket-btn--active" : ""}`}
 											onClick={() => {
 												setBucketCount(n);
-												setApplied(false);
 											}}
 										>
 											{n}
@@ -276,14 +281,8 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 							onClick={applyGradient}
 							disabled={applying || !fieldKey}
 						>
-							{applying ? "Applying..." : applied ? "Reapply" : "Apply"}
+							Apply
 						</button>
-
-						{applied && (
-							<div className="gradient-sidebar__hint">
-								Selections created. You can intersect these with other selections.
-							</div>
-						)}
 					</>
 				)}
 			</div>
