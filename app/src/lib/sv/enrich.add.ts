@@ -23,7 +23,7 @@ export function needsEnrichment(loc: Location): boolean {
 	return loc.extra?.countryCode == null;
 }
 
-function buildPatch(
+export function buildPatch(
 	data: google.maps.StreetViewPanoramaData,
 	loc: Location,
 	enrichFields: string[] | null,
@@ -37,11 +37,14 @@ function buildPatch(
 		drivingDirection: data.extra.drivingDirection ?? null,
 		imageDate: data.imageDate || null,
 	};
+	const filtered = filterEnrichPatch(fullPatch, enrichFields);
+	// Stale exact-date data is wrong once imageDate changes; clear it regardless of the
+	// active enrich set (the filter would otherwise drop the null when datetime is off).
 	if (loc.extra?.imageDate !== fullPatch.imageDate && loc.extra?.datetime != null) {
-		fullPatch.datetime = null;
-		fullPatch.timezone = null;
+		filtered.datetime = null;
+		filtered.timezone = null;
 	}
-	return filterEnrichPatch(fullPatch, enrichFields);
+	return filtered;
 }
 
 export async function enrich(
