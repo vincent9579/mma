@@ -1500,16 +1500,9 @@ export function MapEmbed() {
 			}
 			if (e.defaultPrevented || e.repeat) return;
 			if (isEditableElement(e.target)) return;
-			const stripped = {
-				ctrlKey: e.ctrlKey,
-				altKey: false,
-				metaKey: e.metaKey,
-				shiftKey: e.shiftKey,
-				key: e.key,
-			} as KeyboardEvent;
 			for (const { action, parsed } of bindings) {
 				for (const alt of parsed) {
-					if (alt.length === 1 && matchesKey(stripped, alt[0])) {
+					if (alt.length === 1 && matchesKey(e, alt[0], { ignoreAlt: true })) {
 						nav.held.add(action);
 						if (!nav.rafId) nav.rafId = requestAnimationFrame(tick);
 						return;

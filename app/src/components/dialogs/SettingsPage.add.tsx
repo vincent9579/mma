@@ -70,14 +70,15 @@ function buildComboString(e: KeyboardEvent): string | null {
 const BLOCKED_COMBOS = new Set(["Mod++", "Mod+-"]);
 
 function getBlockedReason(e: KeyboardEvent): string | null {
+	const combo = buildComboString(e);
+	if (!combo) return null;
 	if (e.altKey) {
-		const conflict = getAltSlowConflict(e.key);
+		const conflict = getAltSlowConflict(combo);
 		if (conflict) {
-			return `Alt+${e.key} conflicts with "${conflict.label}" (Alt is the slow modifier for navigation)`;
+			return `${formatBinding(combo)} conflicts with "${conflict.label}" (Alt is the slow modifier for navigation)`;
 		}
 	}
-	const combo = buildComboString(e);
-	if (combo && BLOCKED_COMBOS.has(combo)) return "Intercepted by the app window before shortcuts can reach it";
+	if (BLOCKED_COMBOS.has(combo)) return "Intercepted by the app window before shortcuts can reach it";
 	return null;
 }
 

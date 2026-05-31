@@ -331,15 +331,18 @@ export function isCustomized(action: HotkeyAction): boolean {
 	return action in overrides;
 }
 
-export function getAltSlowConflict(key: string): HotkeyDef | undefined {
-	const k = key.toLowerCase();
-	return RAW_HOTKEY_DEFS.find((d) => {
-		if (!d.altSlow) return false;
-		const binding = getBinding(d.action);
-		if (!binding) return false;
-		const parts = binding.split("+");
-		return parts[parts.length - 1].toLowerCase() === k;
-	});
+// A recorded combo using Alt is unusable for any altSlow action: Alt is the slow
+// navigation modifier, ignored when matching, so the combo would also fire the nav
+// action. Strip Alt and look up the altSlow binding it would shadow. `combo` must be
+// in canonical buildComboString form (the same format bindings are stored in).
+export function getAltSlowConflict(combo: string): HotkeyDef | undefined {
+	const parts = combo.split("+");
+	const altIdx = parts.indexOf("Alt");
+	if (altIdx === -1) return undefined;
+	parts.splice(altIdx, 1);
+	const stripped = parts.join("+");
+	if (!stripped) return undefined;
+	return RAW_HOTKEY_DEFS.find((d) => d.altSlow && getBinding(d.action) === stripped);
 }
 
 export function getConflicts(action: string, binding: string): HotkeyDef[] {

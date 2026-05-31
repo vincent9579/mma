@@ -49,7 +49,9 @@ export function parseHotkey(hotkeyStr: string): ParsedKey[][] {
 
 const SHIFTED_CHARS = new Set('?!@#$%^&*()_+{}|:"<>~');
 
-export function matchesKey(e: KeyboardEvent, pk: ParsedKey): boolean {
+// ignoreAlt: Alt is the global "slow" navigation modifier, so nav handlers match
+// bindings regardless of whether Alt is held. Single source of truth for that rule.
+export function matchesKey(e: KeyboardEvent, pk: ParsedKey, opts?: { ignoreAlt?: boolean }): boolean {
 	const ctrl = e.ctrlKey;
 	const alt = e.altKey;
 	const meta = e.metaKey;
@@ -62,7 +64,7 @@ export function matchesKey(e: KeyboardEvent, pk: ParsedKey): boolean {
 
 	return (
 		ctrl === pk.ctrl &&
-		alt === pk.alt &&
+		(opts?.ignoreAlt || alt === pk.alt) &&
 		meta === pk.meta &&
 		(shiftImplied || shift === pk.shift) &&
 		key === pk.key

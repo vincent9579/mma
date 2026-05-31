@@ -111,48 +111,45 @@ describe("matchesKey", () => {
 });
 
 describe("getAltSlowConflict", () => {
-	it("returns conflict for 'a' (panLeft)", () => {
-		const result = getAltSlowConflict("a");
+	it("returns conflict for 'Alt+a' (panLeft)", () => {
+		const result = getAltSlowConflict("Alt+a");
 		expect(result).toBeDefined();
 		expect(result!.action).toBe("panLeft");
 	});
 
-	it("returns conflict for 'd' (panRight)", () => {
-		const result = getAltSlowConflict("d");
+	it("returns conflict for 'Alt+d' (panRight)", () => {
+		const result = getAltSlowConflict("Alt+d");
 		expect(result).toBeDefined();
 		expect(result!.action).toBe("panRight");
 	});
 
-	it("returns conflict for 'w'", () => {
-		const result = getAltSlowConflict("w");
-		expect(result).toBeDefined();
-		expect(["panUp", "mapZoomIn"]).toContain(result!.action);
+	it("distinguishes 'Alt+w' (panUp) from 'Alt+Shift+w' (mapZoomIn)", () => {
+		expect(getAltSlowConflict("Alt+w")!.action).toBe("panUp");
+		expect(getAltSlowConflict("Alt+Shift+w")!.action).toBe("mapZoomIn");
 	});
 
-	it("returns conflict for 'ArrowLeft' (panoLookLeft)", () => {
-		const result = getAltSlowConflict("ArrowLeft");
+	it("returns conflict for 'Alt+ArrowLeft' (panoLookLeft)", () => {
+		const result = getAltSlowConflict("Alt+ArrowLeft");
 		expect(result).toBeDefined();
 		expect(result!.action).toBe("panoLookLeft");
 	});
 
-	it("returns conflict for 'ArrowDown'", () => {
-		const result = getAltSlowConflict("ArrowDown");
-		expect(result).toBeDefined();
-		expect(["panoLookDown", "panoMoveBackward"]).toContain(result!.action);
+	it("distinguishes 'Alt+ArrowDown' (panoLookDown) from 'Alt+Shift+ArrowDown' (panoMoveBackward)", () => {
+		expect(getAltSlowConflict("Alt+ArrowDown")!.action).toBe("panoLookDown");
+		expect(getAltSlowConflict("Alt+Shift+ArrowDown")!.action).toBe("panoMoveBackward");
 	});
 
-	it("is case insensitive: 'A' returns same as 'a'", () => {
-		const upper = getAltSlowConflict("A");
-		const lower = getAltSlowConflict("a");
-		expect(upper).toEqual(lower);
+	it("returns undefined without an Alt token (no slow-modifier shadowing)", () => {
+		expect(getAltSlowConflict("w")).toBeUndefined();
+		expect(getAltSlowConflict("Shift+w")).toBeUndefined();
 	});
 
-	it("returns undefined for 'f' (not an altSlow binding)", () => {
-		expect(getAltSlowConflict("f")).toBeUndefined();
+	it("returns undefined for 'Alt+f' (not an altSlow binding)", () => {
+		expect(getAltSlowConflict("Alt+f")).toBeUndefined();
 	});
 
-	it("returns undefined for 'q' (has binding but no altSlow)", () => {
-		expect(getAltSlowConflict("q")).toBeUndefined();
+	it("returns undefined for 'Alt+q' (has binding but no altSlow)", () => {
+		expect(getAltSlowConflict("Alt+q")).toBeUndefined();
 	});
 
 	it("returns undefined for empty string", () => {
@@ -160,7 +157,7 @@ describe("getAltSlowConflict", () => {
 	});
 
 	it("returned def has altSlow: true", () => {
-		const result = getAltSlowConflict("a");
+		const result = getAltSlowConflict("Alt+a");
 		expect(result).toBeDefined();
 		expect(result!.altSlow).toBe(true);
 	});
