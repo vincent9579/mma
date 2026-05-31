@@ -59,6 +59,13 @@ export function setUserFieldDefs(defs: Record<string, ExtraFieldDef>) {
 	userDefs = defs;
 }
 
+/** Merge auto-registered/inferred defs into the user layer (e.g. after a mutation
+ *  discovers new extra keys). Existing entries win, so user edits and previously-loaded
+ *  defs are never clobbered. Keeps the registry the live source of truth without a reload. */
+export function mergeUserFieldDefs(defs: Record<string, ExtraFieldDef>) {
+	userDefs = { ...defs, ...userDefs };
+}
+
 /** Clear per-map state on map close. Plugin defs persist across maps. */
 export function resetForMapChange() {
 	userDefs = {};

@@ -753,8 +753,9 @@ export type MapSettings = {
  *  Unified response for every mutation IPC. Bundles the store status, render delta,
  *  optional selection sync, optional newly-discovered extra-field keys, and optional
  *  updated tags. JS applies all of these atomically to stay in sync with the Rust state.
- *  `new_field_keys` carries only keys discovered for the first time in this mutation --
- *  field metadata (type, label) is resolved on the JS side via the field-def registry.
+ *  `new_field_defs` carries the inferred/known field definitions for extra-field keys
+ *  discovered for the first time in this mutation. JS merges them straight into the
+ *  field-def registry, so field metadata is live without a reload.
  */
 export type MutationResult = MutationResult_Serialize | MutationResult_Deserialize;
 
@@ -762,13 +763,14 @@ export type MutationResult = MutationResult_Serialize | MutationResult_Deseriali
  *  Unified response for every mutation IPC. Bundles the store status, render delta,
  *  optional selection sync, optional newly-discovered extra-field keys, and optional
  *  updated tags. JS applies all of these atomically to stay in sync with the Rust state.
- *  `new_field_keys` carries only keys discovered for the first time in this mutation --
- *  field metadata (type, label) is resolved on the JS side via the field-def registry.
+ *  `new_field_defs` carries the inferred/known field definitions for extra-field keys
+ *  discovered for the first time in this mutation. JS merges them straight into the
+ *  field-def registry, so field metadata is live without a reload.
  */
 export type MutationResult_Deserialize = {
 	delta: RenderDelta_Deserialize,
 	selectionSync: SelectionSync | null,
-	newFieldKeys: string[] | null,
+	newFieldDefs: { [key in string]: ExtraFieldDef } | null,
 	tags: { [key in number]: Tag } | null,
 } & StoreStatus;
 
@@ -776,13 +778,14 @@ export type MutationResult_Deserialize = {
  *  Unified response for every mutation IPC. Bundles the store status, render delta,
  *  optional selection sync, optional newly-discovered extra-field keys, and optional
  *  updated tags. JS applies all of these atomically to stay in sync with the Rust state.
- *  `new_field_keys` carries only keys discovered for the first time in this mutation --
- *  field metadata (type, label) is resolved on the JS side via the field-def registry.
+ *  `new_field_defs` carries the inferred/known field definitions for extra-field keys
+ *  discovered for the first time in this mutation. JS merges them straight into the
+ *  field-def registry, so field metadata is live without a reload.
  */
 export type MutationResult_Serialize = {
 	delta: RenderDelta_Serialize,
 	selectionSync: SelectionSync | null,
-	newFieldKeys: string[] | null,
+	newFieldDefs: { [key in string]: ExtraFieldDef } | null,
 	tags: { [key in number]: Tag } | null,
 } & StoreStatus;
 

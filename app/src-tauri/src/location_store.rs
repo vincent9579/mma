@@ -360,7 +360,7 @@ impl Store {
             status: self.store_status(),
             delta,
             selection_sync,
-            new_field_keys: None,
+            new_field_defs: None,
             tags,
         }
     }
@@ -1126,8 +1126,9 @@ pub struct SelectionSync {
 /// Unified response for every mutation IPC. Bundles the store status, render delta,
 /// optional selection sync, optional newly-discovered extra-field keys, and optional
 /// updated tags. JS applies all of these atomically to stay in sync with the Rust state.
-/// `new_field_keys` carries only keys discovered for the first time in this mutation --
-/// field metadata (type, label) is resolved on the JS side via the field-def registry.
+/// `new_field_defs` carries the inferred/known field definitions for extra-field keys
+/// discovered for the first time in this mutation. JS merges them straight into the
+/// field-def registry, so field metadata is live without a reload.
 #[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MutationResult {
@@ -1135,7 +1136,7 @@ pub struct MutationResult {
     pub status: StoreStatus,
     pub delta: RenderDelta,
     pub selection_sync: Option<SelectionSync>,
-    pub new_field_keys: Option<Vec<String>>,
+    pub new_field_defs: Option<HashMap<String, map_meta::ExtraFieldDef>>,
     pub tags: Option<HashMap<u32, Tag>>,
 }
 
@@ -1402,8 +1403,8 @@ pub fn store_close_map(
 
 /// Scan `extra` JSON maps for keys not yet in `known_field_keys`, persist inferred
 /// field definitions to SQLite (for export and cross-session survival), and return
-/// the newly-discovered keys to JS via `result.new_field_keys`. Field *metadata*
-/// (type, label) is resolved on the JS side; Rust only tracks key existence.
+/// those definitions to JS via `result.new_field_defs` so they land in the live
+/// field-def registry immediately (no reload needed).
 pub(crate) fn auto_register_extras(
     app: &tauri::AppHandle,
     store: &mut Store,
@@ -1412,16 +1413,15 @@ pub(crate) fn auto_register_extras(
 ) {
     if extras.is_empty() { return; }
     if let Some(new_defs) = map_meta::auto_register_field_defs(&store.known_field_keys, extras) {
-        let new_keys: Vec<String> = new_defs.keys().cloned().collect();
         if let Some(map_id) = &store.map_id {
             if let Ok(conn) = fast_io::open_db(app) {
                 let _ = map_meta::persist_field_defs(&conn, map_id, &new_defs);
             }
         }
-        for key in &new_keys {
+        for key in new_defs.keys() {
             store.known_field_keys.insert(key.clone());
         }
-        result.new_field_keys = Some(new_keys);
+        result.new_field_defs = Some(new_defs);
     }
 }
 
@@ -2374,7 +2374,7 @@ pub fn store_create_tags(
             status: store.store_status(),
             delta: RenderDelta::default(),
             selection_sync: None,
-            new_field_keys: None,
+            new_field_defs: None,
             tags: Some(store.tags.all.clone()),
         })
     })
@@ -2400,7 +2400,7 @@ pub fn store_reorder_tags(
             status: store.store_status(),
             delta: RenderDelta::default(),
             selection_sync: None,
-            new_field_keys: None,
+            new_field_defs: None,
             tags: Some(store.tags.all.clone()),
         })
     })

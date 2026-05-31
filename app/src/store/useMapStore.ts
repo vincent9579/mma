@@ -13,7 +13,7 @@ import { log } from "@/lib/util/log";
 import { trace } from "@/lib/util/debug";
 import { mmaBufUrl } from "@/lib/util/util";
 import { getTriggeredProviders } from "@/lib/data/fieldDefs.add";
-import { setUserFieldDefs, resetForMapChange } from "@/lib/data/fieldDefRegistry";
+import { setUserFieldDefs, mergeUserFieldDefs, resetForMapChange } from "@/lib/data/fieldDefRegistry";
 import type { RenderDelta } from "@/lib/render/CellManager";
 
 /** Minimal pub/sub bus. `.on()` returns an unsubscribe function. */
@@ -113,7 +113,7 @@ let tagCounts: Record<number, number> = {};
 let undoRedoState = { canUndo: false, canRedo: false };
 /** Extra-field keys known to exist in location data on the current map.
  *  Populated from `StoreStatus.knownFieldKeys` on map open, extended
- *  incrementally via `MutationResult.newFieldKeys`. */
+ *  incrementally via `MutationResult.newFieldDefs`. */
 let knownFieldKeys = new Set<string>();
 
 export const useTagCounts = makeStoreHook(() => tagCounts);
@@ -436,15 +436,16 @@ export async function setMapExtraFields(fields: Record<string, ExtraFieldDef>) {
 /** Sync JS-side state (location count, undo/redo, tag counts, field keys, selections) from a Rust MutationResult. */
 function syncMutationResult(r: MutationResult) {
 	if (!currentMap) return;
-	const hasNewKeys = r.newFieldKeys != null && r.newFieldKeys.length > 0;
+	const hasNewDefs = r.newFieldDefs != null && Object.keys(r.newFieldDefs).length > 0;
 	const needsNotify =
 		currentMap.meta.locationCount !== r.locationCount ||
 		undoRedoState.canUndo !== r.canUndo ||
 		undoRedoState.canRedo !== r.canRedo ||
-		hasNewKeys ||
+		hasNewDefs ||
 		r.tags != null;
-	if (hasNewKeys) {
-		for (const key of r.newFieldKeys!) knownFieldKeys.add(key);
+	if (hasNewDefs) {
+		for (const key of Object.keys(r.newFieldDefs!)) knownFieldKeys.add(key);
+		mergeUserFieldDefs(r.newFieldDefs!);
 	}
 	currentMap = {
 		...currentMap,

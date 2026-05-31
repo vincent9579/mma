@@ -382,23 +382,37 @@ describe("Extra field definitions", () => {
 			]);
 		});
 
-		const extra = await withApi(async (api) => api.getCurrentMap()?.meta.extra);
-		expect(extra!.fields!.plumbus.type).toBe("number");
-		expect(extra!.fields!.captured.type).toBe("month");
-		expect(extra!.fields!.note.type).toBe("string");
+		const defs = await withApi(async (api) => ({
+			plumbus: api.getFieldDef("plumbus"),
+			captured: api.getFieldDef("captured"),
+			note: api.getFieldDef("note"),
+		}));
+		expect(defs.plumbus?.type).toBe("number");
+		expect(defs.captured?.type).toBe("month");
+		expect(defs.note?.type).toBe("string");
 	});
 
-	it("auto-registered field defs use known labels for enrichment keys", async () => {
+	it("known enrichment keys are auto-registered and resolve their known labels", async () => {
 		await withApi(async (api) => {
 			await api.addLocations([
 				api.createLocation({ lat: 0, lng: 0, extra: { countryCode: "US", imageDate: "2023-05" } }),
 			]);
 		});
 
-		const extra = await withApi(async (api) => api.getCurrentMap()?.meta.extra);
-		expect(extra!.fields!.countryCode.label).toBe("Country code");
-		expect(extra!.fields!.imageDate.type).toBe("month");
-		expect(extra!.fields!.imageDate.label).toBe("Image date");
+		const known = await withApi(async (api) => ({
+			countryCode: api.getKnownFieldKeys().has("countryCode"),
+			imageDate: api.getKnownFieldKeys().has("imageDate"),
+		}));
+		expect(known.countryCode).toBe(true);
+		expect(known.imageDate).toBe(true);
+
+		const defs = await withApi(async (api) => ({
+			countryCode: api.getFieldDef("countryCode"),
+			imageDate: api.getFieldDef("imageDate"),
+		}));
+		expect(defs.countryCode?.label).toBe("Country code");
+		expect(defs.imageDate?.type).toBe("month");
+		expect(defs.imageDate?.label).toBe("Image date");
 	});
 
 	it("auto-registered field defs persist across map close/reopen", async () => {
@@ -415,6 +429,27 @@ describe("Extra field definitions", () => {
 		const extra = await withApi(async (api) => api.getCurrentMap()?.meta.extra);
 		expect(extra!.fields!.fleeb).toBeDefined();
 		expect(extra!.fields!.fleeb.type).toBe("number");
+	});
+
+	it("auto-registered def is identical live and after reopen (single source of truth)", async () => {
+		await withApi(async (api) => {
+			await api.addLocations([
+				api.createLocation({ lat: 0, lng: 0, extra: { roundtrip: "2024-07" } }),
+			]);
+		});
+
+		// Live: the inferred def is in the registry immediately (YYYY-MM -> month).
+		const live = await withApi(async (api) => api.getFieldDef("roundtrip"));
+		expect(live?.type).toBe("month");
+
+		// Persisted: reopen and re-resolve -- memory (live merge) and disk must agree.
+		await flushAndWait();
+		await closeMap();
+		await openMap(mapId);
+
+		const reloaded = await withApi(async (api) => api.getFieldDef("roundtrip"));
+		expect(reloaded?.type).toBe(live?.type);
+		expect(reloaded?.label ?? null).toBe(live?.label ?? null);
 	});
 
 	it("does not re-register already known keys", async () => {

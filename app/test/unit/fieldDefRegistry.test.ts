@@ -4,6 +4,7 @@ import {
 	getAllFieldDefs,
 	registerPluginFieldDefs,
 	setUserFieldDefs,
+	mergeUserFieldDefs,
 	resetForMapChange,
 } from "@/lib/data/fieldDefRegistry";
 
@@ -136,5 +137,27 @@ describe("priority order", () => {
 
 		resetForMapChange();
 		expect(getFieldDef("altitude")!.label).toBe("Plugin alt");
+	});
+});
+
+describe("mergeUserFieldDefs (auto-register merge)", () => {
+	it("adds new defs to the live user layer", () => {
+		mergeUserFieldDefs({ plumbus: { type: "number", label: "Plumbus" } });
+		expect(getFieldDef("plumbus")!.type).toBe("number");
+	});
+
+	it("does not clobber an existing user def -- existing wins", () => {
+		setUserFieldDefs({ plumbus: { type: "string", label: "User edited" } });
+		// A later auto-registered def for the same key must NOT overwrite the user's edit.
+		mergeUserFieldDefs({ plumbus: { type: "number", label: "Inferred" } });
+		expect(getFieldDef("plumbus")!.type).toBe("string");
+		expect(getFieldDef("plumbus")!.label).toBe("User edited");
+	});
+
+	it("keeps existing defs while merging in new keys", () => {
+		setUserFieldDefs({ existing: { type: "string", label: "Existing" } });
+		mergeUserFieldDefs({ fresh: { type: "number", label: "Fresh" } });
+		expect(getFieldDef("existing")!.label).toBe("Existing");
+		expect(getFieldDef("fresh")!.label).toBe("Fresh");
 	});
 });
