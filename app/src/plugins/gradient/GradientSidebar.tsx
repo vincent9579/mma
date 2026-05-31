@@ -3,7 +3,7 @@ import { Icon } from "@/components/primitives/Icon";
 import { mdiArrowLeft } from "@mdi/js";
 import type { ExtraFieldDef } from "@/types";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
-import { compareNatural } from "@/lib/util/util";
+import { compareNatural, bucketize } from "@/lib/util/util";
 import { gradientColor, isNumericField, fieldScale } from "./gradientMath";
 import "./gradient.css";
 
@@ -113,32 +113,21 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 			await MMA.resetSelections();
 
 			if (fieldOpt.numeric) {
-				// Numeric: compute range, create "between" filter buckets
-				const nums = values.map((v) => Number(v.raw)).filter((n) => !isNaN(n));
-				if (nums.length === 0) return;
+				// Numeric: split the range into equal-width "between" buckets, colored by position
+				const buckets = bucketize(values.map((v) => Number(v.raw)), bucketCount);
+				if (!buckets) return;
 
-				let min = Infinity, max = -Infinity;
-				for (const n of nums) { if (n < min) min = n; if (n > max) max = n; }
-				if (min === max) return;
-
-				const step = (max - min) / bucketCount;
-				const props = [];
-				const colors: { key: string; color: [number, number, number] }[] = [];
-				for (let i = 0; i < bucketCount; i++) {
-					const lo = min + step * i;
-					const hi = i === bucketCount - 1 ? max : min + step * (i + 1);
-					props.push({
-						type: "Filter" as const,
-						field: fieldKey,
-						op: "between" as const,
-						value: lo,
-						value2: hi,
-					});
-					colors.push({
-						key: `filter:${fieldKey}:between:${lo}:${hi}`,
-						color: gradientColor(preset.stops, i / (bucketCount - 1)),
-					});
-				}
+				const props = buckets.bounds.map(([lo, hi]) => ({
+					type: "Filter" as const,
+					field: fieldKey,
+					op: "between" as const,
+					value: lo,
+					value2: hi,
+				}));
+				const colors = buckets.bounds.map(([lo, hi], i) => ({
+					key: `filter:${fieldKey}:between:${lo}:${hi}`,
+					color: gradientColor(preset.stops, i / (bucketCount - 1)),
+				}));
 				await MMA.addSelections(props);
 				MMA.setSelectionColors(colors);
 			} else {

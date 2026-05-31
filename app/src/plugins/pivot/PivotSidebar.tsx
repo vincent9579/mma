@@ -10,7 +10,7 @@ import { Icon } from "@/components/primitives/Icon";
 import { mdiArrowLeft } from "@mdi/js";
 import type { ExtraFieldDef } from "@/types";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
-import { compareNatural } from "@/lib/util/util";
+import { bucketize, compareNatural } from "@/lib/util/util";
 import type { LocationStore } from "@/api";
 import "./pivot.css";
 
@@ -44,6 +44,7 @@ async function computePivot(
 	rowSource: RowSource,
 	fieldKey: string,
 	fieldDef: ExtraFieldDef | undefined,
+	bucketCount: number | null,
 ): Promise<PivotData | null> {
 	const map = MMA.getCurrentMap();
 	if (!map) return null;
@@ -92,9 +93,23 @@ async function computePivot(
 
 	const isTags = fieldKey === TAGS_FIELD_KEY;
 	const tagMap = map.meta.tags;
+	const isNumeric = !isTags && (fieldDef?.type === "number" || fieldDef?.type === "date");
 
-	// Build field index: locId -> field value(s)
-	// Tags are multi-valued so we use string[] per location
+	// Numeric fields explode into one column per distinct value; bucket them into a
+	// fixed histogram of ranges when a bucket count is given.
+	const buckets =
+		isNumeric && bucketCount
+			? bucketize(
+					allLocs.flatMap((loc) => {
+						const v = loc.extra?.[fieldKey];
+						const n = v == null ? NaN : Number(v);
+						return Number.isFinite(n) ? [n] : [];
+					}),
+					bucketCount,
+				)
+			: null;
+
+	// Build field index: locId -> field value(s). Tags are multi-valued.
 	const fieldIndex = new Map<number, string[]>();
 	for (const loc of allLocs) {
 		if (isTags) {
@@ -103,13 +118,21 @@ async function computePivot(
 			}
 		} else {
 			const val = loc.extra?.[fieldKey];
-			if (val != null) fieldIndex.set(loc.id, [String(val)]);
+			if (val == null) continue;
+			if (buckets) {
+				const n = Number(val);
+				if (Number.isFinite(n)) fieldIndex.set(loc.id, [buckets.labels[buckets.bucketIndex(n)]]);
+			} else {
+				fieldIndex.set(loc.id, [String(val)]);
+			}
 		}
 	}
 
 	// Discover columns
 	let columns: string[];
-	if (!isTags && fieldDef?.values && fieldDef.values.length > 0) {
+	if (buckets) {
+		columns = [...buckets.labels];
+	} else if (!isTags && fieldDef?.values && fieldDef.values.length > 0) {
 		columns = [...fieldDef.values];
 	} else {
 		const seen = new Set<string>();
@@ -166,6 +189,7 @@ async function computePivot(
 export function PivotSidebar({ onClose }: { onClose: () => void }) {
 	const [rowSource, setRowSource] = useState<RowSource>("active");
 	const [fieldKey, setFieldKey] = useState("");
+	const [bucketCount, setBucketCount] = useState<number | null>(10);
 	const [data, setData] = useState<PivotData | null>(null);
 	const [loading, setLoading] = useState(false);
 
@@ -188,17 +212,20 @@ export function PivotSidebar({ onClose }: { onClose: () => void }) {
 		setFieldKey(cam ? cam.key : fields[0].key);
 	}, [fields, fieldKey]);
 
+	const currentDef = fields.find((f) => f.key === fieldKey)?.def;
+	const isNumericField = currentDef?.type === "number" || currentDef?.type === "date";
+
 	const recompute = useCallback(async () => {
 		if (!fieldKey) return;
 		const fieldDef = fields.find((f) => f.key === fieldKey)?.def;
 		setLoading(true);
 		try {
-			const result = await computePivot(rowSource, fieldKey, fieldDef);
+			const result = await computePivot(rowSource, fieldKey, fieldDef, bucketCount);
 			setData(result);
 		} finally {
 			setLoading(false);
 		}
-	}, [rowSource, fieldKey, fields]);
+	}, [rowSource, fieldKey, fields, bucketCount]);
 
 	const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const debouncedRecompute = useCallback(() => {
@@ -259,6 +286,24 @@ export function PivotSidebar({ onClose }: { onClose: () => void }) {
 						))}
 					</select>
 				</label>
+				{isNumericField && (
+					<label className="pivot-sidebar__control">
+						<span className="pivot-sidebar__control-label">Bucket numeric values</span>
+						<select
+							className="nselect"
+							value={bucketCount ?? "off"}
+							onChange={(e) =>
+								setBucketCount(e.target.value === "off" ? null : Number(e.target.value))
+							}
+						>
+							<option value="off">Off</option>
+							<option value="5">5 buckets</option>
+							<option value="10">10 buckets</option>
+							<option value="15">15 buckets</option>
+							<option value="20">20 buckets</option>
+						</select>
+					</label>
+				)}
 			</div>
 
 			<div className="pivot-sidebar__body">

@@ -31,8 +31,15 @@
 	color: var(--text-secondary);
 }
 
+/* min-width:0 lets the panel shrink to its flex track so a wide table scrolls
+   inside __table-wrap instead of widening the sidebar (and the whole page). */
+.pivot-sidebar {
+	min-width: 0;
+}
+
 .pivot-sidebar__body {
 	flex: 1;
+	min-width: 0;
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { isFiniteNumber, fovToZoom, compareNatural } from "@/lib/util/util";
+import { isFiniteNumber, fovToZoom, compareNatural, bucketize } from "@/lib/util/util";
 import { relativeTime } from "@/lib/util/format";
 
 describe("isFiniteNumber", () => {
@@ -61,6 +61,36 @@ describe("compareNatural", () => {
 
 	it("orders plain strings lexically", () => {
 		expect(["gen4", "gen2", "gen1"].sort(compareNatural)).toEqual(["gen1", "gen2", "gen4"]);
+	});
+});
+
+describe("bucketize", () => {
+	it("splits a range into equal-width buckets", () => {
+		const b = bucketize([0, 25, 50, 75, 100], 5)!;
+		expect(b.count).toBe(5);
+		expect(b.bounds[0]).toEqual([0, 20]);
+		expect(b.bounds[4][1]).toBe(100);
+	});
+
+	it("assigns values to the right bucket and clamps the ends", () => {
+		const b = bucketize([0, 100], 10)!;
+		expect(b.bucketIndex(0)).toBe(0);
+		expect(b.bucketIndex(100)).toBe(9);
+		expect(b.bucketIndex(55)).toBe(5);
+		expect(b.bucketIndex(-999)).toBe(0);
+		expect(b.bucketIndex(999)).toBe(9);
+	});
+
+	it("ignores non-finite values", () => {
+		const b = bucketize([NaN, 0, Infinity, 10], 2)!;
+		expect(b.min).toBe(0);
+		expect(b.max).toBe(10);
+	});
+
+	it("returns null when there is no spread", () => {
+		expect(bucketize([5, 5, 5], 4)).toBeNull();
+		expect(bucketize([], 4)).toBeNull();
+		expect(bucketize([1, 2, 3], 0)).toBeNull();
 	});
 });
 
