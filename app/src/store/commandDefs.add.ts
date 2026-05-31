@@ -16,6 +16,8 @@ import {
 	mdiHistory,
 	mdiEye,
 	mdiTagRemove,
+	mdiTagPlus,
+	mdiTrashCanOutline,
 	mdiDatabaseRemoveOutline,
 	mdiFindReplace,
 } from "@mdi/js";
@@ -37,6 +39,10 @@ import {
 	getUndoRedoState,
 	deleteTags,
 	getSelections,
+	getSelectedLocationIds,
+	createTags,
+	addTagToLocations,
+	removeLocations,
 	getTagCounts,
 	hasCommitDiff,
 } from "./useMapStore";
@@ -156,6 +162,34 @@ registerCommand({
 	group: "Selections",
 	defaultBinding: "Mod+d",
 	execute: resetSelections,
+});
+
+registerCommand({
+	id: "selection-save-as-tag",
+	label: "Save selection as tag",
+	icon: mdiTagPlus,
+	group: "Selections",
+	enabled: () => getSelectedLocationIds().size > 0,
+	execute: async () => {
+		const ids = getSelectedLocationIds();
+		if (ids.size === 0) return;
+		const name = window.prompt("Tag name")?.trim();
+		if (!name) return;
+		const [tag] = await createTags([name]);
+		await addTagToLocations(tag.id, [...ids]);
+	},
+});
+
+registerCommand({
+	id: "selection-delete-locations",
+	label: "Delete selected locations",
+	icon: mdiTrashCanOutline,
+	group: "Selections",
+	enabled: () => getSelectedLocationIds().size > 0,
+	execute: () => {
+		const ids = getSelectedLocationIds();
+		if (ids.size > 0) removeLocations(ids);
+	},
 });
 
 registerCommand({
