@@ -1,0 +1,13 @@
+# Dev overlay for the e2e image: live-mounts the test specs, wdio config, and runner
+# scripts into the prebuilt container so test-only changes run WITHOUT a rebuild.
+# (Rebuild is still required for app source changes -- the binary is baked in.)
+#
+# Use via scripts/e2e.sh, or directly:
+#   docker compose -f docker-compose.e2e.yml -f docker-compose.e2e.dev.yml run --rm e2e \
+#     sh /repo/scripts/docker-e2e.sh --spec test/e2e/foo.test.ts
+services:
+  e2e:
+    volumes:
+      - ./app/test:/repo/app/test
+      - ./app/wdio.conf.ts:/repo/app/wdio.conf.ts
+      - ./scripts:/repo/scripts

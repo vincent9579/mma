@@ -10,7 +10,10 @@ if (!isWorker) {
 	const logDir = path.resolve("./test/logs");
 	fs.mkdirSync(logDir, { recursive: true });
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-	const logPath = path.join(logDir, `e2e-${timestamp}.txt`);
+	// Random suffix keeps parallel shards (separate containers, shared logs mount)
+	// from clobbering one another's log file.
+	const suffix = Math.random().toString(36).slice(2, 7);
+	const logPath = path.join(logDir, `e2e-${timestamp}-${suffix}.txt`);
 	logStream = fs.createWriteStream(logPath, { encoding: "utf-8" });
 	process.env.MMA_E2E_LOG_PATH = logPath;
 

@@ -18,6 +18,7 @@ fi
 
 echo "tauri-driver ready on :4444"
 
-# Run tests
+# Run tests. Extra args (e.g. --spec <file>, --shard <i>/<n>) pass straight to wdio;
+# no args runs the full suite.
 cd /repo/app
-npx wdio run wdio.conf.ts
+npx wdio run wdio.conf.ts "$@"
