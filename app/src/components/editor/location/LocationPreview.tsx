@@ -17,6 +17,7 @@ import {
 	updateLocation,
 	patchLocationExtra,
 	getActiveLocation,
+	fetchLocation,
 	getCurrentMap,
 	removeLocations,
 	duplicateLocation,
@@ -540,15 +541,16 @@ let singletonPano: google.maps.StreetViewPanorama | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- debug helper
 (window as any).__mma_pano = () => singletonPano;
 
-export function loadSeenPano(entry: SeenEntry) {
+export async function loadSeenPano(entry: SeenEntry) {
 	seenSkipNext(entry.panoId);
 
-	const existing = entry.locationId;
+	// Resolve to a live location; recreate from the entry if the id is stale/deleted.
+	const existing = entry.locationId != null ? await fetchLocation(entry.locationId) : null;
 
 	if (existing) {
 		const active = getActiveLocation();
-		if (active?.id !== existing) {
-			setActiveLocation(existing);
+		if (active?.id !== existing.id) {
+			setActiveLocation(existing.id);
 			return;
 		}
 	} else {
