@@ -114,8 +114,10 @@ export function useHotkey(
 				}
 			}
 		}
-		document.addEventListener("keydown", handler);
-		return () => document.removeEventListener("keydown", handler);
+		// Capture phase: global hotkeys must fire before focused widgets (e.g. the SV pano
+		// viewer) that stopPropagation arrow/wasd keys in their own capture handler.
+		document.addEventListener("keydown", handler, true);
+		return () => document.removeEventListener("keydown", handler, true);
 	}, [options.enableInInputs]);
 }
 
@@ -170,12 +172,12 @@ export function useHoldHotkey(hotkey: string, onHold: () => void, onRelease?: ()
 			held = false;
 		}
 
-		document.addEventListener("keydown", onKeyDown);
-		document.addEventListener("keyup", onKeyUp);
+		document.addEventListener("keydown", onKeyDown, true);
+		document.addEventListener("keyup", onKeyUp, true);
 		window.addEventListener("blur", onBlur);
 		return () => {
-			document.removeEventListener("keydown", onKeyDown);
-			document.removeEventListener("keyup", onKeyUp);
+			document.removeEventListener("keydown", onKeyDown, true);
+			document.removeEventListener("keyup", onKeyUp, true);
 			window.removeEventListener("blur", onBlur);
 			if (rafId) cancelAnimationFrame(rafId);
 		};
@@ -218,7 +220,7 @@ export function useCommandHotkeys() {
 				}
 			}
 		}
-		document.addEventListener("keydown", handler);
-		return () => document.removeEventListener("keydown", handler);
+		document.addEventListener("keydown", handler, true);
+		return () => document.removeEventListener("keydown", handler, true);
 	}, []);
 }
