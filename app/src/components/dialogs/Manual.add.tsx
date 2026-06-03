@@ -1907,18 +1907,21 @@ export function Manual({ onClose, initialChapterId }: { onClose: () => void; ini
 					{chapter.body}
 				</article>
 				<nav className="manual__nav">
-					<button className="manual__nav-btn" disabled={index === 0} onClick={() => go(index - 1)}>
-						<Icon path={mdiChevronLeft} size={18} />
-						{index > 0 ? CHAPTERS[index - 1].title : "Previous"}
-					</button>
-					<button
-						className="manual__nav-btn"
-						disabled={index === CHAPTERS.length - 1}
-						onClick={() => go(index + 1)}
-					>
-						{index < CHAPTERS.length - 1 ? CHAPTERS[index + 1].title : "Next"}
-						<Icon path={mdiChevronRight} size={18} />
-					</button>
+					{index > 0 && (
+						<button className="manual__nav-btn" onClick={() => go(index - 1)}>
+							<Icon path={mdiChevronLeft} size={18} />
+							{CHAPTERS[index - 1].title}
+						</button>
+					)}
+					{index < CHAPTERS.length - 1 && (
+						<button
+							className="manual__nav-btn manual__nav-btn--next"
+							onClick={() => go(index + 1)}
+						>
+							{CHAPTERS[index + 1].title}
+							<Icon path={mdiChevronRight} size={18} />
+						</button>
+					)}
 				</nav>
 			</main>
 		</div>

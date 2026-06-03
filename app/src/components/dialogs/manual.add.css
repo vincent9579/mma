@@ -250,7 +250,7 @@
 	max-width: 48%;
 }
 
-.manual__nav-btn:last-child {
+.manual__nav-btn--next {
 	margin-left: auto;
 }
 
