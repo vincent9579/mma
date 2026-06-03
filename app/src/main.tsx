@@ -12,12 +12,23 @@ import "@/api";
 import "@/store/commandDefs.add";
 
 async function boot() {
+	const t0 = performance.now();
+	let tPrev = t0;
+	const mark = (label: string) => {
+		const now = performance.now();
+		log.info(`[boot] ${label}: +${(now - tPrev).toFixed(0)}ms`);
+		tPrev = now;
+	};
+
 	await initLogging();
+	mark("initLogging");
 	await initStore();
+	mark("initStore");
 
 	const hashMatch = location.hash.match(/^#map\/(.+)$/);
 	if (hashMatch) {
 		await openMap(hashMatch[1], false);
+		mark("openMap");
 	}
 
 	if (window.MMA) window.MMA.ready = true;
@@ -45,8 +56,20 @@ async function boot() {
 	});
 
 	createRoot(document.getElementById("root")!).render(<App />);
+	mark("render");
 
 	getCurrentWindow().show();
+	const jsTotal = performance.now();
+	mark("show");
+
+	cmd
+		.appReady()
+		.then((rustTotal) =>
+			log.info(
+				`[boot] js-load(nav->boot)=${t0.toFixed(0)}ms js-total=${jsTotal.toFixed(0)}ms rust-total=${rustTotal}ms pre-js(webview+bundle)=${(rustTotal - jsTotal).toFixed(0)}ms`,
+			),
+		)
+		.catch(() => {});
 
 	setTimeout(checkForUpdate, 5000);
 }

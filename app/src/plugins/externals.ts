@@ -2,29 +2,26 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as ReactJSXRuntime from "react/jsx-runtime";
 import * as ReactJSXDevRuntime from "react/jsx-dev-runtime";
-import * as DeckCore from "@deck.gl/core";
-import * as DeckLayers from "@deck.gl/layers";
-import * as DeckGoogleMaps from "@deck.gl/google-maps";
-import * as LumaCore from "@luma.gl/core";
-import * as LumaEngine from "@luma.gl/engine";
-import * as LumaShadertools from "@luma.gl/shadertools";
-import * as LumaWebGL from "@luma.gl/webgl";
 
 const eager: Record<string, unknown> = {
 	react: React,
 	"react-dom": ReactDOM,
 	"react/jsx-runtime": ReactJSXRuntime,
 	"react/jsx-dev-runtime": ReactJSXDevRuntime,
-	"@deck.gl/core": DeckCore,
-	"@deck.gl/layers": DeckLayers,
-	"@deck.gl/google-maps": DeckGoogleMaps,
-	"@luma.gl/core": LumaCore,
-	"@luma.gl/engine": LumaEngine,
-	"@luma.gl/shadertools": LumaShadertools,
-	"@luma.gl/webgl": LumaWebGL,
 };
 
-const lazy: Record<string, () => Promise<unknown>> = {};
+// deck.gl/luma.gl are kept out of the initial bundle (split into their own chunk,
+// shared with the lazily-loaded MapEditor). Preloaded before user plugins import,
+// so plugin-side synchronous __mma_require still resolves them.
+const lazy: Record<string, () => Promise<unknown>> = {
+	"@deck.gl/core": () => import("@deck.gl/core"),
+	"@deck.gl/layers": () => import("@deck.gl/layers"),
+	"@deck.gl/google-maps": () => import("@deck.gl/google-maps"),
+	"@luma.gl/core": () => import("@luma.gl/core"),
+	"@luma.gl/engine": () => import("@luma.gl/engine"),
+	"@luma.gl/shadertools": () => import("@luma.gl/shadertools"),
+	"@luma.gl/webgl": () => import("@luma.gl/webgl"),
+};
 
 const loaded: Record<string, unknown> = {};
 

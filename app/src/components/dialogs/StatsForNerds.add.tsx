@@ -22,12 +22,14 @@ interface Stats {
 	viewport: string;
 	devicePixelRatio: number;
 	memory: string;
+	startup: string;
 	uptime: string;
 	panoSingleton: boolean;
 }
 
 async function gatherStats(): Promise<Stats> {
 	const dbStats = await cmd.storeDbStats();
+	const startupMs = await cmd.appReady();
 
 	const bytes = dbStats.dbSizeBytes;
 	const dbSize =
@@ -85,6 +87,7 @@ async function gatherStats(): Promise<Stats> {
 		viewport: `${window.innerWidth}x${window.innerHeight}`,
 		devicePixelRatio: window.devicePixelRatio,
 		memory: mem,
+		startup: `${startupMs} ms`,
 		uptime,
 		panoSingleton: !!google?.maps?.StreetViewPanorama,
 	};
@@ -183,6 +186,7 @@ export function StatsForNerds({ onClose }: { onClose: () => void }) {
 									["DPR", stats.devicePixelRatio],
 									["Viewport", stats.viewport],
 									["JS heap", stats.memory],
+									["Startup", stats.startup],
 									["Uptime", stats.uptime],
 									["User agent", stats.userAgent],
 								] as [string, string | number][]

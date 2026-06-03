@@ -3,7 +3,7 @@
  * The MMA API is defined in @/api.ts and exposed as window.MMA.
  */
 
-import "./externals";
+import { preloadModules, getAvailableExternals } from "./externals";
 import { setPendingManifest, getPlugins, activatePlugin, type PluginManifest } from "./registry";
 import { cmd } from "@/lib/commands";
 import { log } from "@/lib/util/log";
@@ -20,6 +20,9 @@ async function loadCorePlugins() {
 }
 
 async function loadUserPlugin(m: PluginManifest) {
+	// Lazy externals (deck.gl/luma.gl) must be resolved before the plugin's
+	// synchronous __mma_require calls run at import time. Idempotent.
+	await preloadModules(getAvailableExternals());
 	const appDataDir = await cmd.getAppDataDir();
 	setPendingManifest(m);
 	try {

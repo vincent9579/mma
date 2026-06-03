@@ -11,6 +11,7 @@ export const commands = {
 	writeTempFile: (name: string, content: string) => typedError<string, string>(__TAURI_INVOKE("write_temp_file", { name, content })),
 	/**  Read a file from disk as UTF-8 text. Used by JS to read temp files and plugin sources. */
 	readFile: (path: string) => typedError<string, string>(__TAURI_INVOKE("read_file", { path })),
+	appReady: () => __TAURI_INVOKE<number>("app_ready"),
 	/**  Return the platform-specific app data directory path (e.g., `%LOCALAPPDATA%/app.map-making.local`). */
 	getAppDataDir: () => typedError<string, string>(__TAURI_INVOKE("get_app_data_dir")),
 	/**  Open the app data directory in the OS file explorer. */

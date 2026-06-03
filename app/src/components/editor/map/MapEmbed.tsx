@@ -41,6 +41,7 @@ import {
 	getCommitDiffPreview,
 	renderDeltaBus,
 	selBitmaskBus,
+	mapOpenMark,
 } from "@/store/useMapStore";
 import { loadOpenSV, google } from "@/lib/sv/opensv";
 import { useTrailVersion, getTrail } from "@/lib/sv/svTrail.add";
@@ -1088,6 +1089,7 @@ export function MapEmbed() {
 
 	useEffect(() => {
 		if (!containerRef.current || !map) return;
+		mapOpenMark("mounted");
 		let cancelled = false;
 		let rafId: number;
 
@@ -1143,6 +1145,10 @@ export function MapEmbed() {
 					setMapZoom(gMapRef.current?.getZoom() ?? 0);
 				});
 				setMapReady(true);
+				mapOpenMark("map-ready");
+				google.maps.event.addListenerOnce(gMapRef.current, "tilesloaded", () =>
+					mapOpenMark("tiles"),
+				);
 
 				rafId = requestAnimationFrame(() => {
 					if (cancelled) return;
@@ -1232,6 +1238,7 @@ export function MapEmbed() {
 				if (cancelled) return;
 
 				cellMgrRef.current.initFromBinary(buf);
+				mapOpenMark("markers");
 				t.end({
 					cells: cellMgrRef.current.cells.size,
 					total: cellMgrRef.current.totalCount,

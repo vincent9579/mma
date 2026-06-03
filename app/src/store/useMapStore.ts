@@ -299,8 +299,18 @@ export async function initStore() {
 	listen("map-list-changed", () => reloadMapList());
 }
 
+let mapOpenT0 = 0;
+let mapOpenSeen = new Set<string>();
+export function mapOpenMark(phase: string) {
+	if (mapOpenT0 === 0 || mapOpenSeen.has(phase)) return;
+	mapOpenSeen.add(phase);
+	log.info(`[map-open] ${phase}=${Math.round(performance.now() - mapOpenT0)}ms`);
+}
+
 // --- Actions ---
 export async function openMap(id: string, pushHistory = true) {
+	mapOpenT0 = performance.now();
+	mapOpenSeen = new Set();
 	if (autosaveTimer) {
 		clearTimeout(autosaveTimer);
 		autosaveTimer = null;
@@ -315,6 +325,7 @@ export async function openMap(id: string, pushHistory = true) {
 		try {
 			const openResult = await cmd.storeOpenMap(id);
 			t.step("store_open_map");
+			mapOpenMark("data");
 			tagCounts = openResult.tagCounts;
 			undoRedoState = { canUndo: openResult.canUndo, canRedo: openResult.canRedo };
 			knownFieldKeys = new Set(openResult.knownFieldKeys);

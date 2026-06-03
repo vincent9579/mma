@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
+import type { ComponentType } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
 import { useCurrentMap, openMap, closeMap, getCurrentMapId } from "@/store/useMapStore";
 import { MapList, BulkActions } from "@/components/map-list/MapList";
-import { MapEditor } from "@/components/editor/MapEditor";
 import { StatsForNerds } from "@/components/dialogs/StatsForNerds.add";
 import { SettingsPage } from "@/components/dialogs/SettingsPage.add";
 import { PluginMarketplace } from "@/components/dialogs/PluginMarketplace.add";
@@ -19,10 +19,19 @@ import { ToastContainer } from "@/components/primitives/Toast.add";
 import { useUpdateState, dismissUpdate, installUpdate, relaunchApp } from "@/lib/util/updateCheck";
 import "@/plugins";
 
+// Dynamic import (deck.gl/luma.gl out of the initial bundle) WITHOUT React.lazy/Suspense —
+// a Suspense boundary makes React 19 render the editor in a low-priority lane (~260ms/open).
+// We preload the chunk in the background and render it as a plain component in the urgent lane.
+const mapEditorModule = import("@/components/editor/MapEditor");
+
 const isEditorWindow = getCurrentWindow().label.startsWith("map-");
 
 export default function App() {
 	const map = useCurrentMap();
+	const [MapEditor, setMapEditor] = useState<ComponentType | null>(null);
+	useEffect(() => {
+		mapEditorModule.then((m) => setMapEditor(() => m.MapEditor));
+	}, []);
 	const [showStats, setShowStats] = useState(false);
 	const [showSettings, setShowSettings] = useState(false);
 	const [showPlugins, setShowPlugins] = useState(false);
@@ -86,7 +95,7 @@ export default function App() {
 
 	return (
 		<>
-			{map ? <MapEditor /> : <MapList />}
+			{map ? MapEditor ? <MapEditor /> : null : <MapList />}
 			{!showSettings && !showPlugins && (
 				<div
 					className="bottom-bar"

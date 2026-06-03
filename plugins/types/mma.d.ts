@@ -1235,6 +1235,7 @@ declare const mma: {
 	cmd: {
 		writeTempFile: (name: string, content: string) => Promise<string>;
 		readFile: (path: string) => Promise<string>;
+		appReady: () => Promise<number>;
 		getAppDataDir: () => Promise<string>;
 		openDataFolder: () => Promise<null>;
 		listUserPlugins: () => Promise<PluginManifest[]>;

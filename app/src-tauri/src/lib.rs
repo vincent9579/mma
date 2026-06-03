@@ -300,7 +300,21 @@ fn resolve_googl(id: &str, mapsapp: bool) -> tauri::http::Response<Vec<u8>> {
 /// Application entry point. Configures panic logging, URI scheme protocols, Tauri plugins,
 /// the IPC command handler (with specta binding generation in debug builds), and window setup.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+static START_INSTANT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+static STARTUP_MS: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+
+#[tauri::command]
+#[specta::specta]
+fn app_ready() -> u32 {
+    *STARTUP_MS.get_or_init(|| {
+        let ms = START_INSTANT.get().map(|t| t.elapsed().as_millis() as u32).unwrap_or(0);
+        log::info!("[startup] app ready in {ms}ms");
+        ms
+    })
+}
+
 pub fn run() {
+    let _ = START_INSTANT.set(std::time::Instant::now());
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         log::error!("[PANIC] {info}");
@@ -398,6 +412,7 @@ pub fn run() {
                     write_temp_file,
                     read_file,
                     // --- Utility ---
+                    app_ready,
                     get_app_data_dir,
                     open_data_folder,
                     list_user_plugins,
@@ -507,15 +522,19 @@ pub fn run() {
         )
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
+            let t = std::time::Instant::now();
             fast_io::run_migrations(app.handle())?;
+            log::info!("[startup] migrations: {}ms", t.elapsed().as_millis());
 
             #[cfg(desktop)]
             {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
                 app.handle().plugin(tauri_plugin_process::init())?;
             }
-            
 
+            if let Some(t0) = START_INSTANT.get() {
+                log::info!("[startup] setup done: {}ms since run()", t0.elapsed().as_millis());
+            }
             Ok(())
         });
 
