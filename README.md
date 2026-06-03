@@ -2,7 +2,7 @@
 
 Local-first desktop clone of [map-making.app](https://map-making.app).
 
-![preview](preview.png)
+![preview](img/preview.png)
 
 ## Features
 

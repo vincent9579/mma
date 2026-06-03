@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { imageSize } from "image-size";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const imgDir = join(here, "..", "..", "docs", "manual", "img");
+const imgDir = join(here, "..", "..", "img", "manual");
 const outFile = join(here, "..", "src", "components", "dialogs", "manual-img-dims.gen.ts");
 
 const dims = {};
