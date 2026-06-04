@@ -238,88 +238,111 @@ impl<'a> LocView<'a> {
 // Bitmask resolve
 // ---------------------------------------------------------------------------
 
-/// Per-row predicate for batch rows. Thread-safe (reads only shared Arrow columns
-/// and immutable overlay refs). Returns true if the row matches the selection.
-fn test_batch_row(view: &LocView, i: usize, props: &SelectionProps) -> bool {
+/// Read-only accessor over one location's fields, abstracting whether the data
+/// lives in an Arrow batch row (overlay-aware) or a `Location` struct. This lets
+/// the selection predicate in [`test_row`] be written once for both storage paths
+/// instead of being mirrored arm-for-arm.
+trait RowAccessor {
+    fn id(&self) -> u32;
+    fn lat(&self) -> f64;
+    fn lng(&self) -> f64;
+    fn heading(&self) -> f64;
+    fn flags(&self) -> u32;
+    fn has_tag(&self, tag_id: u32) -> bool;
+    fn tags_empty(&self) -> bool;
+    fn resolve_field(&self, field: &str) -> Option<serde_json::Value>;
+}
+
+/// A single Arrow batch row. Every read prefers the overlay patch (when this row
+/// is patched) over the base column, matching the store's effective view.
+struct BatchRow<'a, 'v> {
+    view: &'a LocView<'v>,
+    i: usize,
+}
+
+impl RowAccessor for BatchRow<'_, '_> {
+    fn id(&self) -> u32 { self.view.id_at(self.i) }
+    fn lat(&self) -> f64 {
+        match self.view.patch_at(self.i) { Some(p) => p.lat, None => self.view.lats.unwrap().value(self.i) }
+    }
+    fn lng(&self) -> f64 {
+        match self.view.patch_at(self.i) { Some(p) => p.lng, None => self.view.lngs.unwrap().value(self.i) }
+    }
+    fn heading(&self) -> f64 {
+        match self.view.patch_at(self.i) { Some(p) => p.heading, None => self.view.headings.unwrap().value(self.i) }
+    }
+    fn flags(&self) -> u32 {
+        match self.view.patch_at(self.i) { Some(p) => p.flags, None => self.view.flags.unwrap().value(self.i) }
+    }
+    fn has_tag(&self, tag_id: u32) -> bool {
+        if let Some(p) = self.view.patch_at(self.i) {
+            p.tags.contains(&tag_id)
+        } else {
+            let list = self.view.tags.unwrap().value(self.i);
+            let ids = list.as_any().downcast_ref::<UInt32Array>().unwrap();
+            (0..ids.len()).any(|k| ids.value(k) == tag_id)
+        }
+    }
+    fn tags_empty(&self) -> bool {
+        match self.view.patch_at(self.i) {
+            Some(p) => p.tags.is_empty(),
+            None => self.view.tags.unwrap().value(self.i).is_empty(),
+        }
+    }
+    fn resolve_field(&self, field: &str) -> Option<serde_json::Value> {
+        match self.view.patch_at(self.i) {
+            Some(p) => resolve_field_loc(p, field),
+            None => resolve_field_arrow(self.view, self.i, field),
+        }
+    }
+}
+
+impl RowAccessor for Location {
+    fn id(&self) -> u32 { self.id }
+    fn lat(&self) -> f64 { self.lat }
+    fn lng(&self) -> f64 { self.lng }
+    fn heading(&self) -> f64 { self.heading }
+    fn flags(&self) -> u32 { self.flags }
+    fn has_tag(&self, tag_id: u32) -> bool { self.tags.contains(&tag_id) }
+    fn tags_empty(&self) -> bool { self.tags.is_empty() }
+    fn resolve_field(&self, field: &str) -> Option<serde_json::Value> { resolve_field_loc(self, field) }
+}
+
+/// The selection predicate, written once over any [`RowAccessor`]. Returns true if
+/// the row matches `props`. Composites are resolved separately and fall to false.
+fn test_row<R: RowAccessor>(r: &R, props: &SelectionProps) -> bool {
     match props {
         SelectionProps::Everything => true,
         SelectionProps::Locations { locations, .. }
         | SelectionProps::Manual { locations }
         | SelectionProps::ValidationState { locations, .. }
-        | SelectionProps::Reviewed { locations, .. } => {
-            let id = view.id_at(i);
-            locations.contains(&id)
-        }
-        SelectionProps::Tag { tag_id } => {
-            if let Some(p) = view.patch_at(i) {
-                p.tags.contains(tag_id)
-            } else {
-                let list = view.tags.unwrap().value(i);
-                let ids = list.as_any().downcast_ref::<UInt32Array>().unwrap();
-                (0..ids.len()).any(|k| ids.value(k) == *tag_id)
-            }
-        }
-        SelectionProps::Untagged => {
-            if let Some(p) = view.patch_at(i) { p.tags.is_empty() }
-            else { view.tags.unwrap().value(i).is_empty() }
-        }
-        SelectionProps::Unpanned => {
-            if let Some(p) = view.patch_at(i) { p.heading == 0.0 }
-            else { view.headings.unwrap().value(i) == 0.0 }
-        }
-        SelectionProps::PanoIds => {
-            if let Some(p) = view.patch_at(i) { p.flags & LOAD_AS_PANO_ID != 0 }
-            else { view.flags.unwrap().value(i) & LOAD_AS_PANO_ID != 0 }
-        }
-        SelectionProps::NotPanoIds => {
-            if let Some(p) = view.patch_at(i) { p.flags & LOAD_AS_PANO_ID == 0 }
-            else { view.flags.unwrap().value(i) & LOAD_AS_PANO_ID == 0 }
-        }
+        | SelectionProps::Reviewed { locations, .. } => locations.contains(&r.id()),
+        SelectionProps::Tag { tag_id } => r.has_tag(*tag_id),
+        SelectionProps::Untagged => r.tags_empty(),
+        SelectionProps::Unpanned => r.heading() == 0.0,
+        SelectionProps::PanoIds => r.flags() & LOAD_AS_PANO_ID != 0,
+        SelectionProps::NotPanoIds => r.flags() & LOAD_AS_PANO_ID == 0,
         SelectionProps::Polygon { polygon, include_informational } => {
-            if let Some(p) = view.patch_at(i) {
-                if !include_informational && (p.flags & INFORMATIONAL != 0) { return false; }
-                point_in_geometry(p.lng, p.lat, polygon)
-            } else {
-                if !include_informational && (view.flags.unwrap().value(i) & INFORMATIONAL != 0) { return false; }
-                point_in_geometry(view.lngs.unwrap().value(i), view.lats.unwrap().value(i), polygon)
-            }
+            if !include_informational && (r.flags() & INFORMATIONAL != 0) { return false; }
+            point_in_geometry(r.lng(), r.lat(), polygon)
         }
-        SelectionProps::Filter { field, op, value, value2 } => {
-            if let Some(p) = view.patch_at(i) {
-                matches_filter_loc(p, field, op, value, value2.as_ref())
-            } else {
-                matches_filter_arrow(view, i, field, op, value, value2.as_ref())
-            }
-        }
+        SelectionProps::Filter { field, op, value, value2 } => match r.resolve_field(field) {
+            Some(ref v) => compare_filter(v, op, value, value2.as_ref()),
+            None => op.as_str() == "neq" || op.as_str() == "nothas",
+        },
         _ => false, // composites handled separately
     }
 }
 
-/// Per-row predicate for overlay add locations. Same logic as `test_batch_row` but
-/// operates on a `Location` struct instead of Arrow columns.
+/// Per-row predicate for batch rows. Thread-safe (reads only shared Arrow columns
+/// and immutable overlay refs).
+fn test_batch_row(view: &LocView, i: usize, props: &SelectionProps) -> bool {
+    test_row(&BatchRow { view, i }, props)
+}
+
+/// Per-row predicate for overlay add locations.
 pub(crate) fn test_add_row(loc: &Location, props: &SelectionProps) -> bool {
-    match props {
-        SelectionProps::Everything => true,
-        SelectionProps::Locations { locations, .. }
-        | SelectionProps::Manual { locations }
-        | SelectionProps::ValidationState { locations, .. }
-        | SelectionProps::Reviewed { locations, .. } => {
-            locations.contains(&loc.id)
-        }
-        SelectionProps::Tag { tag_id } => loc.tags.contains(tag_id),
-        SelectionProps::Untagged => loc.tags.is_empty(),
-        SelectionProps::Unpanned => loc.heading == 0.0,
-        SelectionProps::PanoIds => loc.flags & LOAD_AS_PANO_ID != 0,
-        SelectionProps::NotPanoIds => loc.flags & LOAD_AS_PANO_ID == 0,
-        SelectionProps::Polygon { polygon, include_informational } => {
-            if !include_informational && (loc.flags & INFORMATIONAL != 0) { return false; }
-            point_in_geometry(loc.lng, loc.lat, polygon)
-        }
-        SelectionProps::Filter { field, op, value, value2 } => {
-            matches_filter_loc(loc, field, op, value, value2.as_ref())
-        }
-        _ => false,
-    }
+    test_row(loc, props)
 }
 
 /// Minimum rayon chunk size for parallel batch iteration. Tuned to amortize
@@ -767,17 +790,6 @@ fn resolve_field_loc(loc: &Location, field: &str) -> Option<serde_json::Value> {
     }
 }
 
-/// Test a filter predicate against a `Location` struct.
-fn matches_filter_loc(
-    loc: &Location,
-    field: &str, op: &str, value: &serde_json::Value, value2: Option<&serde_json::Value>,
-) -> bool {
-    match resolve_field_loc(loc, field) {
-        Some(ref v) => compare_filter(v, op, value, value2),
-        None => op == "neq" || op == "nothas",
-    }
-}
-
 /// Resolve a field name to its JSON value directly from Arrow columns (avoids
 /// materializing a full `Location`). Falls through to `extras` JSON for unknown fields.
 fn resolve_field_arrow(view: &LocView, idx: usize, field: &str) -> Option<serde_json::Value> {
@@ -799,17 +811,6 @@ fn resolve_field_arrow(view: &LocView, idx: usize, field: &str) -> Option<serde_
             let map: serde_json::Map<String, serde_json::Value> = serde_json::from_str(extras.value(idx)).ok()?;
             map.get(field).cloned()
         }
-    }
-}
-
-/// Test a filter predicate against an Arrow batch row.
-fn matches_filter_arrow(
-    view: &LocView, idx: usize,
-    field: &str, op: &str, value: &serde_json::Value, value2: Option<&serde_json::Value>,
-) -> bool {
-    match resolve_field_arrow(view, idx, field) {
-        Some(ref v) => compare_filter(v, op, value, value2),
-        None => op == "neq" || op == "nothas",
     }
 }
 
