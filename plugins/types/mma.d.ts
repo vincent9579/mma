@@ -1240,6 +1240,13 @@ declare const BORDER_DETAILS: {
 	readonly medium: "High (~10MB)";
 	readonly heavy: "Ultra (~46MB)";
 };
+declare const PREVIEW_ASPECT_RATIOS: {
+	readonly "4 / 3": "4:3";
+	readonly "16 / 10": "16:10";
+	readonly "16 / 9": "16:9";
+	readonly "21 / 9": "21:9";
+	readonly "32 / 9": "32:9";
+};
 export type MovementMode = keyof typeof MOVEMENT_MODES;
 export type ExactDateFormat = keyof typeof EXACT_DATE_FORMATS;
 export type DateTimezone = keyof typeof DATE_TIMEZONES;
@@ -1248,6 +1255,7 @@ export type MapListField = keyof typeof MAP_LIST_FIELDS;
 export type GeocodeProvider = keyof typeof GEOCODE_PROVIDERS;
 export type TagViewMode = keyof typeof TAG_VIEW_MODES;
 export type BorderDetail = keyof typeof BORDER_DETAILS;
+export type PreviewAspectRatio = keyof typeof PREVIEW_ASPECT_RATIOS;
 declare const DEFAULTS: {
 	showCameraBadges: boolean;
 	showLinksControl: boolean;
@@ -1288,6 +1296,7 @@ declare const DEFAULTS: {
 	panToImported: boolean;
 	tagViewMode: TagViewMode;
 	borderDetail: BorderDetail;
+	previewAspectRatio: PreviewAspectRatio;
 	savedSelections: SavedSelection[];
 };
 export type AppSettings = typeof DEFAULTS;
@@ -1385,7 +1394,7 @@ declare const mma: {
 		} | null>;
 		storeGetLocationsByIds: (ids: number[]) => Promise<Location_Serialize[]>;
 		storeGetAllLocations: () => Promise<string>;
-		storeCountryDistribution: () => Promise<[
+		storeCountryDistribution: (level: string) => Promise<[
 			string,
 			number
 		][]>;
@@ -1530,6 +1539,7 @@ declare const mma: {
 		panToImported: boolean;
 		tagViewMode: TagViewMode;
 		borderDetail: BorderDetail;
+		previewAspectRatio: PreviewAspectRatio;
 		savedSelections: SavedSelection[];
 	};
 	on<E extends EditorEvent>(event: E, handler: EventHandler<E>): () => void;

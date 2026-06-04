@@ -125,18 +125,19 @@ impl<'a> LocView<'a> {
         adds: &'a [Location],
         tag_sets: Option<&'a HashMap<u32, RoaringBitmap>>,
     ) -> Self {
+        use crate::arrow_bridge::{col_id, col_lat, col_lng, col_heading, col_pitch, col_zoom, col_flags, col_tags, col_extra, col_created_at, col_modified_at};
         let batch_rows = batch.map_or(0, |b| b.num_rows());
-        let ids = batch.map(|b| b.column(0).as_any().downcast_ref::<UInt32Array>().unwrap());
-        let lats = batch.map(|b| b.column(1).as_any().downcast_ref::<Float64Array>().unwrap());
-        let lngs = batch.map(|b| b.column(2).as_any().downcast_ref::<Float64Array>().unwrap());
-        let headings = batch.map(|b| b.column(3).as_any().downcast_ref::<Float64Array>().unwrap());
-        let pitches = batch.map(|b| b.column(4).as_any().downcast_ref::<Float64Array>().unwrap());
-        let zooms = batch.map(|b| b.column(5).as_any().downcast_ref::<Float64Array>().unwrap());
-        let flags = batch.map(|b| b.column(7).as_any().downcast_ref::<UInt32Array>().unwrap());
-        let tags = batch.map(|b| b.column(8).as_any().downcast_ref::<ListArray>().unwrap());
-        let extras = batch.map(|b| b.column(9).as_any().downcast_ref::<StringArray>().unwrap());
-        let created_ats = batch.map(|b| b.column(10).as_any().downcast_ref::<UInt32Array>().unwrap());
-        let modified_ats = batch.map(|b| b.column(11).as_any().downcast_ref::<UInt32Array>().unwrap());
+        let ids = batch.map(col_id);
+        let lats = batch.map(col_lat);
+        let lngs = batch.map(col_lng);
+        let headings = batch.map(col_heading);
+        let pitches = batch.map(col_pitch);
+        let zooms = batch.map(col_zoom);
+        let flags = batch.map(col_flags);
+        let tags = batch.map(col_tags);
+        let extras = batch.map(col_extra);
+        let created_ats = batch.map(col_created_at);
+        let modified_ats = batch.map(col_modified_at);
         let has_dead = !dead.is_empty();
         let has_patches = !patches.is_empty();
         Self { batch, dead, patches, adds, ids, lats, lngs, headings, pitches, zooms, flags, tags, extras, created_ats, modified_ats, batch_rows, has_dead, has_patches, tag_sets }

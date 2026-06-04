@@ -44,6 +44,36 @@ pub fn location_schema() -> Schema {
     )
 }
 
+// ---------------------------------------------------------------------------
+// Column accessors
+// ---------------------------------------------------------------------------
+
+pub(crate) const COL_ID: usize = 0;
+pub(crate) const COL_LAT: usize = 1;
+pub(crate) const COL_LNG: usize = 2;
+pub(crate) const COL_HEADING: usize = 3;
+pub(crate) const COL_PITCH: usize = 4;
+pub(crate) const COL_ZOOM: usize = 5;
+pub(crate) const COL_PANO_ID: usize = 6;
+pub(crate) const COL_FLAGS: usize = 7;
+pub(crate) const COL_TAGS: usize = 8;
+pub(crate) const COL_EXTRA: usize = 9;
+pub(crate) const COL_CREATED_AT: usize = 10;
+pub(crate) const COL_MODIFIED_AT: usize = 11;
+
+pub(crate) fn col_id(b: &RecordBatch) -> &UInt32Array { b.column(COL_ID).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_lat(b: &RecordBatch) -> &Float64Array { b.column(COL_LAT).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_lng(b: &RecordBatch) -> &Float64Array { b.column(COL_LNG).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_heading(b: &RecordBatch) -> &Float64Array { b.column(COL_HEADING).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_pitch(b: &RecordBatch) -> &Float64Array { b.column(COL_PITCH).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_zoom(b: &RecordBatch) -> &Float64Array { b.column(COL_ZOOM).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_pano_id(b: &RecordBatch) -> &StringArray { b.column(COL_PANO_ID).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_flags(b: &RecordBatch) -> &UInt32Array { b.column(COL_FLAGS).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_tags(b: &RecordBatch) -> &ListArray { b.column(COL_TAGS).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_extra(b: &RecordBatch) -> &StringArray { b.column(COL_EXTRA).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_created_at(b: &RecordBatch) -> &UInt32Array { b.column(COL_CREATED_AT).as_any().downcast_ref().unwrap() }
+pub(crate) fn col_modified_at(b: &RecordBatch) -> &UInt32Array { b.column(COL_MODIFIED_AT).as_any().downcast_ref().unwrap() }
+
 /// Serialize a slice of [`Location`]s into a single Arrow [`RecordBatch`].
 ///
 /// `extra` fields are JSON-stringified. Panics if the resulting columns don't
@@ -113,54 +143,41 @@ pub fn locations_to_batch(locs: &[Location]) -> RecordBatch {
 /// Accesses columns by positional index (must match [`location_schema`] order).
 /// Nullable `extra` is deserialized from its JSON string; malformed JSON yields `None`.
 pub fn row_to_location(batch: &RecordBatch, idx: usize) -> Location {
-    let id = batch
-        .column(0)
-        .as_any()
-        .downcast_ref::<UInt32Array>()
-        .unwrap()
-        .value(idx);
-    let lat = batch.column(1).as_any().downcast_ref::<Float64Array>().unwrap().value(idx);
-    let lng = batch.column(2).as_any().downcast_ref::<Float64Array>().unwrap().value(idx);
-    let heading = batch.column(3).as_any().downcast_ref::<Float64Array>().unwrap().value(idx);
-    let pitch = batch.column(4).as_any().downcast_ref::<Float64Array>().unwrap().value(idx);
-    let zoom = batch.column(5).as_any().downcast_ref::<Float64Array>().unwrap().value(idx);
-    let pano_id_col = batch.column(6).as_any().downcast_ref::<StringArray>().unwrap();
+    let pano_id_col = col_pano_id(batch);
     let pano_id = if pano_id_col.is_null(idx) {
         None
     } else {
         Some(pano_id_col.value(idx).to_string())
     };
-    let flags = batch.column(7).as_any().downcast_ref::<UInt32Array>().unwrap().value(idx);
-    let tags_col = batch.column(8).as_any().downcast_ref::<ListArray>().unwrap();
-    let tags_arr = tags_col.value(idx);
+
+    let tags_arr = col_tags(batch).value(idx);
     let tags_u32 = tags_arr.as_any().downcast_ref::<UInt32Array>().unwrap();
     let tags: Vec<u32> = (0..tags_u32.len()).map(|i| tags_u32.value(i)).collect();
-    let extra_col = batch.column(9).as_any().downcast_ref::<StringArray>().unwrap();
+
+    let extra_col = col_extra(batch);
     let extra = if extra_col.is_null(idx) {
         None
     } else {
         serde_json::from_str(extra_col.value(idx)).ok()
     };
-    let created_at = crate::util::unix_to_iso(
-        batch.column(10).as_any().downcast_ref::<UInt32Array>().unwrap().value(idx),
-    );
+
     let modified_at = {
-        let col = batch.column(11).as_any().downcast_ref::<UInt32Array>().unwrap();
+        let col = col_modified_at(batch);
         if col.is_null(idx) { None } else { Some(crate::util::unix_to_iso(col.value(idx))) }
     };
 
     Location {
-        id,
-        lat,
-        lng,
-        heading,
-        pitch,
-        zoom,
+        id: col_id(batch).value(idx),
+        lat: col_lat(batch).value(idx),
+        lng: col_lng(batch).value(idx),
+        heading: col_heading(batch).value(idx),
+        pitch: col_pitch(batch).value(idx),
+        zoom: col_zoom(batch).value(idx),
         pano_id,
-        flags,
+        flags: col_flags(batch).value(idx),
         tags,
         extra,
-        created_at,
+        created_at: crate::util::unix_to_iso(col_created_at(batch).value(idx)),
         modified_at,
     }
 }

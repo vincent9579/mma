@@ -11,15 +11,13 @@ use std::sync::{Arc, Mutex};
 
 use roaring::RoaringBitmap;
 
-use arrow::array::{
-    Array, Float64Array, ListArray, RecordBatch,
-    StringArray, UInt32Array,
-};
+use arrow::array::{Array, RecordBatch, UInt32Array};
 use arrow::datatypes::SchemaRef;
 use rayon::prelude::*;
 use tauri::Manager;
 
 use crate::arrow_bridge;
+use crate::arrow_bridge::{col_id, col_lat, col_lng, col_heading, col_flags, col_tags, col_extra};
 use crate::fast_io;
 use crate::map_meta;
 use crate::types::{Location, Tag};
@@ -84,17 +82,6 @@ fn serialize_cell_bitmask(ci: usize, cr: &CellRender, loc_sets: &[RoaringBitmap]
     seg
 }
 
-// ---------------------------------------------------------------------------
-// Column accessors — typed downcasts from a RecordBatch
-// ---------------------------------------------------------------------------
-
-fn col_id(b: &RecordBatch) -> &UInt32Array { b.column(0).as_any().downcast_ref().unwrap() }
-fn col_lat(b: &RecordBatch) -> &Float64Array { b.column(1).as_any().downcast_ref().unwrap() }
-fn col_lng(b: &RecordBatch) -> &Float64Array { b.column(2).as_any().downcast_ref().unwrap() }
-fn col_heading(b: &RecordBatch) -> &Float64Array { b.column(3).as_any().downcast_ref().unwrap() }
-fn col_flags(b: &RecordBatch) -> &UInt32Array { b.column(7).as_any().downcast_ref().unwrap() }
-fn col_tags(b: &RecordBatch) -> &ListArray { b.column(8).as_any().downcast_ref().unwrap() }
-fn col_extra(b: &RecordBatch) -> &StringArray { b.column(9).as_any().downcast_ref().unwrap() }
 
 fn num_rows(store: &Store) -> usize { store.batch.as_ref().map_or(0, |b| b.num_rows()) }
 
