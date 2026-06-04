@@ -5,6 +5,8 @@ import { cmd } from "@/lib/commands";
 import { mmaBufUrl } from "@/lib/util/util";
 import { getAllFieldDefs } from "@/lib/data/fieldDefRegistry";
 import { fmt } from "@/lib/util/format";
+import { toast } from "@/lib/util/toast.add";
+import { log } from "@/lib/util/log";
 
 interface Props {
 	onClose: () => void;
@@ -64,20 +66,42 @@ export function ExportDialog({ onClose }: Props) {
 		return fetchExportFile(path);
 	};
 
-	const copyJson = async () => navigator.clipboard.writeText(await exportJson());
-	const downloadJson = async () => downloadBlob(await exportJson(), `${baseName}.json`);
+	const withFeedback = (run: () => Promise<void>, success: string) => async () => {
+		try {
+			await run();
+			toast(success);
+		} catch (e) {
+			log.error("[export] failed:", e);
+			toast("Export failed");
+		}
+	};
+
+	const copyJson = withFeedback(
+		async () => navigator.clipboard.writeText(await exportJson()),
+		"Copied JSON to clipboard",
+	);
+	const downloadJson = withFeedback(
+		async () => downloadBlob(await exportJson(), `${baseName}.json`),
+		`Downloaded ${baseName}.json`,
+	);
 
 	const exportCsv = async () => {
 		const path = await cmd.storeExportCsv(scopeIds ?? null);
 		return fetchExportFile(path);
 	};
-	const copyCsv = async () => navigator.clipboard.writeText(await exportCsv());
-	const downloadCsv = async () => downloadBlob(await exportCsv(), `${baseName}.csv`);
+	const copyCsv = withFeedback(
+		async () => navigator.clipboard.writeText(await exportCsv()),
+		"Copied CSV to clipboard",
+	);
+	const downloadCsv = withFeedback(
+		async () => downloadBlob(await exportCsv(), `${baseName}.csv`),
+		`Downloaded ${baseName}.csv`,
+	);
 
-	const downloadGeoJson = async () => {
+	const downloadGeoJson = withFeedback(async () => {
 		const path = await cmd.storeExportGeojson(scopeIds ?? null, JSON.stringify(map.meta.tags));
 		downloadBlob(await fetchExportFile(path), `${baseName}.geojson`);
-	};
+	}, `Downloaded ${baseName}.geojson`);
 
 	return (
 		<Dialog open onOpenChange={(open) => !open && onClose()}>
