@@ -120,7 +120,6 @@ const ghostedSelections = new Set<string>();
 let selectedLocationIds = new Set<number>();
 let activeLocationId: number | null = null;
 let duplicateLocations: Location[] = [];
-let review: { locations: number[]; index: number } | null = null;
 let workArea: WorkArea = "overview";
 let activePluginId: string | null = null;
 let mapVersion = 0;
@@ -219,8 +218,6 @@ export const useDiffMarkerVersion = makeStoreHook(() => diffMarkerVersion);
 export function getCommitDiffPreview() {
 	return commitDiffPreview;
 }
-
-export const useReview = makeStoreHook(() => review);
 
 let cachedCommitDiff = { added: 0, removed: 0, modified: 0 };
 
@@ -343,7 +340,6 @@ export async function openMap(id: string) {
 	selections = [];
 	selectedLocationIds = new Set();
 	activeLocationId = null;
-	review = null;
 	workArea = "overview";
 	importStaging = null;
 	importPreviewPositions = new Float32Array(0);
@@ -364,7 +360,6 @@ export async function closeMap() {
 	selections = [];
 	selectedLocationIds = new Set();
 	activeLocationId = null;
-	review = null;
 	workArea = "overview";
 	importStaging = null;
 	importPreviewPositions = new Float32Array(0);
@@ -642,15 +637,6 @@ export async function removeLocations(ids: Set<number>) {
 		cachedActiveLocation = null;
 		workArea = "overview";
 	}
-	if (review) {
-		const remaining = review.locations.filter((id) => !ids.has(id));
-		if (remaining.length === 0) {
-			review = null;
-		} else {
-			const newIndex = Math.min(review.index, remaining.length - 1);
-			review = { locations: remaining, index: newIndex };
-		}
-	}
 	mapVersion++;
 	notify();
 	emitEvent("location:remove", [...ids]);
@@ -738,7 +724,7 @@ async function migrateFieldReferences(from: string, to: string | null) {
 		await setMapExtraFields(defs);
 	}
 	setSetting("savedSelections", rewriteSavedSelectionFields(getSavedSelections(), from, to));
-	await applySelectionUpdate((m, sels) => rewriteSelectionFields(m, sels, from, to));
+	await applySelectionUpdate((sels) => rewriteSelectionFields(sels, from, to));
 }
 
 export async function patchLocationExtra(
@@ -813,10 +799,10 @@ function assignCounts(counts: number[]) {
 }
 
 /** Apply a pure selection transform, then IPC to Rust to resolve bitmasks and sync the overlay. */
-async function applySelectionUpdate(updater: (m: MapData, sels: Selection[]) => Selection[]) {
+async function applySelectionUpdate(updater: (sels: Selection[]) => Selection[]) {
 	if (!currentMap) return;
 	const t = trace("selection", { summary: true });
-	selections = updater(currentMap, selections);
+	selections = updater(selections);
 	pruneGhosted();
 	const sels = buildSyncInputs();
 	let result: SyncSelectionsResult;
@@ -854,7 +840,7 @@ export function isSelectionGhosted(key: string): boolean {
 export function toggleGhostSelection(key: string) {
 	if (ghostedSelections.has(key)) ghostedSelections.delete(key);
 	else ghostedSelections.add(key);
-	return applySelectionUpdate((_m, sels) => sels);
+	return applySelectionUpdate((sels) => sels);
 }
 
 /** Ghost every top-level selection; if all are already ghosted, un-ghost them all. */
@@ -863,19 +849,19 @@ export function toggleGhostAllSelections() {
 	const allGhosted = keys.length > 0 && keys.every((k) => ghostedSelections.has(k));
 	if (allGhosted) ghostedSelections.clear();
 	else for (const k of keys) ghostedSelections.add(k);
-	return applySelectionUpdate((_m, sels) => sels);
+	return applySelectionUpdate((sels) => sels);
 }
 
 export function addSelections(props: SelectionProps[]) {
-	return applySelectionUpdate((m, sels) => {
+	return applySelectionUpdate((sels) => {
 		let result = sels;
-		for (const p of props) result = addSel(m, result, p);
+		for (const p of props) result = addSel(result, p);
 		return result;
 	});
 }
 
 export function removeSelections(keys: string[]) {
-	return applySelectionUpdate((_m, sels) => {
+	return applySelectionUpdate((sels) => {
 		let result = sels;
 		for (const k of keys) result = removeSel(result, k);
 		return result;
@@ -887,19 +873,19 @@ export function resetSelections() {
 }
 
 export function selectIntersection(keys: string[] | null = null) {
-	return applySelectionUpdate((m, sels) => intersectSelections(m, sels, keys));
+	return applySelectionUpdate((sels) => intersectSelections(sels, keys));
 }
 
 export function selectUnion(keys: string[] | null = null) {
-	return applySelectionUpdate((m, sels) => unionSelections(m, sels, keys));
+	return applySelectionUpdate((sels) => unionSelections(sels, keys));
 }
 
 export function selectInverse(keys: string[] | null = null) {
-	return applySelectionUpdate((m, sels) => invertSelections(m, sels, keys));
+	return applySelectionUpdate((sels) => invertSelections(sels, keys));
 }
 
 export function toggleManualSelection(locationId: number) {
-	return applySelectionUpdate((m, sels) => toggleManual(m, sels, locationId));
+	return applySelectionUpdate((sels) => toggleManual(sels, locationId));
 }
 
 export function selectEverything() {
@@ -957,8 +943,8 @@ export function selectFilter(
 /** Edit an existing filter (or any selection) in place by key, preserving its
  *  position inside any AND/OR/Invert composite. Carries ghost state to the new key. */
 export function updateFilterSelection(oldKey: string, props: SelectionProps) {
-	return applySelectionUpdate((m, sels) => {
-		const next = replaceSel(m, sels, oldKey, props);
+	return applySelectionUpdate((sels) => {
+		const next = replaceSel(sels, oldKey, props);
 		// Editing rebuilds the affected top-level entry (and its key). Migrate any
 		// ghost flag from the old key to the new one at the same index.
 		for (let i = 0; i < sels.length; i++) {
@@ -972,13 +958,13 @@ export function updateFilterSelection(oldKey: string, props: SelectionProps) {
 }
 
 export function setPolygonName(key: string, name: string) {
-	return applySelectionUpdate((_m, sels) => renamePolygonSel(sels, key, name));
+	return applySelectionUpdate((sels) => renamePolygonSel(sels, key, name));
 }
 
 // TODO: debounce — color picker fires this on every drag tick, triggering a full
 // store_sync_selections IPC each time. Laggy on large maps.
 export function setSelectionColors(entries: { key: string; color: [number, number, number] }[]) {
-	applySelectionUpdate((_m, sels) => {
+	applySelectionUpdate((sels) => {
 		let result = sels;
 		for (const { key, color } of entries) result = setSelColor(result, key, color);
 		return result;
@@ -986,7 +972,7 @@ export function setSelectionColors(entries: { key: string; color: [number, numbe
 }
 
 export function reorderSelection(fromKey: string, toKey: string, position: "before" | "after") {
-	applySelectionUpdate((_m, sels) => reorderSelections(sels, fromKey, toKey, position));
+	applySelectionUpdate((sels) => reorderSelections(sels, fromKey, toKey, position));
 }
 
 export function composeSelections(
@@ -996,35 +982,35 @@ export function composeSelections(
 	dragParent: string | null,
 	dropParent: string | null,
 ) {
-	applySelectionUpdate((m, sels) => {
+	applySelectionUpdate((sels) => {
 		if (dragParent && dropParent && dragParent === dropParent) {
-			return composeSiblingsSel(m, sels, dragParent, dragKey, dropKey, mode);
+			return composeSiblingsSel(sels, dragParent, dragKey, dropKey, mode);
 		}
-		const updated = dragParent ? decomposeChildSel(m, sels, dragParent, dragKey) : sels;
+		const updated = dragParent ? decomposeChildSel(sels, dragParent, dragKey) : sels;
 		if (dropParent) {
-			return composeWithChildSel(m, updated, dragKey, dropParent, dropKey, mode);
+			return composeWithChildSel(updated, dragKey, dropParent, dropKey, mode);
 		}
-		return composeSels(m, updated, dragKey, dropKey, mode);
+		return composeSels(updated, dragKey, dropKey, mode);
 	});
 }
 
 export function decomposeChild(parentKey: string, childKey: string) {
-	applySelectionUpdate((m, sels) => decomposeChildSel(m, sels, parentKey, childKey));
+	applySelectionUpdate((sels) => decomposeChildSel(sels, parentKey, childKey));
 }
 
 export function removeChildFromSelection(parentKey: string, childKey: string) {
-	applySelectionUpdate((m, sels) => removeFromCompositeSel(m, sels, parentKey, childKey));
+	applySelectionUpdate((sels) => removeFromCompositeSel(sels, parentKey, childKey));
 }
 
 export function toggleTagSelections(tagIds: number[]) {
 	if (!currentMap || tagIds.length === 0) return;
-	applySelectionUpdate((m, sels) => {
+	applySelectionUpdate((sels) => {
 		let result = sels;
 		for (const tagId of tagIds) {
 			const key = `tag:${tagId}`;
 			const exists = result.some((s) => s.key === key);
 			if (exists) result = removeSel(result, key);
-			else result = addSel(m, result, { type: "Tag", tagId });
+			else result = addSel(result, { type: "Tag", tagId });
 		}
 		return result;
 	});
@@ -1054,6 +1040,7 @@ export async function setActiveLocation(id: number | null, checkDuplicates = tru
 				cachedActiveLocation = null;
 				mapVersion++;
 				notify();
+				emitEvent("active:change", null);
 				t.end({ duplicates: nearby.length });
 				return;
 			}
@@ -1067,6 +1054,7 @@ export async function setActiveLocation(id: number | null, checkDuplicates = tru
 	}
 	mapVersion++;
 	notify();
+	emitEvent("active:change", activeLocationId);
 	t.end();
 }
 
@@ -1151,7 +1139,7 @@ export async function updateTags(patches: { id: number; patch: Partial<Tag> }[])
 			return p.type === "Tag" && patches.some((q) => q.id === p.tagId);
 		})
 	) {
-		applySelectionUpdate((_, sels) => sels);
+		applySelectionUpdate((sels) => sels);
 	}
 }
 
@@ -1247,67 +1235,6 @@ export function cancelImport() {
 	if (workArea === "import") workArea = "overview";
 	mapVersion++;
 	notify();
-}
-
-// --- Review ---
-
-export async function beginReview(locationIds: number[]) {
-	if (!currentMap || locationIds.length === 0) return;
-	const existing = await cmd.storeGetLocationsByIds(locationIds);
-	const valid = existing.map((l) => l.id);
-	if (valid.length === 0) return;
-	review = { locations: valid, index: 0 };
-	workArea = "location";
-	await setActiveLocation(valid[0]);
-}
-
-export function cancelReview() {
-	if (!review) return;
-	review = null;
-	activeLocationId = null;
-	cachedActiveLocation = null;
-	workArea = "overview";
-	mapVersion++;
-	notify();
-}
-
-export async function reviewNext() {
-	if (!review) return;
-	for (let i = review.index + 1; i < review.locations.length; i++) {
-		review = { ...review, index: i };
-		await setActiveLocation(review.locations[i]);
-		if (cachedActiveLocation) return;
-	}
-	review = null;
-	await setActiveLocation(null);
-}
-
-export async function reviewPrev() {
-	if (!review) return;
-	for (let i = review.index - 1; i >= 0; i--) {
-		review = { ...review, index: i };
-		await setActiveLocation(review.locations[i]);
-		if (cachedActiveLocation) return;
-	}
-	review = null;
-	await setActiveLocation(null);
-}
-
-export async function reviewDelete() {
-	if (!review || !currentMap) return;
-	const currentLocId = review.locations[review.index];
-	await mutate(cmd.storeRemoveLocations([currentLocId]));
-	const remaining = review.locations.filter((id) => id !== currentLocId);
-	if (remaining.length === 0 || review.index >= remaining.length) {
-		review = null;
-		await setActiveLocation(null);
-	} else {
-		review = { locations: remaining, index: review.index };
-		await setActiveLocation(remaining[review.index]);
-	}
-	if (selections.length > 0) {
-		applySelectionUpdate((_, sels) => sels);
-	}
 }
 
 // --- Undo/redo ---

@@ -325,6 +325,36 @@ fn resolve_untagged() {
     assert_eq!(ids, vec![2]);
 }
 
+#[test]
+fn resolve_reviewed_is_an_id_set_leaf_over_batch() {
+    let locs = vec![loc(1, 0.0, 0.0), loc(2, 0.0, 0.0), loc(3, 0.0, 0.0), loc(4, 0.0, 0.0)];
+    let batch = locations_to_batch(&locs);
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let adds: Vec<Location> = vec![];
+    let view = make_view(Some(&batch), &dead, &patches, &adds);
+    let ids = resolve(&view, &SelectionProps::Reviewed {
+        locations: vec![2, 4],
+        session_id: "abc".into(),
+        mode: "reviewed".into(),
+    });
+    assert_eq!(ids, vec![2, 4]);
+}
+
+#[test]
+fn resolve_reviewed_on_adds() {
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let adds = vec![loc(1, 0.0, 0.0), loc(2, 0.0, 0.0), loc(3, 0.0, 0.0)];
+    let view = make_view(None, &dead, &patches, &adds);
+    let ids = resolve(&view, &SelectionProps::Reviewed {
+        locations: vec![1, 3],
+        session_id: "s".into(),
+        mode: "unreviewed".into(),
+    });
+    assert_eq!(ids, vec![1, 3]);
+}
+
 // -----------------------------------------------------------------------
 // Tag membership index (roaring fast-path) — must match the scan path exactly.
 // -----------------------------------------------------------------------

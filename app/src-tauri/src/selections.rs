@@ -34,6 +34,8 @@ pub enum SelectionProps {
     Manual { locations: Vec<u32> },
     Duplicates { distance: f64 },
     ValidationState { locations: Vec<u32>, state: u8 },
+    #[serde(rename_all = "camelCase")]
+    Reviewed { locations: Vec<u32>, session_id: String, mode: String },
     Intersection { selections: Vec<Selection> },
     Union { selections: Vec<Selection> },
     Invert { selections: Vec<Selection> },
@@ -213,7 +215,8 @@ fn test_batch_row(view: &LocView, i: usize, props: &SelectionProps) -> bool {
         SelectionProps::Everything => true,
         SelectionProps::Locations { locations, .. }
         | SelectionProps::Manual { locations }
-        | SelectionProps::ValidationState { locations, .. } => {
+        | SelectionProps::ValidationState { locations, .. }
+        | SelectionProps::Reviewed { locations, .. } => {
             let id = view.id_at(i);
             locations.contains(&id)
         }
@@ -269,7 +272,8 @@ pub(crate) fn test_add_row(loc: &Location, props: &SelectionProps) -> bool {
         SelectionProps::Everything => true,
         SelectionProps::Locations { locations, .. }
         | SelectionProps::Manual { locations }
-        | SelectionProps::ValidationState { locations, .. } => {
+        | SelectionProps::ValidationState { locations, .. }
+        | SelectionProps::Reviewed { locations, .. } => {
             locations.contains(&loc.id)
         }
         SelectionProps::Tag { tag_id } => loc.tags.contains(tag_id),
@@ -383,7 +387,8 @@ fn resolve_leaf_mask(view: &LocView, props: &SelectionProps) -> Vec<bool> {
     match props {
         SelectionProps::Locations { locations, .. }
         | SelectionProps::Manual { locations }
-        | SelectionProps::ValidationState { locations, .. } => {
+        | SelectionProps::ValidationState { locations, .. }
+        | SelectionProps::Reviewed { locations, .. } => {
             let set: HashSet<u32> = locations.iter().copied().collect();
             view.resolve_mask(|i| set.contains(&view.id_at(i)), |_, loc| set.contains(&loc.id))
         }

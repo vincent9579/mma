@@ -20,6 +20,7 @@ mod map_meta;
 mod borders;
 mod geocoder;
 mod seen;
+mod review;
 mod vcs;
 mod vcs_delta;
 
@@ -404,6 +405,11 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             seen::store_seen_countries,
             seen::store_seen_maps,
             seen::store_seen_clear,
+            review::store_review_create,
+            review::store_review_get,
+            review::store_review_list,
+            review::store_review_update,
+            review::store_review_delete,
             vcs::store_create_commit,
             vcs::store_list_commits,
             vcs::store_checkout_commit,

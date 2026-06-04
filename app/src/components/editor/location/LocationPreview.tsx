@@ -13,7 +13,6 @@ import type { Location, Tag } from "@/types";
 import {
 	useActiveLocation,
 	useCurrentMap,
-	useReview,
 	updateLocation,
 	patchLocationExtra,
 	getActiveLocation,
@@ -24,12 +23,16 @@ import {
 	addLocations,
 	createTags,
 	setActiveLocation,
-	cancelReview,
+	getVisibleTags,
+} from "@/store/useMapStore";
+import { ReviewBar } from "@/components/editor/location/ReviewBar.add";
+import {
+	useReviewSession,
 	reviewNext,
 	reviewPrev,
 	reviewDelete,
-	getVisibleTags,
-} from "@/store/useMapStore";
+	isAtStart,
+} from "@/lib/review/review.add";
 import { loadOpenSV, google } from "@/lib/sv/opensv";
 import { fetchSvMetadata } from "@/lib/sv/svMeta";
 import { useHotkey, parseHotkey, matchesKey, isEditableElement } from "@/lib/hooks/useHotkey";
@@ -733,8 +736,8 @@ export function LocationPreview() {
 function LocationPreviewInner() {
 	const location = useActiveLocation();
 	const map = useCurrentMap();
-	const reviewState = useReview();
-	const isReviewMode = reviewState !== null;
+	const reviewSession = useReviewSession();
+	const isReviewMode = reviewSession !== null;
 	const panoContainerRef = useRef<HTMLDivElement>(null);
 	const fullscreenContainerRef = useRef<HTMLDivElement>(null);
 	const {
@@ -1002,12 +1005,12 @@ function LocationPreviewInner() {
 			tags: pendingTags,
 			extra: panoChanged ? {} : location.extra,
 		});
-		if (isReviewMode) {
+		if (isReviewMode && reviewSession?.cursorId === location.id) {
 			reviewNext();
 		} else {
 			setActiveLocation(null);
 		}
-	}, [location, selectedPanoId, isReviewMode, pendingTags]);
+	}, [location, selectedPanoId, isReviewMode, reviewSession, pendingTags]);
 
 	const handleClose = useCallback(() => {
 		if (isFullscreen) {
@@ -1024,12 +1027,12 @@ function LocationPreviewInner() {
 	const handleDelete = useCallback(() => {
 		if (!location) return;
 
-		if (isReviewMode) {
+		if (isReviewMode && reviewSession?.cursorId === location.id) {
 			reviewDelete();
 		} else {
 			removeLocations(new Set([location.id]));
 		}
-	}, [location, isReviewMode]);
+	}, [location, isReviewMode, reviewSession]);
 
 	const handleReturnToSpawn = useCallback(async () => {
 		if (!location || !singletonPano) return;
@@ -1373,23 +1376,7 @@ function LocationPreviewInner() {
 
 	return (
 		<>
-			{isReviewMode && reviewState && (
-				<div className="review-header">
-					<span>Reviewing: {reviewState.locations.length - reviewState.index} locations left</span>
-					<button
-						className="icon-button"
-						role="tooltip"
-						aria-label="Abort review"
-						data-microtip-position="bottom"
-						onClick={cancelReview}
-						data-qa="review-cancel"
-					>
-						<svg height="16" width="16" viewBox="0 0 24 24" fill="currentColor">
-							<path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
-						</svg>
-					</button>
-				</div>
-			)}
+			<ReviewBar />
 			<section className="location-preview">
 				<div className="location-preview__panorama" ref={fullscreenContainerRef}>
 					<div
@@ -1459,7 +1446,7 @@ function LocationPreviewInner() {
 								<button
 									className="button"
 									onClick={() => reviewPrev()}
-									disabled={reviewState?.index === 0}
+									disabled={reviewSession ? isAtStart(reviewSession) : true}
 									role="tooltip"
 									aria-label="Go to previous location (Control+Left)"
 									data-microtip-position="top"

@@ -88,7 +88,7 @@ export function savedToSelectionProps(
 				.map((child) => savedToSelectionProps(child, map))
 				.filter((c): c is SelectionProps => c !== null);
 			if (children.length === 0) return null;
-			const builtChildren = children.map((p) => buildSelection(map, p));
+			const builtChildren = children.map((p) => buildSelection(p));
 			return { type: saved.type, selections: builtChildren };
 		}
 

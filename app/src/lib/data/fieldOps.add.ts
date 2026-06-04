@@ -4,7 +4,7 @@
  * orchestrates IPC, definitions, and persistence. Kept side-effect-free for testability.
  */
 
-import type { Location, MapData } from "@/types";
+import type { Location } from "@/types";
 import type { Selection, SelectionProps } from "@/store/selections";
 import { buildSelection } from "@/store/selections";
 
@@ -73,7 +73,6 @@ export function planFieldSet(locations: Location[], key: string, value: unknown)
  * to their sole survivor (matching the rest of the selection engine's semantics).
  */
 function rewriteSelection(
-	map: MapData,
 	sel: Selection,
 	from: string,
 	to: string | null,
@@ -81,26 +80,25 @@ function rewriteSelection(
 	const p = sel.props;
 	if (p.type === "Filter") {
 		if (p.field !== from) return sel;
-		return to === null ? null : buildSelection(map, { ...p, field: to });
+		return to === null ? null : buildSelection({ ...p, field: to });
 	}
 	if ("selections" in p) {
 		const children = p.selections
-			.map((c) => rewriteSelection(map, c, from, to))
+			.map((c) => rewriteSelection(c, from, to))
 			.filter((c): c is Selection => c !== null);
 		if (children.length === 0) return null;
 		if (children.length === 1 && p.type !== "Invert") return children[0];
-		return buildSelection(map, { ...p, selections: children } as SelectionProps);
+		return buildSelection({ ...p, selections: children } as SelectionProps);
 	}
 	return sel;
 }
 
 export function rewriteSelectionFields(
-	map: MapData,
 	selections: Selection[],
 	from: string,
 	to: string | null,
 ): Selection[] {
 	return selections
-		.map((s) => rewriteSelection(map, s, from, to))
+		.map((s) => rewriteSelection(s, from, to))
 		.filter((s): s is Selection => s !== null);
 }

@@ -68,13 +68,15 @@ function locationsKey(ids: number[]): string {
 	return ids.join(",");
 }
 
-export function resolveLocations(_map: MapData, props: SelectionProps): number[] {
+export function resolveLocations(props: SelectionProps): number[] {
 	return match(props)
-		.with({ type: P.union("Locations", "Manual", "ValidationState") }, (p) => [...p.locations])
+		.with({ type: P.union("Locations", "Manual", "ValidationState", "Reviewed") }, (p) => [
+			...p.locations,
+		])
 		.otherwise(() => []);
 }
 
-function keyForProps(_map: MapData, props: SelectionProps, locations: number[]): string {
+function keyForProps(props: SelectionProps, locations: number[]): string {
 	return match(props)
 		.with({ type: "Locations" }, () => locationsKey(locations))
 		.with({ type: "Everything" }, () => "everything")
@@ -88,6 +90,7 @@ function keyForProps(_map: MapData, props: SelectionProps, locations: number[]):
 		.with({ type: "Duplicates" }, (p) => `duplicates:${p.distance}`)
 		.with({ type: "Manual" }, () => "manual")
 		.with({ type: "ValidationState" }, (p) => `validation:${p.state}`)
+		.with({ type: "Reviewed" }, (p) => `review:${p.sessionId}:${p.mode}`)
 		.with({ type: "Intersection" }, (p) => p.selections.map((s) => `(${s.key})`).join("^"))
 		.with({ type: "Union" }, (p) => p.selections.map((s) => `(${s.key})`).join("|"))
 		.with({ type: "Invert" }, (p) => `!${p.selections[0].key}`)
@@ -99,11 +102,18 @@ function keyForProps(_map: MapData, props: SelectionProps, locations: number[]):
 		.exhaustive();
 }
 
-/** Create a Selection with a deterministic key and hashed color from its props. */
-export function buildSelection(map: MapData, props: SelectionProps): Selection {
-	const locations = resolveLocations(map, props);
-	const key = keyForProps(map, props, locations);
-	return { key, color: colorForKey(key), props, count: 0 };
+/** Overlay color for a selection. Reviewed/unreviewed get fixed complementary colors —
+ *  hues 145 and 325 are exact opposites (180° apart) — everything else is hashed from its key. */
+function selectionColor(props: SelectionProps, key: string): [number, number, number] {
+	if (props.type !== "Reviewed") return colorForKey(key);
+	return props.mode === "unreviewed" ? hslToRgb(325, 0.6, 0.5) : hslToRgb(145, 0.6, 0.5);
+}
+
+/** Create a Selection with a deterministic key and overlay color from its props. */
+export function buildSelection(props: SelectionProps): Selection {
+	const locations = resolveLocations(props);
+	const key = keyForProps(props, locations);
+	return { key, color: selectionColor(props, key), props, count: 0 };
 }
 
 // dedupe by key, preserving order of last occurrence
@@ -114,11 +124,10 @@ function dedupe(selections: Selection[]): Selection[] {
 }
 
 export function addSelection(
-	map: MapData,
 	current: Selection[],
 	props: SelectionProps,
 ): Selection[] {
-	return dedupe([...current, buildSelection(map, props)]);
+	return dedupe([...current, buildSelection(props)]);
 }
 
 /** Remove a selection by key. Composites (Intersection/Union/Invert) unwrap their children back into the list. */
@@ -132,7 +141,6 @@ export function removeSelection(current: Selection[], key: string): Selection[] 
 
 /** Merge targeted selections into a single composite, flattening nested groups of the same type. */
 function composeSelectionGroup(
-	map: MapData,
 	current: Selection[],
 	keys: string[] | null,
 	type: "Intersection" | "Union",
@@ -143,18 +151,17 @@ function composeSelectionGroup(
 	const others: Selection[] = [];
 	for (const s of current) (targetKeys.includes(s.key) ? targets : others).push(s);
 	const flat = targets.flatMap((s) => (s.props.type === type ? s.props.selections : [s]));
-	return [...others, buildSelection(map, { type, selections: dedupe(flat) })];
+	return [...others, buildSelection({ type, selections: dedupe(flat) })];
 }
 
-export const intersectSelections = (map: MapData, current: Selection[], keys: string[] | null) =>
-	composeSelectionGroup(map, current, keys, "Intersection");
+export const intersectSelections = (current: Selection[], keys: string[] | null) =>
+	composeSelectionGroup(current, keys, "Intersection");
 
-export const unionSelections = (map: MapData, current: Selection[], keys: string[] | null) =>
-	composeSelectionGroup(map, current, keys, "Union");
+export const unionSelections = (current: Selection[], keys: string[] | null) =>
+	composeSelectionGroup(current, keys, "Union");
 
 /** Invert targeted selections. Single target toggles in-place; multiple are wrapped in Union then Invert. */
 export function invertSelections(
-	map: MapData,
 	current: Selection[],
 	keys: string[] | null,
 ): Selection[] {
@@ -165,7 +172,7 @@ export function invertSelections(
 		return current.map((s) => {
 			if (s.key !== targetKeys[0]) return s;
 			if (s.props.type === "Invert") return s.props.selections[0];
-			return buildSelection(map, { type: "Invert", selections: [s] });
+			return buildSelection({ type: "Invert", selections: [s] });
 		});
 	}
 	const targets: Selection[] = [];
@@ -173,25 +180,24 @@ export function invertSelections(
 	for (const s of current) (targetKeys.includes(s.key) ? targets : others).push(s);
 	const flat = targets.flatMap((s) => (s.props.type === "Union" ? s.props.selections : [s]));
 	const inner =
-		flat.length === 1 ? flat[0] : buildSelection(map, { type: "Union", selections: flat });
-	return [...others, buildSelection(map, { type: "Invert", selections: [inner] })];
+		flat.length === 1 ? flat[0] : buildSelection({ type: "Union", selections: flat });
+	return [...others, buildSelection({ type: "Invert", selections: [inner] })];
 }
 
 export function toggleManualSelection(
-	map: MapData,
 	current: Selection[],
 	locationId: number,
 ): Selection[] {
 	const idx = current.findIndex((s) => s.key === "manual");
 	if (idx === -1)
-		return [...current, buildSelection(map, { type: "Manual", locations: [locationId] })];
+		return [...current, buildSelection({ type: "Manual", locations: [locationId] })];
 	const sel = current[idx];
 	const ids = (sel.props as Variant<SelectionProps, "Manual">).locations.slice();
 	const at = ids.indexOf(locationId);
 	if (at === -1) ids.push(locationId);
 	else ids.splice(at, 1);
 	if (ids.length === 0) return current.toSpliced(idx, 1);
-	const next = buildSelection(map, { type: "Manual", locations: ids });
+	const next = buildSelection({ type: "Manual", locations: ids });
 	return current.with(idx, next);
 }
 
@@ -213,7 +219,6 @@ export function reorderSelections(
 
 /** Drag-drop composition: merge drag into drop as a new composite, absorbing existing children of the same type. */
 export function composeSelections(
-	map: MapData,
 	current: Selection[],
 	dragKey: string,
 	dropKey: string,
@@ -231,13 +236,12 @@ export function composeSelections(
 	} else {
 		children = [drop, drag];
 	}
-	const composite = buildSelection(map, { type: mode, selections: dedupe(children) });
+	const composite = buildSelection({ type: mode, selections: dedupe(children) });
 
 	return current.filter((_, i) => i !== dragIdx).map((s) => (s.key === dropKey ? composite : s));
 }
 
 function removeChildFromComposite(
-	map: MapData,
 	sel: Selection,
 	parentKey: string,
 	childKey: string,
@@ -260,17 +264,17 @@ function removeChildFromComposite(
 			return { updated: remaining[0] ?? child, removed: child };
 		}
 		return {
-			updated: buildSelection(map, { type: compositeProps.type, selections: remaining }),
+			updated: buildSelection({ type: compositeProps.type, selections: remaining }),
 			removed: child,
 		};
 	}
 
 	for (let i = 0; i < children.length; i++) {
-		const result = removeChildFromComposite(map, children[i], parentKey, childKey);
+		const result = removeChildFromComposite(children[i], parentKey, childKey);
 		if (result) {
 			const newChildren = children.with(i, result.updated);
 			return {
-				updated: buildSelection(map, { type: compositeProps.type, selections: newChildren }),
+				updated: buildSelection({ type: compositeProps.type, selections: newChildren }),
 				removed: result.removed,
 			};
 		}
@@ -280,21 +284,20 @@ function removeChildFromComposite(
 
 /** Pull a child out of a composite back into the top-level list. Parent collapses if only one child remains. */
 export function decomposeChild(
-	map: MapData,
 	current: Selection[],
 	parentKey: string,
 	childKey: string,
 ): Selection[] {
 	for (let i = 0; i < current.length; i++) {
 		if (current[i].key === parentKey) {
-			const result = removeChildFromComposite(map, current[i], parentKey, childKey);
+			const result = removeChildFromComposite(current[i], parentKey, childKey);
 			if (!result) return current;
 			const out = [...current];
 			out[i] = result.updated;
 			out.splice(i + 1, 0, result.removed);
 			return out;
 		}
-		const nested = removeChildFromComposite(map, current[i], parentKey, childKey);
+		const nested = removeChildFromComposite(current[i], parentKey, childKey);
 		if (nested) {
 			const out = [...current];
 			out[i] = nested.updated;
@@ -306,13 +309,12 @@ export function decomposeChild(
 }
 
 export function removeFromComposite(
-	map: MapData,
 	current: Selection[],
 	parentKey: string,
 	childKey: string,
 ): Selection[] {
 	for (let i = 0; i < current.length; i++) {
-		const result = removeChildFromComposite(map, current[i], parentKey, childKey);
+		const result = removeChildFromComposite(current[i], parentKey, childKey);
 		if (result) {
 			const out = [...current];
 			out[i] = result.updated;
@@ -323,7 +325,6 @@ export function removeFromComposite(
 }
 
 export function composeSiblings(
-	map: MapData,
 	current: Selection[],
 	parentKey: string,
 	dragKey: string,
@@ -343,16 +344,15 @@ export function composeSiblings(
 	const dropChild = children.find((s) => s.key === dropKey);
 	if (!dragChild || !dropChild) return current;
 
-	const nested = buildSelection(map, { type: mode, selections: [dropChild, dragChild] });
+	const nested = buildSelection({ type: mode, selections: [dropChild, dragChild] });
 	const newChildren = children
 		.filter((s) => s.key !== dragKey)
 		.map((s) => (s.key === dropKey ? nested : s));
-	const newParent = buildSelection(map, { type: compositeProps.type, selections: newChildren });
+	const newParent = buildSelection({ type: compositeProps.type, selections: newChildren });
 	return current.with(parentIdx, newParent);
 }
 
 export function composeWithChild(
-	map: MapData,
 	current: Selection[],
 	dragKey: string,
 	parentKey: string,
@@ -374,27 +374,26 @@ export function composeWithChild(
 	if (childIdx === -1) return current;
 	const child = children[childIdx];
 
-	const nested = buildSelection(map, { type: mode, selections: [child, drag] });
+	const nested = buildSelection({ type: mode, selections: [child, drag] });
 	const newChildren = children.with(childIdx, nested);
-	const newParent = buildSelection(map, { type: compositeProps.type, selections: newChildren });
+	const newParent = buildSelection({ type: compositeProps.type, selections: newChildren });
 
 	return current.filter((_, i) => i !== dragIdx).map((s) => (s.key === parentKey ? newParent : s));
 }
 
 function replaceInTree(
-	map: MapData,
 	sel: Selection,
 	oldKey: string,
 	props: SelectionProps,
 ): Selection | null {
-	if (sel.key === oldKey) return buildSelection(map, props);
+	if (sel.key === oldKey) return buildSelection(props);
 	if (!isVariant(sel.props, COMPOSITE_TYPES)) return null;
 	const children = sel.props.selections;
 	for (let i = 0; i < children.length; i++) {
-		const replaced = replaceInTree(map, children[i], oldKey, props);
+		const replaced = replaceInTree(children[i], oldKey, props);
 		if (replaced) {
 			const newChildren = children.with(i, replaced);
-			return buildSelection(map, { type: sel.props.type, selections: newChildren });
+			return buildSelection({ type: sel.props.type, selections: newChildren });
 		}
 	}
 	return null;
@@ -404,13 +403,12 @@ function replaceInTree(
  *  `props`, rebuilding the keys of every composite on the path so identity stays
  *  consistent. Used to edit a filter in place without dropping it from its AND/OR group. */
 export function replaceSelection(
-	map: MapData,
 	current: Selection[],
 	oldKey: string,
 	props: SelectionProps,
 ): Selection[] {
 	for (let i = 0; i < current.length; i++) {
-		const replaced = replaceInTree(map, current[i], oldKey, props);
+		const replaced = replaceInTree(current[i], oldKey, props);
 		if (replaced) return current.with(i, replaced);
 	}
 	return current;
@@ -432,6 +430,7 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 		.with({ type: "Duplicates" }, (p) => `Duplicates (${p.distance}m)`)
 		.with({ type: "Manual" }, () => "Manual selection")
 		.with({ type: "ValidationState" }, (p) => validationStateLabel(p.state))
+		.with({ type: "Reviewed" }, (p) => (p.mode === "unreviewed" ? "Unreviewed" : "Reviewed"))
 		.with({ type: "Intersection" }, () => "Intersection")
 		.with({ type: "Union" }, () => "Union")
 		.with({ type: "Invert" }, (p) => `Invert: ${selectionDisplayName(map, p.selections[0])}`)

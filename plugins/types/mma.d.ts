@@ -449,6 +449,45 @@ export type RenderRequest = {
 	selectedIds?: number[] | null;
 	markerStyle?: string;
 };
+/**
+ *  Inbound payload for creating a session. `order` is the frozen worklist (must be non-empty);
+ *  the cursor starts at its first id and `reviewed` starts empty.
+ */
+export type ReviewCreate = {
+	mapId: string;
+	name: string;
+	sourceKey: string;
+	sourceProps: any;
+	order: number[];
+};
+/**
+ *  A review session as returned to the frontend. `order`/`reviewed` are decoded from the
+ *  JSON-text columns; `source_props` is the originating `SelectionProps` (opaque here).
+ */
+export type ReviewSession = {
+	id: string;
+	mapId: string;
+	name: string;
+	sourceKey: string;
+	sourceProps: any;
+	order: number[];
+	reviewed: number[];
+	cursorId: number;
+	status: string;
+	createdAt: string;
+	updatedAt: string;
+};
+/**
+ *  Partial update. Any `Some` field is written; `None` leaves the column untouched.
+ *  `ordering`/`reviewed` carry the full replacement arrays (used by reconciliation pruning).
+ */
+export type ReviewUpdate = {
+	id: string;
+	cursorId: number | null;
+	reviewed: number[] | null;
+	ordering: number[] | null;
+	status: string | null;
+};
 /**  Result of `store_save_dirty`: how many bytes were written to the delta file. */
 export type SaveResult = {
 	savedChunks: number;
@@ -571,6 +610,11 @@ export type SelectionProps = {
 	type: "ValidationState";
 	locations: number[];
 	state: number;
+} | {
+	type: "Reviewed";
+	locations: number[];
+	sessionId: string;
+	mode: string;
 } | {
 	type: "Intersection";
 	selections: Selection$1[];
@@ -1358,6 +1402,23 @@ declare const mma: {
 		storeSeenCountries: () => Promise<string[]>;
 		storeSeenMaps: () => Promise<SeenMapInfo[]>;
 		storeSeenClear: () => Promise<null>;
+		storeReviewCreate: (session: ReviewCreate) => Promise<ReviewSession>;
+		storeReviewGet: (mapId: string, sourceKey: string) => Promise<{
+			id: string;
+			mapId: string;
+			name: string;
+			sourceKey: string;
+			sourceProps: any;
+			order: number[];
+			reviewed: number[];
+			cursorId: number;
+			status: string;
+			createdAt: string;
+			updatedAt: string;
+		} | null>;
+		storeReviewList: (mapId: string, status: string | null) => Promise<ReviewSession[]>;
+		storeReviewUpdate: (update: ReviewUpdate) => Promise<null>;
+		storeReviewDelete: (id: string) => Promise<null>;
 		storeCreateCommit: (mapId: string, message: string | null) => Promise<string>;
 		storeListCommits: (mapId: string) => Promise<CommitInfo[]>;
 		storeCheckoutCommit: (mapId: string, commitId: string) => Promise<null>;
@@ -1549,11 +1610,6 @@ declare const mma: {
 	beginImportPaste(text: string): Promise<void>;
 	confirmImport(droppedFields: string[], tagName?: string): Promise<EditorImportResult_Serialize | null>;
 	cancelImport(): void;
-	beginReview(locationIds: number[]): Promise<void>;
-	cancelReview(): void;
-	reviewNext(): Promise<void>;
-	reviewPrev(): Promise<void>;
-	reviewDelete(): Promise<void>;
 	undo(): Promise<void>;
 	redo(): Promise<void>;
 	getUndoRedoState(): {
@@ -1614,10 +1670,6 @@ declare const mma: {
 	useImportMarkerVersion: () => number;
 	useCommitDiffPreview: () => CommitDiffPreview | null;
 	useDiffMarkerVersion: () => number;
-	useReview: () => {
-		locations: number[];
-		index: number;
-	} | null;
 	useKnownFieldKeys: () => ReadonlySet<string>;
 	useSelections: () => Selection$1[];
 	useGhostedSelections: () => Set<string>;

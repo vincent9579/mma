@@ -332,6 +332,23 @@ export const commands = {
 	storeSeenMaps: () => typedError<SeenMapInfo[], string>(__TAURI_INVOKE("store_seen_maps")),
 	/**  Deletes all seen history entries. */
 	storeSeenClear: () => typedError<null, string>(__TAURI_INVOKE("store_seen_clear")),
+	storeReviewCreate: (session: ReviewCreate) => typedError<ReviewSession, string>(__TAURI_INVOKE("store_review_create", { session })),
+	storeReviewGet: (mapId: string, sourceKey: string) => typedError<{
+	id: string,
+	mapId: string,
+	name: string,
+	sourceKey: string,
+	sourceProps: any,
+	order: number[],
+	reviewed: number[],
+	cursorId: number,
+	status: string,
+	createdAt: string,
+	updatedAt: string,
+} | null, string>(__TAURI_INVOKE("store_review_get", { mapId, sourceKey })),
+	storeReviewList: (mapId: string, status: string | null) => typedError<ReviewSession[], string>(__TAURI_INVOKE("store_review_list", { mapId, status })),
+	storeReviewUpdate: (update: ReviewUpdate) => typedError<null, string>(__TAURI_INVOKE("store_review_update", { update })),
+	storeReviewDelete: (id: string) => typedError<null, string>(__TAURI_INVOKE("store_review_delete", { id })),
 	/**
 	 *  Create a new commit for a map.
 	 * 
@@ -894,6 +911,48 @@ export type RenderRequest = {
 	markerStyle?: string,
 };
 
+/**
+ *  Inbound payload for creating a session. `order` is the frozen worklist (must be non-empty);
+ *  the cursor starts at its first id and `reviewed` starts empty.
+ */
+export type ReviewCreate = {
+	mapId: string,
+	name: string,
+	sourceKey: string,
+	sourceProps: any,
+	order: number[],
+};
+
+/**
+ *  A review session as returned to the frontend. `order`/`reviewed` are decoded from the
+ *  JSON-text columns; `source_props` is the originating `SelectionProps` (opaque here).
+ */
+export type ReviewSession = {
+	id: string,
+	mapId: string,
+	name: string,
+	sourceKey: string,
+	sourceProps: any,
+	order: number[],
+	reviewed: number[],
+	cursorId: number,
+	status: string,
+	createdAt: string,
+	updatedAt: string,
+};
+
+/**
+ *  Partial update. Any `Some` field is written; `None` leaves the column untouched.
+ *  `ordering`/`reviewed` carry the full replacement arrays (used by reconciliation pruning).
+ */
+export type ReviewUpdate = {
+	id: string,
+	cursorId: number | null,
+	reviewed: number[] | null,
+	ordering: number[] | null,
+	status: string | null,
+};
+
 /**  Result of `store_save_dirty`: how many bytes were written to the delta file. */
 export type SaveResult = {
 	savedChunks: number,
@@ -984,7 +1043,7 @@ export type SelectionInput = {
  *   parallel batch scans. Composites (Intersection, Union, Invert) recursively resolve
  *  children. Duplicates uses a grid-accelerated spatial scan.
  */
-export type SelectionProps = { type: "Locations"; locations: number[]; name: string | null } | { type: "Everything" } | { type: "Polygon"; polygon: PolygonGeometry; includeInformational: boolean } | { type: "Tag"; tagId: number } | { type: "Untagged" } | { type: "Unpanned" } | { type: "PanoIds" } | { type: "NotPanoIds" } | { type: "Manual"; locations: number[] } | { type: "Duplicates"; distance: number } | { type: "ValidationState"; locations: number[]; state: number } | { type: "Intersection"; selections: Selection[] } | { type: "Union"; selections: Selection[] } | { type: "Invert"; selections: Selection[] } | { type: "Filter"; field: string; op: string; value: any; value2: any | null };
+export type SelectionProps = { type: "Locations"; locations: number[]; name: string | null } | { type: "Everything" } | { type: "Polygon"; polygon: PolygonGeometry; includeInformational: boolean } | { type: "Tag"; tagId: number } | { type: "Untagged" } | { type: "Unpanned" } | { type: "PanoIds" } | { type: "NotPanoIds" } | { type: "Manual"; locations: number[] } | { type: "Duplicates"; distance: number } | { type: "ValidationState"; locations: number[]; state: number } | { type: "Reviewed"; locations: number[]; sessionId: string; mode: string } | { type: "Intersection"; selections: Selection[] } | { type: "Union"; selections: Selection[] } | { type: "Invert"; selections: Selection[] } | { type: "Filter"; field: string; op: string; value: any; value2: any | null };
 
 /**
  *  Selection bitmask sync payload. `patch_file` points to a temp binary that JS reads

@@ -9,6 +9,7 @@
  */
 
 import * as store from "@/store/useMapStore";
+import * as review from "@/lib/review/review.add";
 import { cmd as commands } from "@/lib/commands";
 import { createLocation } from "@/types";
 import type { Location } from "@/types";
@@ -76,8 +77,11 @@ async function createLocationStore(): Promise<LocationStore> {
 const mma = {
 	ready: false as boolean,
 
-	// --- Store (map, locations, tags, selections, undo, review, import, etc.) ---
+	// --- Store ---
 	...store,
+
+	// --- Review sessions ---
+	...review,
 
 	// --- Rust IPC commands ---
 	cmd: commands,

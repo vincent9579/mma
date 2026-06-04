@@ -264,12 +264,23 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (14, "ALTER TABLE maps ADD COLUMN labels TEXT NOT NULL DEFAULT '[]';
           ALTER TABLE maps ADD COLUMN last_opened_at TEXT;"),
     (15, "DROP TABLE IF EXISTS pano_date_cache;"),
-    // Delta-chain VCS: each commit's payload is a single Arrow delta file on disk
-    // (arrow/commits/<map_id>/<commit_id>.arrow); SQL only tracks the commit graph.
-    // Start fresh -- old geohash-blob snapshots are dropped, not migrated.
     (16, "DROP TABLE IF EXISTS commit_trees;
           DROP TABLE IF EXISTS working_tree;
           DELETE FROM commits;"),
+    (17, "CREATE TABLE IF NOT EXISTS review_sessions (
+            id           TEXT PRIMARY KEY NOT NULL,
+            map_id       TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
+            name         TEXT NOT NULL DEFAULT '',
+            source_key   TEXT NOT NULL,
+            source_props TEXT NOT NULL DEFAULT '{}',
+            ordering     TEXT NOT NULL,
+            reviewed     TEXT NOT NULL DEFAULT '[]',
+            cursor_id    INTEGER NOT NULL,
+            status       TEXT NOT NULL DEFAULT 'active',
+            created_at   TEXT NOT NULL,
+            updated_at   TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_review_sessions_map ON review_sessions(map_id, status);"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -443,73 +454,6 @@ pub(crate) fn read_arrow_ipc_mmap(path: &std::path::Path) -> Result<(arrow::arra
         Ok((crate::arrow_migrate::migrate(merged)?, MmapHandle { _buffer: buffer }))
     }
 }
-
-
-/// Returns msgpack map `{ undoStack: [...], redoStack: [...] }`.
-// #[tauri::command]
-// pub fn load_edit_history(app: tauri::AppHandle, map_id: String) -> Result<Response, String> {
-//     let conn = open_db(&app)?;
-//     let result = conn.query_row(
-//         "SELECT undo_stack, redo_stack FROM edit_history WHERE map_id = ?1",
-//         [&map_id],
-//         |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?)),
-//     );
-
-//     match result {
-//         Ok((undo, redo)) => {
-//             let mut out = Vec::with_capacity(undo.len() + redo.len() + 32);
-//             out.push(0x82); // fixmap 2
-//             write_fixstr(&mut out, "undoStack");
-//             out.extend_from_slice(&undo);
-//             write_fixstr(&mut out, "redoStack");
-//             out.extend_from_slice(&redo);
-//             Ok(Response::new(out))
-//         }
-//         Err(rusqlite::Error::QueryReturnedNoRows) => {
-//             let mut out = Vec::new();
-//             out.push(0x82); // fixmap 2
-//             write_fixstr(&mut out, "undoStack");
-//             out.push(0x90); // fixarray 0
-//             write_fixstr(&mut out, "redoStack");
-//             out.push(0x90);
-//             Ok(Response::new(out))
-//         }
-//         Err(e) => Err(e.to_string()),
-//     }
-// }
-
-// ---------------------------------------------------------------------------
-// Save
-// ---------------------------------------------------------------------------
-
-
-// #[derive(serde::Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// struct SaveHistoryPayload {
-//     map_id: String,
-//     undo_stack: serde_json::Value,
-//     redo_stack: serde_json::Value,
-// }
-
-/// Receive msgpack `{ mapId, undoStack, redoStack }`, re-encode each stack
-/// as a separate msgpack blob, and write to edit_history.
-// #[tauri::command]
-// pub async fn save_edit_history(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
-//     let body = raw_body(&request)?.to_vec();
-//     let db_path = db_path(&app)?;
-//     tokio::task::spawn_blocking(move || {
-//         let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
-//         let p: SaveHistoryPayload = rmp_serde::from_slice(&body).map_err(|e| e.to_string())?;
-//         let undo = rmp_serde::to_vec(&p.undo_stack).map_err(|e| e.to_string())?;
-//         let redo = rmp_serde::to_vec(&p.redo_stack).map_err(|e| e.to_string())?;
-//         conn.execute(
-//             "INSERT OR REPLACE INTO edit_history (map_id, undo_stack, redo_stack) VALUES (?1, ?2, ?3)",
-//             rusqlite::params![p.map_id, undo, redo],
-//         )
-//         .map_err(|e| e.to_string())?;
-//         Ok(())
-//     }).await.map_err(|e| e.to_string())?
-// }
 
 // ---------------------------------------------------------------------------
 // Helpers

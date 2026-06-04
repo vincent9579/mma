@@ -18,7 +18,6 @@ import {
 	setSelectionColors,
 	addTagToLocations,
 	createTags,
-	beginReview,
 	selectDuplicates,
 	selectFilter,
 	reorderSelection,
@@ -40,6 +39,8 @@ import type { Selection, FilterOp } from "@/store/selections";
 import { selectionDisplayName, OP_LABELS } from "@/store/selections";
 import { TagManager } from "@/components/editor/TagManager";
 import { MergeDuplicatesModal } from "@/components/dialogs/MergeDuplicatesModal.add";
+import { ReviewSessionsModal } from "@/components/dialogs/ReviewSessions.add";
+import { beginReview } from "@/lib/review/review.add";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { ToolBlock } from "@/components/primitives/ToolBlock";
 import { Icon } from "@/components/primitives/Icon";
@@ -339,7 +340,7 @@ function SelectionRow({
 											disabled={(selection.count ?? 0) === 0}
 											onSelect={async () => {
 												const ids = await cmd.storeResolveSelection(selection.props);
-												beginReview(ids);
+												beginReview(ids, selection);
 											}}
 										>
 											Review selection
@@ -1052,6 +1053,7 @@ export function MapOverview() {
 	const [dupDistance, setDupDistance] = useState(1);
 	const [showTagFindReplace, setShowTagFindReplace] = useState(false);
 	const [showMergeDuplicates, setShowMergeDuplicates] = useState(false);
+	const [showReviews, setShowReviews] = useState(false);
 
 	useEffect(() => {
 		const handler = () => setShowTagFindReplace(true);
@@ -1226,6 +1228,14 @@ export function MapOverview() {
 					>
 						Review selected locations
 					</button>
+					<button
+						className="button"
+						style={{ marginInlineStart: "1rem" }}
+						onClick={() => setShowReviews(true)}
+						data-qa="open-reviews"
+					>
+						Reviews...
+					</button>
 					<form
 						style={{ display: "inline-block", marginInline: "1rem" }}
 						onSubmit={handleBulkAddTag}
@@ -1293,6 +1303,7 @@ export function MapOverview() {
 				onOpenChange={setShowMergeDuplicates}
 				distance={dupDistance}
 			/>
+			<ReviewSessionsModal open={showReviews} onOpenChange={setShowReviews} />
 		</section>
 	);
 }

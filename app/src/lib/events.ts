@@ -8,6 +8,7 @@ export interface EditorEventMap {
 	"location:remove": number[];
 	"location:update": Partial<Location> & { id: number };
 	"selection:change": Selection[];
+	"active:change": number | null;
 	"map:open": MapData;
 	"map:close": void;
 }
