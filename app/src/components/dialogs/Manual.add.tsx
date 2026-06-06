@@ -596,6 +596,11 @@ const CHAPTERS: Chapter[] = [
 						<strong>Toggle pano UI.</strong> Hides the overlay controls for a clean view (
 						<Kbd>H</Kbd>).
 					</li>
+					<li>
+						<strong>Preview aspect ratio.</strong> The panorama pane can be shaped to a fixed aspect
+						ratio (4:3, 16:10, 16:9, or 21:9) to match how the map will be played. Set it in{" "}
+						<strong>Settings &rarr; Street View</strong>.
+					</li>
 				</ul>
 				<h2>Movement modes and speed</h2>
 				<ul>
@@ -693,23 +698,63 @@ const CHAPTERS: Chapter[] = [
 			<>
 				<h2>Review mode</h2>
 				<p>
-					Review mode walks you through a set of locations one at a time in the panorama viewer.
-					Start it from a selection's menu (<strong>Review selection</strong>) or from the duplicate
-					finder.
+					Review mode walks you through a set of locations one at a time in the panorama viewer,
+					tracking which ones you have already looked at. Start it from a selection's menu (
+					<strong>Review selection</strong>), from the duplicate finder, or with{" "}
+					<strong>Review selected locations</strong> in the overview's selection bar.
 				</p>
 				<ul>
 					<li>
 						<strong>Next / Previous.</strong> <Kbd>Ctrl</Kbd>+<Kbd>Right</Kbd> and <Kbd>Ctrl</Kbd>+
-						<Kbd>Left</Kbd>. <strong>Save</strong> also advances to the next location.
+						<Kbd>Left</Kbd>. <strong>Save</strong> also advances to the next location and marks the
+						current one reviewed.
 					</li>
 					<li>
 						<strong>Delete.</strong> Removes the current location and moves on.
 					</li>
 					<li>
-						<strong>Abort review.</strong> The X in the review header leaves review mode. A counter
-						shows how many locations remain.
+						<strong>Exit review.</strong> The X in the review header leaves review mode without
+						discarding your progress. The header shows your position (<strong>3 / 50</strong>) and
+						how many you have reviewed so far.
 					</li>
 				</ul>
+				<p>
+					Clicking another location's marker while a review is active jumps the cursor there if it
+					is in the worklist; clicking off-list is a harmless peek that leaves your place untouched.
+				</p>
+				<h2>Resuming a review</h2>
+				<p>
+					Reviews are saved sessions, so you can stop partway and come back later. Re-running{" "}
+					<strong>Review selection</strong> on the same selection resumes its in-progress session
+					rather than starting over. The <strong>Reviews...</strong> button in the overview's
+					selection bar opens the session list.
+				</p>
+				<Img
+					name="review-sessions.png"
+					caption="The review sessions dialog: in-progress and completed reviews with progress bars."
+				/>
+				<ul>
+					<li>
+						<strong>In progress / Completed.</strong> Two tabs split active sessions from finished
+						ones.
+					</li>
+					<li>
+						<strong>Resume.</strong> Re-enters an in-progress session at the location you left off.
+					</li>
+					<li>
+						<strong>Select reviewed / Select unreviewed.</strong> The two circle buttons turn a
+						session's reviewed (or not-yet-reviewed) locations into a selection you can act on,
+						without re-entering review mode.
+					</li>
+					<li>
+						<strong>Delete.</strong> Discards the session.
+					</li>
+				</ul>
+				<p>
+					While a review is active, two overlay selections mirror its progress on the map:{" "}
+					<strong>reviewed</strong> and <strong>unreviewed</strong>, so you can see at a glance
+					what is left.
+				</p>
 				<h2>Duplicating a location</h2>
 				<p>
 					Press <Kbd>C</Kbd> in the location editor to duplicate the current location, then reframe
@@ -722,8 +767,9 @@ const CHAPTERS: Chapter[] = [
 						editor.
 					</li>
 					<li>
-						<strong>In bulk.</strong> Select locations, then run{" "}
-						<strong>Delete selected locations</strong> from the command palette.
+						<strong>In bulk.</strong> Select locations, then press <Kbd>Delete</Kbd> on the map, use{" "}
+						<strong>Delete selected locations</strong> in the overview's selection bar, or run it
+						from the command palette.
 					</li>
 				</ul>
 				<h2>Viewport lock</h2>
@@ -786,6 +832,12 @@ const CHAPTERS: Chapter[] = [
 				<h2>Tag tools</h2>
 				<ul>
 					<li>
+						<strong>Apply metadata as tags.</strong> Pick a metadata field and MMA creates one tag
+						per distinct value, assigning each location the tag for its value (command palette). For
+						example, applying <strong>countryCode</strong> turns a map into per-country tags in one
+						step.
+					</li>
+					<li>
 						<strong>Find and replace in tag names.</strong> Bulk-rename across tags (command
 						palette).
 					</li>
@@ -824,7 +876,7 @@ const CHAPTERS: Chapter[] = [
 						a pano vs resolved by coordinates).
 					</li>
 					<li>
-						<strong>Polygon.</strong> An area you draw as a polygon, rectangle, or freehand shape.
+						<strong>Polygon.</strong> An area you draw as a polygon, rectangle, or freehand shape. 
 						Polygon selections can be configured to include informational locations.
 					</li>
 					<li>
@@ -879,6 +931,13 @@ const CHAPTERS: Chapter[] = [
 				<p>
 					<strong>Delete selected locations</strong> also lives in the command palette. To tag the
 					whole selection at once, use <strong>Bulk add tags</strong>.
+				</p>
+				<h2>Picking a random subset</h2>
+				<p>
+					<strong>Pick random locations from selection</strong> (command palette) takes a count and
+					replaces the current selection with that many locations chosen at random from it. If you
+					ask for more than the selection holds, it is clamped to the whole selection. Handy for
+					sampling a large map down to a manageable set to review or export.
 				</p>
 			</>
 		),
@@ -1032,7 +1091,13 @@ const CHAPTERS: Chapter[] = [
 					</li>
 					<li>
 						<strong>Set metadata field value.</strong> Writes a chosen value into a field across the
-						scope.
+						scope. Besides custom metadata fields, the picker also offers the built-in camera fields{" "}
+						<strong>Heading</strong>, <strong>Pitch</strong>, and <strong>Zoom</strong>, so you can
+						set a fixed point of view across many locations at once.
+					</li>
+					<li>
+						<strong>Pan headings along road.</strong> Sets each location's heading to face along the
+						road, choosing <strong>forwards</strong> or <strong>backwards</strong>.
 					</li>
 					<li>
 						<strong>Clear metadata fields.</strong> Removes chosen fields from the scope.
@@ -1580,7 +1645,10 @@ const CHAPTERS: Chapter[] = [
 					</li>
 					<li>
 						<strong>Distribution.</strong> A live bar chart of how your locations are spread across
-						countries, with flags and counts.
+						countries, with flags and counts. It resolves countries offline from coordinates, so it
+						works with zero enrichment; a <strong>Coordinates</strong> / <strong>Metadata</strong>{" "}
+						toggle switches between coordinate-based counts and your enriched <code>countryCode</code>{" "}
+						field when one is present.
 					</li>
 					<li>
 						<strong>Disambiguate.</strong> Ranks metadata fields by how strongly they separate your
@@ -1649,8 +1717,9 @@ const CHAPTERS: Chapter[] = [
 			<>
 				<p>
 					The <strong>Import file</strong> button in the bottom bar brings locations into the
-					current map. After you pick a file, an import panel opens in the sidebar showing a preview
-					before anything is committed.
+					current map. You can also <strong>drag a JSON or CSV file</strong> straight onto the
+					editor window; a "Drop file to import" overlay appears while you hover. Either way an
+					import panel opens in the sidebar showing a preview before anything is committed.
 				</p>
 				<h2>The import panel</h2>
 				<ul>
@@ -1730,6 +1799,10 @@ const CHAPTERS: Chapter[] = [
 						<strong>GeoJSON.</strong> Download, for use in non-GeoGuessr mapping tools.
 					</li>
 				</ul>
+				<p>
+					Download opens a native <strong>Save as</strong> dialog so you choose exactly where the
+					file lands, and a notification confirms when the export is written.
+				</p>
 			</>
 		),
 	},
