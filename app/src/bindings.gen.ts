@@ -138,10 +138,7 @@ export const commands = {
 	tags: number[],
 	/**  Arbitrary key-value metadata */
 	extra?: any | null,
-	/**
-	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
-	 *  it as a number and converts for display; never an ISO string.
-	 */
+	/**  Unix timestamp (seconds) */
 	createdAt: number,
 	modifiedAt?: number | null,
 } | null, string>(__TAURI_INVOKE("store_get_location", { id })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:v.data } : v) as typeof v)),
@@ -684,10 +681,7 @@ export type Location_Deserialize = {
 	tags: number[],
 	/**  Arbitrary key-value metadata */
 	extra?: any | null,
-	/**
-	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
-	 *  it as a number and converts for display; never an ISO string.
-	 */
+	/**  Unix timestamp (seconds) */
 	createdAt: number,
 	modifiedAt?: number | null,
 };
@@ -718,10 +712,7 @@ export type Location_Serialize = {
 	tags: number[],
 	/**  Arbitrary key-value metadata */
 	extra?: any | null,
-	/**
-	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
-	 *  it as a number and converts for display; never an ISO string.
-	 */
+	/**  Unix timestamp (seconds) */
 	createdAt: number,
 	modifiedAt?: number | null,
 };

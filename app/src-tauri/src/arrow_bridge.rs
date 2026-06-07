@@ -81,17 +81,17 @@ pub(crate) fn col_modified_at(b: &RecordBatch) -> &UInt32Array { b.column(COL_MO
 pub fn locations_to_batch(locs: &[Location]) -> RecordBatch {
     let n = locs.len();
 
-    let ids = UInt32Array::from(locs.iter().map(|l| l.id).collect::<Vec<_>>());
-    let lats = Float64Array::from(locs.iter().map(|l| l.lat).collect::<Vec<_>>());
-    let lngs = Float64Array::from(locs.iter().map(|l| l.lng).collect::<Vec<_>>());
-    let headings = Float64Array::from(locs.iter().map(|l| l.heading).collect::<Vec<_>>());
-    let pitches = Float64Array::from(locs.iter().map(|l| l.pitch).collect::<Vec<_>>());
-    let zooms = Float64Array::from(locs.iter().map(|l| l.zoom).collect::<Vec<_>>());
+    let ids = UInt32Array::from_iter_values(locs.iter().map(|l| l.id));
+    let lats = Float64Array::from_iter_values(locs.iter().map(|l| l.lat));
+    let lngs = Float64Array::from_iter_values(locs.iter().map(|l| l.lng));
+    let headings = Float64Array::from_iter_values(locs.iter().map(|l| l.heading));
+    let pitches = Float64Array::from_iter_values(locs.iter().map(|l| l.pitch));
+    let zooms = Float64Array::from_iter_values(locs.iter().map(|l| l.zoom));
     let pano_ids: StringArray = locs
         .iter()
         .map(|l| l.pano_id.as_deref())
         .collect();
-    let flags = UInt32Array::from(locs.iter().map(|l| l.flags.bits()).collect::<Vec<_>>());
+    let flags = UInt32Array::from_iter_values(locs.iter().map(|l| l.flags.bits()));
 
     let mut tags_builder =
         GenericListBuilder::<i32, UInt32Builder>::with_capacity(UInt32Builder::new(), n);
@@ -109,7 +109,7 @@ pub fn locations_to_batch(locs: &[Location]) -> RecordBatch {
         .map(|l| l.extra.as_ref().map(|e| serde_json::to_string(e).unwrap()))
         .collect();
 
-    let created_ats = UInt32Array::from(locs.iter().map(|l| l.created_at).collect::<Vec<_>>());
+    let created_ats = UInt32Array::from_iter_values(locs.iter().map(|l| l.created_at));
     let modified_ats: UInt32Array = locs.iter().map(|l| l.modified_at).collect();
 
     let schema = Arc::new(location_schema());
