@@ -894,16 +894,19 @@ fn add_parsed_to_store(
         }
     }
 
-    // Always insert through the overlay. Small imports stay a reversible undo diff;
-    // large ones (caller autocommits) skip the undo entry, which would otherwise
-    // clone every imported location and bloat the persisted edit history.
-    for loc in &parsed.locations {
-        let ci = location_store::render_cell_idx(loc.lat, loc.lng);
-        store.cell_add_render(ci, loc.id);
-        store.overlay_add(loc.clone());
-    }
     store.add_tag_counts(&parsed.locations);
 
+    // Discover new extra-field defs from the locations now, before we consume them.
+    let new_field_defs = {
+        let extras: Vec<&serde_json::Map<String, serde_json::Value>> = parsed.locations.iter()
+            .filter_map(|l| l.extra.as_ref())
+            .collect();
+        crate::map_meta::auto_register_field_defs(&store.known_field_keys, &extras)
+    };
+
+    // Small imports keep a reversible undo entry (needs a copy of the locations). Large
+    // imports autocommit and skip undo, so the locations are MOVED into the overlay
+    // below instead of cloning each one.
     if parsed.locations.len() <= IMPORT_AUTOCOMMIT_THRESHOLD {
         store.push_undo(location_store::EditEntry {
             created: parsed.locations.clone(),
@@ -912,15 +915,20 @@ fn add_parsed_to_store(
     }
     store.edits.redo.clear();
 
+    for loc in std::mem::take(&mut parsed.locations) {
+        let ci = location_store::render_cell_idx(loc.lat, loc.lng);
+        store.cell_add_render(ci, loc.id);
+        store.overlay_add(loc);
+    }
+
     let mut result = store.finish_mutation(
         location_store::ChangeSet { full_reset: true, ..Default::default() }
     );
     result.tags = Some(store.tags.all.clone());
 
-    let extras: Vec<&serde_json::Map<String, serde_json::Value>> = parsed.locations.iter()
-        .filter_map(|l| l.extra.as_ref())
-        .collect();
-    location_store::auto_register_extras(app, store, &extras, &mut result);
+    if let Some(new_defs) = new_field_defs {
+        location_store::apply_field_defs(app, store, new_defs, &mut result);
+    }
     Ok(result)
 }
 
@@ -956,16 +964,20 @@ pub fn store_import_file(
         }
         if drop_set.contains("tags") { parsed.tags.clear(); }
     }
-    log::debug!("[import] parse=cached locs={}", parsed.locations.len());
+    // Capture before add_parsed_to_store, which consumes parsed.locations (moves them
+    // into the overlay) leaving the vec empty.
+    let imported_count = parsed.locations.len() as u32;
+    let auto_commit = parsed.locations.len() > IMPORT_AUTOCOMMIT_THRESHOLD;
+    log::debug!("[import] parse=cached locs={}", imported_count);
 
     with_store!(webview, state, |store| {
         let mutation = add_parsed_to_store(&app, store, &mut parsed, tag_name.as_deref())?;
 
-        log::debug!("[import] total={:.0}ms locs={}", t0.elapsed().as_millis(), parsed.locations.len());
+        log::debug!("[import] total={:.0}ms locs={}", t0.elapsed().as_millis(), imported_count);
 
         Ok(EditorImportResult {
-            imported_count: parsed.locations.len() as u32,
-            auto_commit: parsed.locations.len() > IMPORT_AUTOCOMMIT_THRESHOLD,
+            imported_count,
+            auto_commit,
             warnings: parsed.warnings,
             mutation,
         })

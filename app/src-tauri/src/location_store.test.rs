@@ -860,7 +860,7 @@ fn delta_overlay_preserves_extra_fields() {
     let mut l = loc(1, 0.0, 0.0);
     l.extra = Some(serde_json::from_str(r#"{"country":"FR","altitude":35.2}"#).unwrap());
     l.pano_id = Some("CAoSLEF".into());
-    l.modified_at = Some("2024-01-15".into());
+    l.modified_at = Some(1_705_276_800);
     let overlay = DeltaOverlay { adds: vec![l.clone()], dead_ids: vec![], patches: vec![] };
     let bytes = rmp_serde::to_vec_named(&overlay).unwrap();
     let restored: DeltaOverlay = rmp_serde::from_slice(&bytes).unwrap();

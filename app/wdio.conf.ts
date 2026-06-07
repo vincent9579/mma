@@ -33,6 +33,7 @@ export const config: WebdriverIO.Config = {
 		"./test/e2e/benchmarks.test.ts",
 		"./test/e2e/speed-matrix.test.ts",
 		"./test/e2e/bulk-import-rust.test.ts",
+		"./test/e2e/perf-import.test.ts",
 	],
 	maxInstances: 1,
 	capabilities: [

@@ -215,11 +215,17 @@ pub fn delta_to_batch(created: &[Location], removed: &[Location]) -> RecordBatch
 }
 
 /// Split a delta batch back into `(created, removed)` location vectors.
+///
+/// Two on-disk forms are accepted: a true delta carries a 13th `op` column
+/// (`OP_CREATED`/`OP_REMOVED`); a genesis **snapshot** is stored in the plain
+/// 12-column base format (no `op`) and every row is treated as created. The latter
+/// lets a genesis commit reuse the base file instead of re-serializing it.
 pub fn batch_to_delta(batch: &RecordBatch) -> (Vec<Location>, Vec<Location>) {
-    let ops = batch
-        .column(batch.num_columns() - 1)
-        .as_any()
-        .downcast_ref::<UInt8Array>();
+    let ops = if batch.num_columns() > COL_MODIFIED_AT + 1 {
+        batch.column(COL_MODIFIED_AT + 1).as_any().downcast_ref::<UInt8Array>()
+    } else {
+        None
+    };
     let mut created = Vec::new();
     let mut removed = Vec::new();
     for i in 0..batch.num_rows() {

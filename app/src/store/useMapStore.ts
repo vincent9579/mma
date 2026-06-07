@@ -1245,8 +1245,21 @@ export async function confirmImport(droppedFields: string[], tagName?: string) {
 	cancelImport();
 	await mutate(Promise.resolve(r));
 	// Large imports skip the undo stack (Rust); commit them so the baseline advances
-	// with a recorded history entry instead of silently diverging from HEAD.
-	if (r.autoCommit) await commitMap(`Import ${r.importedCount} locations`);
+	// with a recorded history entry instead of silently diverging from HEAD. Use the
+	// single-pass commit+bake (builds the Arrow batch once) instead of commitMap.
+	if (r.autoCommit && currentMapId) {
+		// A pending autosave would write a delta the bake deletes (wasted + races it).
+		if (autosaveTimer) {
+			clearTimeout(autosaveTimer);
+			autosaveTimer = null;
+		}
+		if (inflightSave) await inflightSave;
+		await cmd.storeCommitAndBake(currentMapId, `Import ${r.importedCount} locations`);
+		undoRedoState = { canUndo: false, canRedo: false };
+		cachedCommitDiff = { added: 0, removed: 0, modified: 0 };
+		mapVersion++;
+		notify();
+	}
 	return r;
 }
 

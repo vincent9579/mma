@@ -63,6 +63,24 @@ fn round_trip() {
 }
 
 #[test]
+fn snapshot_batch_reads_as_all_created() {
+    // A genesis commit stores its delta as a plain 12-column base snapshot (no `op`
+    // column). batch_to_delta must read every row as created so it materializes back
+    // to the full location set — this is what lets the genesis commit reuse the base
+    // file instead of re-serializing a separate delta.
+    let locs = sample_locations();
+    let snapshot = locations_to_batch(&locs); // base format, 12 columns, no op
+    let (created, removed) = batch_to_delta(&snapshot);
+    assert!(removed.is_empty());
+    assert_eq!(
+        created.iter().map(|l| l.id).collect::<Vec<_>>(),
+        locs.iter().map(|l| l.id).collect::<Vec<_>>(),
+    );
+    assert_eq!(created[0].created_at, locs[0].created_at);
+    assert_eq!(created[0].pano_id, locs[0].pano_id);
+}
+
+#[test]
 fn empty_batch() {
     let batch = locations_to_batch(&[]);
     assert_eq!(batch.num_rows(), 0);

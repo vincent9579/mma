@@ -52,7 +52,7 @@ fn location_data_null_optionals() {
 
 #[test]
 fn location_data_id_defaults_to_zero() {
-    let json = r#"{"lat":0,"lng":0,"heading":0,"pitch":0,"zoom":0,"panoId":null,"flags":0,"tags":[],"createdAt":""}"#;
+    let json = r#"{"lat":0,"lng":0,"heading":0,"pitch":0,"zoom":0,"panoId":null,"flags":0,"tags":[],"createdAt":0}"#;
     let loc: Location = serde_json::from_str(json).unwrap();
     assert_eq!(loc.id, 0);
 }

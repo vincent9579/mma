@@ -373,6 +373,17 @@ export const commands = {
 	 *  Returns the new commit ID.
 	 */
 	storeCreateCommit: (mapId: string, message: string | null) => typedError<string, string>(__TAURI_INVOKE("store_create_commit", { mapId, message })),
+	/**
+	 *  Commit + bake in a single pass — the import/autocommit hot path.
+	 * 
+	 *  `store_create_commit` followed by `store_bake_and_save` builds the Arrow batch
+	 *  up to three times (collect+diff clones in the genesis fallback, then the bake)
+	 *  and serializes `extra` JSON twice. This builds it ONCE (the bake) and derives the
+	 *  commit delta by reusing the baked columns + an op column. Semantically identical:
+	 *  genesis delta = full state (all created); non-genesis delta = the pre-bake overlay
+	 *  changeset (captured before the bake clears it). Returns the new commit id.
+	 */
+	storeCommitAndBake: (mapId: string, message: string | null) => typedError<string, string>(__TAURI_INVOKE("store_commit_and_bake", { mapId, message })),
 	/**  List all commits for a map, newest first. */
 	storeListCommits: (mapId: string) => typedError<CommitInfo[], string>(__TAURI_INVOKE("store_list_commits", { mapId })),
 	/**

@@ -1362,16 +1362,28 @@ pub(crate) fn auto_register_extras(
 ) {
     if extras.is_empty() { return; }
     if let Some(new_defs) = map_meta::auto_register_field_defs(&store.known_field_keys, extras) {
-        if let Some(map_id) = &store.map_id {
-            if let Ok(conn) = fast_io::open_db(app) {
-                let _ = map_meta::persist_field_defs(&conn, map_id, &new_defs);
-            }
-        }
-        for key in new_defs.keys() {
-            store.known_field_keys.insert(key.clone());
-        }
-        result.new_field_defs = Some(new_defs);
+        apply_field_defs(app, store, new_defs, result);
     }
+}
+
+/// Persist newly-discovered extra-field definitions to SQLite and surface them on the
+/// mutation result. Split out so callers that scan `extras` before consuming the
+/// source locations (e.g. import's move-into-overlay path) can apply defs afterward.
+pub(crate) fn apply_field_defs(
+    app: &tauri::AppHandle,
+    store: &mut Store,
+    new_defs: std::collections::HashMap<String, map_meta::ExtraFieldDef>,
+    result: &mut MutationResult,
+) {
+    if let Some(map_id) = &store.map_id {
+        if let Ok(conn) = fast_io::open_db(app) {
+            let _ = map_meta::persist_field_defs(&conn, map_id, &new_defs);
+        }
+    }
+    for key in new_defs.keys() {
+        store.known_field_keys.insert(key.clone());
+    }
+    result.new_field_defs = Some(new_defs);
 }
 
 /// Add new locations. IDs are allocated server-side (monotonic). Records an undo entry
@@ -1879,7 +1891,7 @@ fn load_edit_history_inner(app: &tauri::AppHandle, map_id: &str) -> AppResult<(V
 }
 
 /// Write the current batch to disk as Arrow IPC and remove any stale delta file.
-fn save_arrow_inner(store: &Store, app: &tauri::AppHandle, map_id: &str) -> AppResult<()> {
+pub(crate) fn save_arrow_inner(store: &Store, app: &tauri::AppHandle, map_id: &str) -> AppResult<()> {
     if let Some(ref batch) = store.batch {
         let path = fast_io::arrow_path(app, map_id)?;
         fast_io::write_arrow_ipc(&path, batch)?;
@@ -1904,24 +1916,31 @@ pub fn store_bake_and_save(
 ) -> AppResult<()> {
     with_store!(webview, state, |store| {
         let map_id = store.map_id.clone().ok_or("no map open")?;
-        store.bake_overlay();
-        store.mmap_handle = None;
-        save_arrow_inner(&store, &app, &map_id)?;
-        let path = fast_io::arrow_path(&app, &map_id)?;
-        if path.exists() {
-            let (batch, handle) = fast_io::read_arrow_ipc_mmap(&path)?;
-            store.batch = Some(batch);
-            store.mmap_handle = Some(handle);
-        }
-        let count = store.batch.as_ref().map_or(0, |b| b.num_rows());
-        let conn = fast_io::open_db(&app)?;
-        conn.execute("UPDATE maps SET location_count = ?1 WHERE id = ?2", rusqlite::params![count, map_id])?;
-        if store.tags.dirty {
-            write_tags_json(&conn, &map_id, &store.tags.all)?;
-            store.tags.dirty = false;
-        }
-        Ok(())
+        bake_and_save_inner(store, &app, &map_id)
     })
+}
+
+/// Bake the overlay into the base batch, write it to disk, re-mmap, and flush
+/// location count + dirty tags. The reusable core of `store_bake_and_save`, also
+/// used by `store_commit_and_bake` so a commit builds the batch only once.
+pub(crate) fn bake_and_save_inner(store: &mut Store, app: &tauri::AppHandle, map_id: &str) -> AppResult<()> {
+    store.bake_overlay();
+    store.mmap_handle = None;
+    save_arrow_inner(store, app, map_id)?;
+    let path = fast_io::arrow_path(app, map_id)?;
+    if path.exists() {
+        let (batch, handle) = fast_io::read_arrow_ipc_mmap(&path)?;
+        store.batch = Some(batch);
+        store.mmap_handle = Some(handle);
+    }
+    let count = store.batch.as_ref().map_or(0, |b| b.num_rows());
+    let conn = fast_io::open_db(app)?;
+    conn.execute("UPDATE maps SET location_count = ?1 WHERE id = ?2", rusqlite::params![count, map_id])?;
+    if store.tags.dirty {
+        write_tags_json(&conn, map_id, &store.tags.all)?;
+        store.tags.dirty = false;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

@@ -140,6 +140,95 @@ pub fn store_create_commit(
     Ok(id)
 }
 
+/// Commit + bake in a single pass — the import/autocommit hot path.
+///
+/// `store_create_commit` followed by `store_bake_and_save` builds the Arrow batch
+/// up to three times (collect+diff clones in the genesis fallback, then the bake)
+/// and serializes `extra` JSON twice. This builds it ONCE (the bake) and derives the
+/// commit delta by reusing the baked columns + an op column. Semantically identical:
+/// genesis delta = full state (all created); non-genesis delta = the pre-bake overlay
+/// changeset (captured before the bake clears it). Returns the new commit id.
+#[tauri::command]
+#[specta::specta]
+pub fn store_commit_and_bake(
+    app: tauri::AppHandle,
+    state: State<'_, StoreState>,
+    map_id: String,
+    message: Option<String>,
+) -> AppResult<String> {
+    let _t = std::time::Instant::now();
+    let conn = fast_io::open_db(&app)?;
+
+    let parent_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM commits WHERE map_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            params![map_id],
+            |row| row.get(0),
+        )
+        .ok();
+    let genesis = parent_id.is_none();
+
+    // Non-genesis delta is a small overlay changeset; genesis writes no separate delta
+    // batch (it reuses the base file as a snapshot — see below).
+    let (pre_bake, location_count) = {
+        let mut mgr = state.lock()?;
+        let store = mgr.store_for_map(&map_id)?;
+        let location_count = store.alive_count as u32;
+
+        // The non-genesis overlay delta must be read BEFORE the bake folds it in.
+        let pre_bake = if !genesis && store.overlay.dirty {
+            Some(store.build_overlay_delta())
+        } else {
+            None
+        };
+
+        // Build the canonical full batch ONCE (bake), write the base, re-mmap, flush tags.
+        crate::location_store::bake_and_save_inner(store, &app, &map_id)?;
+
+        store.edits.undo.clear();
+        store.edits.redo.clear();
+
+        (pre_bake, location_count)
+    };
+
+    let now = now_iso();
+    let nonce = uuid::Uuid::new_v4();
+    let id = sha256_hex(
+        format!("{}\n{}\n{}", parent_id.as_deref().unwrap_or(""), now, nonce).as_bytes(),
+    );
+
+    let path = fast_io::commit_delta_path(&app, &map_id, &id)?;
+    let (added, removed_n, modified) = match pre_bake {
+        Some((created, removed, a, r, m)) => {
+            fast_io::write_arrow_ipc(&path, &arrow_bridge::delta_to_batch(&created, &removed))?;
+            (a, r, m)
+        }
+        None => {
+            // Genesis: the commit's full state == the base file we just wrote. Store the
+            // delta as a snapshot by copying the base (one serialization, not two);
+            // batch_to_delta reads a 12-column snapshot as all-created.
+            let base_path = fast_io::arrow_path(&app, &map_id)?;
+            std::fs::copy(&base_path, &path)?;
+            (location_count, 0, 0)
+        }
+    };
+
+    conn.execute(
+        "INSERT INTO commits (id, map_id, parent_id, message, location_count, created_at, tree_hash, added, removed, modified) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![id, map_id, parent_id, message, location_count, now, Option::<String>::None, added, removed_n, modified],
+    )?;
+    conn.execute(
+        "UPDATE maps SET location_count = ?1 WHERE id = ?2",
+        params![location_count, map_id],
+    )?;
+
+    log::info!(
+        "[vcs] commit+bake {} locs={} +{} -{} ~{} in {}ms",
+        &id[..7], location_count, added, removed_n, modified, _t.elapsed().as_millis()
+    );
+    Ok(id)
+}
+
 /// List all commits for a map, newest first.
 #[tauri::command]
 #[specta::specta]

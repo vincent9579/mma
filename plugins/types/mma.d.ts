@@ -247,10 +247,7 @@ export type Location_Deserialize = {
 	tags: number[];
 	/**  Arbitrary key-value metadata */
 	extra?: any | null;
-	/**
-	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
-	 *  it as a number and converts for display; never an ISO string.
-	 */
+	/**  Unix timestamp (seconds) */
 	createdAt: number;
 	modifiedAt?: number | null;
 };
@@ -280,10 +277,7 @@ export type Location_Serialize = {
 	tags: number[];
 	/**  Arbitrary key-value metadata */
 	extra?: any | null;
-	/**
-	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
-	 *  it as a number and converts for display; never an ISO string.
-	 */
+	/**  Unix timestamp (seconds) */
 	createdAt: number;
 	modifiedAt?: number | null;
 };
@@ -1483,6 +1477,7 @@ declare const mma: {
 		storeReviewUpdate: (update: ReviewUpdate) => Promise<null>;
 		storeReviewDelete: (id: string) => Promise<null>;
 		storeCreateCommit: (mapId: string, message: string | null) => Promise<string>;
+		storeCommitAndBake: (mapId: string, message: string | null) => Promise<string>;
 		storeListCommits: (mapId: string) => Promise<CommitInfo[]>;
 		storeCheckoutCommit: (mapId: string, commitId: string) => Promise<null>;
 		storeGetCommitDelta: (mapId: string, commitId: string) => Promise<CommitDelta_Serialize>;

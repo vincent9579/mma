@@ -1247,12 +1247,14 @@ export function MapEmbed() {
 					north: 90,
 					markerStyle,
 				});
+				t.step("fill");
 				const resp = await fetch(mmaBufUrl(filePath));
 				const buf = await resp.arrayBuffer();
-				t.step("ipc");
+				t.step("fetch");
 				if (cancelled) return;
 
 				cellMgrRef.current.initFromBinary(buf);
+				t.step("parse");
 				mapOpenMark("markers");
 				t.end({
 					cells: cellMgrRef.current.cells.size,
