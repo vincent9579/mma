@@ -439,7 +439,11 @@ describe("applySelectionBitmasks", () => {
 			[[0, 255, 0]],
 			[{ cellChar: "s", locCount: 3, sels: [{ kind: "idx", indices: new Uint32Array([0, 2]) }] }],
 		);
-		expect(idxIds).toEqual(new Set([10, 30]));
+		expect(idxIds.size).toBe(2);
+		expect(idxIds.has(10)).toBe(true);
+		expect(idxIds.has(30)).toBe(true);
+		expect(idxIds.has(20)).toBe(false);
+		expect([...idxIds].sort((a, b) => a - b)).toEqual([10, 30]);
 		expect(mgr.selOverlayCount).toBe(2);
 
 		// The equivalent dense mask (bits 0 and 2) must yield the same selected set.
@@ -447,7 +451,7 @@ describe("applySelectionBitmasks", () => {
 			[[0, 255, 0]],
 			[{ cellChar: "s", locCount: 3, sels: [maskSel(new Uint8Array([0b101]))] }],
 		);
-		expect(maskIds).toEqual(idxIds);
+		expect([...maskIds].sort((a, b) => a - b)).toEqual([10, 30]);
 	});
 
 	it("idx-format ignores indices past the cell's count", () => {
@@ -463,7 +467,9 @@ describe("applySelectionBitmasks", () => {
 			[[0, 255, 0]],
 			[{ cellChar: "s", locCount: 2, sels: [{ kind: "idx", indices: new Uint32Array([0, 5]) }] }],
 		);
-		expect(ids).toEqual(new Set([10]));
+		expect(ids.size).toBe(1);
+		expect(ids.has(10)).toBe(true);
+		expect([...ids]).toEqual([10]);
 		expect(mgr.selOverlayCount).toBe(1);
 	});
 

@@ -26,7 +26,7 @@ import {
 	type MergeWinner,
 } from "@/lib/data/fieldOps.add";
 import { getSavedSelections, rewriteSavedSelectionFields } from "./savedSelections.add";
-import type { RenderDelta, SelEntry, SelCellEntry } from "@/lib/render/CellManager";
+import { SelectedIds, type ReadonlyIdSet, type RenderDelta, type SelEntry, type SelCellEntry } from "@/lib/render/CellManager";
 
 /** Minimal pub/sub bus. `.on()` returns an unsubscribe function. */
 function createBus<T extends (...args: never[]) => void>() {
@@ -50,7 +50,7 @@ export const renderDeltaBus = createBus<(delta: RenderDelta) => void>();
 type SelectionBitmaskHandler = (
 	selColors: [number, number, number][],
 	cellEntries: SelCellEntry[],
-	setIds: (ids: Set<number>) => void,
+	setIds: (ids: SelectedIds) => void,
 ) => void;
 /** Fires when selection bitmasks are resolved. Subscribers apply per-cell masks to the render overlay. */
 export const selBitmaskBus = createBus<SelectionBitmaskHandler>();
@@ -119,7 +119,7 @@ let selections: Selection[] = [];
 /** Keys of selections that are "ghosted": kept in the list but excluded from the
  *  Rust sync, so they neither render nor count toward the selected set. Ephemeral. */
 const ghostedSelections = new Set<string>();
-let selectedLocationIds = new Set<number>();
+let selectedLocationIds: SelectedIds = SelectedIds.EMPTY;
 let activeLocationId: number | null = null;
 let duplicateLocations: Location[] = [];
 let workArea: WorkArea = "overview";
@@ -174,7 +174,7 @@ export function refreshAfterMutation() {
 	if (!currentMap) {
 		selections = [];
 
-		selectedLocationIds = new Set();
+		selectedLocationIds = SelectedIds.EMPTY;
 		mapVersion++;
 		notify();
 		return;
@@ -343,7 +343,7 @@ export async function openMap(id: string) {
 	}
 
 	selections = [];
-	selectedLocationIds = new Set();
+	selectedLocationIds = SelectedIds.EMPTY;
 	activeLocationId = null;
 	workArea = "overview";
 	importStaging = null;
@@ -363,7 +363,7 @@ export async function closeMap() {
 	currentMap = null;
 
 	selections = [];
-	selectedLocationIds = new Set();
+	selectedLocationIds = SelectedIds.EMPTY;
 	activeLocationId = null;
 	workArea = "overview";
 	importStaging = null;
@@ -647,7 +647,7 @@ export function updateLocationNoUndo(id: number, patch: Partial<Location>) {
 	return cmd.storeUpdateLocations([[id, p as LocationPatch]], false);
 }
 
-export async function removeLocations(ids: Set<number>) {
+export async function removeLocations(ids: ReadonlyIdSet) {
 	if (!currentMap || ids.size === 0) return;
 	if (activeLocationId && ids.has(activeLocationId)) {
 		activeLocationId = null;
@@ -1444,7 +1444,7 @@ export async function checkoutCommit(commitId: string) {
 	}
 	currentMap = await cmd.storeGetMap(currentMapId);
 	selections = [];
-	selectedLocationIds = new Set();
+	selectedLocationIds = SelectedIds.EMPTY;
 	activeLocationId = null;
 	undoRedoState = { canUndo: false, canRedo: false };
 

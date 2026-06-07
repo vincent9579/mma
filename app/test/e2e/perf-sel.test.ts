@@ -37,7 +37,16 @@ describe("Perf - selection sync 1M", () => {
 					// Empty/sparse: selects ~0 rows. If this is still ~O(total N), the JS
 					// overlay rebuild is the culprit (independent of |selected|).
 					const emptyTag = await time(() => api.selectTag(987654321));
-					done({ everything, panoIds, emptyTag });
+					// Partial sync: mutate (add 1 location) while everything is selected. This
+					// re-syncs only the affected cell but the kept-scan spans the ~1M-entry
+					// overlay -- the "edit while a large selection is active" path.
+					await api.resetSelections();
+					await api.selectEverything();
+					const loc = api.createLocation({ lat: 12.3456, lng: 65.4321 });
+					const tEdit = performance.now();
+					await api.addLocations([loc]);
+					const editWhileSelected = performance.now() - tEdit;
+					done({ everything, panoIds, emptyTag, editWhileSelected });
 				} catch (e) { done({ err: (e as Error).message }); }
 			})();
 		}, FIXTURE);

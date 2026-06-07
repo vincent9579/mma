@@ -17,6 +17,50 @@ export interface SelCellEntry {
 	sels: SelEntry[];
 }
 
+/** The read-only id-membership surface shared by `Set<number>` and `SelectedIds`, for code
+ *  that only needs `size` / `has` / iteration over either. */
+export interface ReadonlyIdSet extends Iterable<number> {
+	readonly size: number;
+	has(id: number): boolean;
+}
+
+/**
+ * Membership set of selected location ids, backed by a bit array indexed by id rather than a
+ * hash `Set`. Location ids are dense u32s, so a bitset makes the build ~10x cheaper than 1M
+ * `Set.add`s (a typed-array OR vs hashing), with O(1) `has`/`size`. Iteration yields the
+ * selected ids from the overlay's id array. Exposes the Set-like surface its consumers use.
+ */
+export class SelectedIds {
+	/** Shared empty selection (no map open / cleared). */
+	static readonly EMPTY = new SelectedIds(new Uint8Array(0), 0);
+
+	constructor(
+		private readonly bits: Uint8Array,
+		/** Count of distinct selected ids (not overlay entries — an id selected by N
+		 *  overlapping selections still counts once). */
+		readonly size: number,
+	) {}
+
+	has(id: number): boolean {
+		const w = id >>> 3;
+		return w < this.bits.length && (this.bits[w] & (1 << (id & 7))) !== 0;
+	}
+
+	/** Yields each selected id once, ascending. Scans the bit array, so it's O(maxId/8);
+	 *  used by deliberate bulk consumers (export, bulk-tag, delete), not the per-frame path. */
+	*[Symbol.iterator](): Iterator<number> {
+		const bits = this.bits;
+		for (let w = 0; w < bits.length; w++) {
+			const byte = bits[w];
+			if (byte === 0) continue;
+			const base = w << 3;
+			for (let b = 0; b < 8; b++) {
+				if (byte & (1 << b)) yield base + b;
+			}
+		}
+	}
+}
+
 const MIN_CAPACITY = 256;
 
 /**
@@ -129,13 +173,17 @@ export class CellManager {
 	cells = new Map<string, CellBuffer>();
 	totalCount = 0;
 	version = 0;
+	/** Largest location id seen — sizes the selection bitset. Monotonic (never shrinks on
+	 *  removal; an overestimate just over-allocates a few bytes). */
+	maxId = 0;
 
 	/** Parse the full render binary from Rust. Replaces all cells and the selection overlay. */
 	initFromBinary(buf: ArrayBuffer) {
 		this.cells.clear();
 		this.totalCount = 0;
+		this.maxId = 0;
 		this.selOverlayCount = 0;
-		this.selOverlayIds = [];
+		this.selOverlayIds = new Uint32Array(0);
 		this.selOverlayVersion++;
 
 		const dv = new DataView(buf);
@@ -161,7 +209,11 @@ export class CellManager {
 			offset += idBytes;
 			cb.ids = Array.from(idBuf);
 			cb.idToIndex.clear();
-			for (let i = 0; i < count; i++) cb.idToIndex.set(cb.ids[i], i);
+			for (let i = 0; i < count; i++) {
+				const id = cb.ids[i];
+				cb.idToIndex.set(id, i);
+				if (id > this.maxId) this.maxId = id;
+			}
 
 			cb.positions = new Float32Array(buf.slice(offset, offset + posBytes));
 			offset += posBytes;
@@ -191,8 +243,7 @@ export class CellManager {
 				offset += selColBytes;
 				this.selOverlayAngles = new Float32Array(buf.slice(offset, offset + selAngBytes));
 				offset += selAngBytes;
-				const selIds = new Uint32Array(buf.slice(offset, offset + selIdBytes));
-				this.selOverlayIds = Array.from(selIds);
+				this.selOverlayIds = new Uint32Array(buf.slice(offset, offset + selIdBytes));
 				this.selOverlayCount = selCount;
 			}
 		}
@@ -223,6 +274,7 @@ export class CellManager {
 				this.cells.set(entry.cell, cb);
 			}
 			cb.append(entry);
+			if (entry.id > this.maxId) this.maxId = entry.id;
 			this.totalCount++;
 			affected.add(entry.cell);
 		}
@@ -262,7 +314,7 @@ export class CellManager {
 	selOverlayPositions = new Float32Array(0);
 	selOverlayColors = new Uint8Array(0);
 	selOverlayAngles = new Float32Array(0);
-	selOverlayIds: number[] = [];
+	selOverlayIds: Uint32Array = new Uint32Array(0);
 	selOverlayCount = 0;
 	selOverlayVersion = 0;
 
@@ -270,7 +322,7 @@ export class CellManager {
 	buildSelectionOverlay(colorPatches: ColorPatchEntry[], _angles?: boolean) {
 		this.selOverlayCount = colorPatches.length;
 		if (colorPatches.length === 0) {
-			this.selOverlayIds = [];
+			this.selOverlayIds = new Uint32Array(0);
 			this.selOverlayVersion++;
 			return;
 		}
@@ -278,7 +330,7 @@ export class CellManager {
 		this.selOverlayPositions = new Float32Array(n * 2);
 		this.selOverlayColors = new Uint8Array(n * 4);
 		this.selOverlayAngles = new Float32Array(n);
-		this.selOverlayIds = new Array(n);
+		this.selOverlayIds = new Uint32Array(n);
 		for (let i = 0; i < n; i++) {
 			const cp = colorPatches[i];
 			const cb = this.cells.get(cp.cell);
@@ -303,11 +355,11 @@ export class CellManager {
 		const pos = new Float32Array(newCount * 2);
 		const col = new Uint8Array(newCount * 4);
 		const ang = new Float32Array(newCount);
-		const ids: number[] = new Array(newCount);
+		const ids = new Uint32Array(newCount);
 		pos.set(this.selOverlayPositions.subarray(0, oldCount * 2));
 		col.set(this.selOverlayColors.subarray(0, oldCount * 4));
 		ang.set(this.selOverlayAngles.subarray(0, oldCount));
-		for (let i = 0; i < oldCount; i++) ids[i] = this.selOverlayIds[i];
+		ids.set(this.selOverlayIds.subarray(0, oldCount));
 
 		for (let i = 0; i < colorPatches.length; i++) {
 			const cp = colorPatches[i];
@@ -342,7 +394,7 @@ export class CellManager {
 	applySelectionBitmasks(
 		selColors: [number, number, number][],
 		cellEntries: SelCellEntry[],
-	): Set<number> {
+	): SelectedIds {
 		const numSels = selColors.length;
 
 		// Full sync (every cell present) rebuilds the whole overlay, so nothing is kept —
@@ -350,31 +402,39 @@ export class CellManager {
 		// post-mutation) update needs to preserve overlay entries from untouched cells.
 		const isFull = cellEntries.length === this.cells.size;
 
-		const kept: { pos0: number; pos1: number; r: number; g: number; b: number; a: number; angle: number; id: number }[] = [];
-		const selectedIds = new Set<number>();
+		// Selected-id membership as a bit array (id is the index) — built ~10x cheaper than a
+		// hash Set at scale. Bits are set wherever an id is written into the overlay below;
+		// selCount tracks distinct ids (an id in N overlapping selections is counted once).
+		const bits = new Uint8Array((this.maxId >>> 3) + 1);
+		let selCount = 0;
+
+		// A partial sync (only some cells present) preserves overlay entries from the untouched
+		// cells. Snapshot the prior overlay, mark the incoming-cell ids in a bitset (O(1)
+		// membership, no hash Set), and count the survivors — so they can be copied directly
+		// between the typed arrays below, with no intermediate object array.
+		const prevPos = this.selOverlayPositions;
+		const prevCol = this.selOverlayColors;
+		const prevAng = this.selOverlayAngles;
+		const prevIds = this.selOverlayIds;
+		const prevCount = this.selOverlayCount;
+		let incomingBits: Uint8Array | null = null;
+		let keptCount = 0;
 		if (!isFull) {
-			// Set of IDs in incoming cells — only these get rebuilt from bitmask.
-			const incomingIds = new Set<number>();
+			incomingBits = new Uint8Array((this.maxId >>> 3) + 1);
 			for (const entry of cellEntries) {
 				const cb = this.cells.get(entry.cellChar);
 				if (!cb) continue;
-				for (const id of cb.idToIndex.keys()) incomingIds.add(id);
+				const ids = cb.ids;
+				for (let i = 0; i < cb.count; i++) {
+					const id = ids[i];
+					incomingBits[id >>> 3] |= 1 << (id & 7);
+				}
 			}
-			// Collect existing overlay entries NOT in incoming cells and not recently removed.
-			for (let i = 0; i < this.selOverlayCount; i++) {
-				const id = this.selOverlayIds[i];
-				if (incomingIds.has(id) || this._removedIds.has(id)) continue;
-				kept.push({
-					pos0: this.selOverlayPositions[i * 2],
-					pos1: this.selOverlayPositions[i * 2 + 1],
-					r: this.selOverlayColors[i * 4],
-					g: this.selOverlayColors[i * 4 + 1],
-					b: this.selOverlayColors[i * 4 + 2],
-					a: this.selOverlayColors[i * 4 + 3],
-					angle: this.selOverlayAngles[i],
-					id,
-				});
-				if (this.selOverlayColors[i * 4 + 3] > 0) selectedIds.add(id);
+			const rem = this._removedIds;
+			for (let i = 0; i < prevCount; i++) {
+				const id = prevIds[i];
+				if ((incomingBits[id >>> 3] & (1 << (id & 7))) !== 0 || rem.has(id)) continue;
+				keptCount++;
 			}
 		}
 
@@ -397,24 +457,37 @@ export class CellManager {
 			}
 		}
 
-		const total = kept.length + newEntries;
+		const total = keptCount + newEntries;
 		this.selOverlayPositions = new Float32Array(total * 2);
 		this.selOverlayColors = new Uint8Array(total * 4);
 		this.selOverlayAngles = new Float32Array(total);
-		this.selOverlayIds = new Array(total);
+		this.selOverlayIds = new Uint32Array(total);
 
-		// Write kept entries
+		// Copy the kept entries straight from the old typed arrays into the new ones (skipping
+		// incoming/removed), setting their selected bits — no objects, no Set lookups.
 		let oi = 0;
-		for (const k of kept) {
-			this.selOverlayPositions[oi * 2] = k.pos0;
-			this.selOverlayPositions[oi * 2 + 1] = k.pos1;
-			this.selOverlayColors[oi * 4] = k.r;
-			this.selOverlayColors[oi * 4 + 1] = k.g;
-			this.selOverlayColors[oi * 4 + 2] = k.b;
-			this.selOverlayColors[oi * 4 + 3] = k.a;
-			this.selOverlayAngles[oi] = k.angle;
-			this.selOverlayIds[oi] = k.id;
-			oi++;
+		if (!isFull) {
+			const sp = this.selOverlayPositions, sc = this.selOverlayColors;
+			const sa = this.selOverlayAngles, sid = this.selOverlayIds;
+			const rem = this._removedIds;
+			const inc = incomingBits!;
+			for (let i = 0; i < prevCount; i++) {
+				const id = prevIds[i];
+				if ((inc[id >>> 3] & (1 << (id & 7))) !== 0 || rem.has(id)) continue;
+				sp[oi * 2] = prevPos[i * 2];
+				sp[oi * 2 + 1] = prevPos[i * 2 + 1];
+				const o4 = oi * 4, p4 = i * 4;
+				sc[o4] = prevCol[p4];
+				sc[o4 + 1] = prevCol[p4 + 1];
+				sc[o4 + 2] = prevCol[p4 + 2];
+				sc[o4 + 3] = prevCol[p4 + 3];
+				sa[oi] = prevAng[i];
+				sid[oi] = id;
+				const w = id >>> 3, m = 1 << (id & 7);
+				if ((bits[w] & m) === 0) selCount++;
+				bits[w] |= m;
+				oi++;
+			}
 		}
 
 		// Reset base colors for incoming cells to gray, then write new overlay entries.
@@ -439,43 +512,57 @@ export class CellManager {
 			}
 		}
 
+		// Write the new overlay entries. Hot path at scale (select-all hides ~N markers), so
+		// the inner work is inlined (no per-marker closure) and reads/writes go through hoisted
+		// local refs to the typed arrays rather than repeated `this.`/`cb.` property chains.
+		const sp = this.selOverlayPositions;
+		const sc = this.selOverlayColors;
+		const sa = this.selOverlayAngles;
+		const sid = this.selOverlayIds;
 		for (let si = 0; si < numSels; si++) {
-			const [r, g, b] = selColors[si];
+			const r = selColors[si][0], g = selColors[si][1], b = selColors[si][2];
 			for (const entry of cellEntries) {
 				const cb = this.cells.get(entry.cellChar);
 				if (!cb) continue;
 				const n = Math.min(entry.locCount, cb.count);
 				const sel = entry.sels[si];
-				// One marker write. Sets the base color transparent (the overlay draws it
-				// in the selection color) and appends an overlay entry.
-				const writeLi = (li: number) => {
-					const locId = cb.ids[li];
-					if (locId != null) selectedIds.add(locId);
-					const c4 = li * 4;
-					cb.colors[c4] = 0;
-					cb.colors[c4 + 1] = 0;
-					cb.colors[c4 + 2] = 0;
-					cb.colors[c4 + 3] = 0;
-					this.selOverlayPositions[oi * 2] = cb.positions[li * 2];
-					this.selOverlayPositions[oi * 2 + 1] = cb.positions[li * 2 + 1];
-					this.selOverlayColors[oi * 4] = r;
-					this.selOverlayColors[oi * 4 + 1] = g;
-					this.selOverlayColors[oi * 4 + 2] = b;
-					this.selOverlayColors[oi * 4 + 3] = 255;
-					this.selOverlayAngles[oi] = cb.angles[li];
-					this.selOverlayIds[oi] = locId!;
-					oi++;
-				};
+				const cc = cb.colors, cpos = cb.positions, cang = cb.angles, cids = cb.ids;
+				// Sets the base color transparent (the overlay draws it in the selection color)
+				// and appends an overlay entry, advancing `oi`.
 				if (sel.kind === "idx") {
 					const idx = sel.indices;
 					for (let k = 0; k < idx.length; k++) {
 						const li = idx[k];
-						if (li < n) writeLi(li);
+						if (li >= n) continue;
+						const locId = cids[li];
+						const bw = locId >>> 3, bm = 1 << (locId & 7);
+						if ((bits[bw] & bm) === 0) selCount++;
+						bits[bw] |= bm;
+						const c4 = li * 4;
+						cc[c4] = 0; cc[c4 + 1] = 0; cc[c4 + 2] = 0; cc[c4 + 3] = 0;
+						sp[oi * 2] = cpos[li * 2]; sp[oi * 2 + 1] = cpos[li * 2 + 1];
+						const o4 = oi * 4;
+						sc[o4] = r; sc[o4 + 1] = g; sc[o4 + 2] = b; sc[o4 + 3] = 255;
+						sa[oi] = cang[li];
+						sid[oi] = locId;
+						oi++;
 					}
 				} else {
 					const m = sel.mask;
 					for (let li = 0; li < n; li++) {
-						if (m[li >> 3] & (1 << (li & 7))) writeLi(li);
+						if (!(m[li >> 3] & (1 << (li & 7)))) continue;
+						const locId = cids[li];
+						const bw = locId >>> 3, bm = 1 << (locId & 7);
+						if ((bits[bw] & bm) === 0) selCount++;
+						bits[bw] |= bm;
+						const c4 = li * 4;
+						cc[c4] = 0; cc[c4 + 1] = 0; cc[c4 + 2] = 0; cc[c4 + 3] = 0;
+						sp[oi * 2] = cpos[li * 2]; sp[oi * 2 + 1] = cpos[li * 2 + 1];
+						const o4 = oi * 4;
+						sc[o4] = r; sc[o4 + 1] = g; sc[o4 + 2] = b; sc[o4 + 3] = 255;
+						sa[oi] = cang[li];
+						sid[oi] = locId;
+						oi++;
 					}
 				}
 			}
@@ -490,7 +577,7 @@ export class CellManager {
 		this.selOverlayVersion++;
 		this.version++;
 		this._removedIds.clear();
-		return selectedIds;
+		return new SelectedIds(bits, selCount);
 	}
 
 	clear() {

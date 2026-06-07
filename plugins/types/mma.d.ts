@@ -744,6 +744,28 @@ export interface SelCellEntry {
 	locCount: number;
 	sels: SelEntry[];
 }
+/** The read-only id-membership surface shared by `Set<number>` and `SelectedIds`, for code
+ *  that only needs `size` / `has` / iteration over either. */
+export interface ReadonlyIdSet extends Iterable<number> {
+	readonly size: number;
+	has(id: number): boolean;
+}
+declare class SelectedIds {
+	private readonly bits;
+	/** Count of distinct selected ids (not overlay entries — an id selected by N
+	 *  overlapping selections still counts once). */
+	readonly size: number;
+	/** Shared empty selection (no map open / cleared). */
+	static readonly EMPTY: SelectedIds;
+	constructor(bits: Uint8Array, 
+	/** Count of distinct selected ids (not overlay entries — an id selected by N
+	 *  overlapping selections still counts once). */
+	size: number);
+	has(id: number): boolean;
+	/** Yields each selected id once, ascending. Scans the bit array, so it's O(maxId/8);
+	 *  used by deliberate bulk consumers (export, bulk-tag, delete), not the per-frame path. */
+	[Symbol.iterator](): Iterator<number>;
+}
 /** Parsed-but-not-committed import shown while `workArea === "import"`. */
 export interface ImportStaging {
 	preview: ImportPreview;
@@ -1617,7 +1639,7 @@ declare const mma: {
 	fetchLocation(id: number): Promise<Location$1 | null>;
 	fetchLocationsByIds(ids: number[]): Promise<Location$1[]>;
 	getSelections(): Selection$1[];
-	getSelectedLocationIds(): Set<number>;
+	getSelectedLocationIds(): SelectedIds;
 	syncSelections(): Promise<{
 		ids: number[];
 	}>;
@@ -1630,13 +1652,14 @@ declare const mma: {
 	updateMapLabels(id: string, labels: string[]): Promise<void>;
 	updateMapMeta(patch: MapMetaPatch): Promise<void>;
 	setMapExtraFields(fields: Record<string, ExtraFieldDef>): Promise<void>;
+	emitBitmask(bytes: number[]): void;
 	mutate(p: Promise<MutationResult_Serialize>): Promise<MutationResult_Serialize>;
 	addLocations(locs: Location$1[], opts?: {
 		hideInDelta?: boolean;
 	}): Promise<void>;
 	duplicateLocation(locId: number): Promise<number | null>;
 	updateLocationNoUndo(id: number, patch: Partial<Location$1>): Promise<MutationResult_Serialize>;
-	removeLocations(ids: Set<number>): Promise<void>;
+	removeLocations(ids: ReadonlyIdSet): Promise<void>;
 	updateLocation(loc: Location$1, patch: Partial<Location$1>): Promise<void>;
 	batchUpdateLocations(updates: {
 		id: number;
@@ -1739,18 +1762,18 @@ declare const mma: {
 			number,
 			number,
 			number
-		][], cellEntries: SelCellEntry[], setIds: (ids: Set<number>) => void) => void) => () => void;
+		][], cellEntries: SelCellEntry[], setIds: (ids: SelectedIds) => void) => void) => () => void;
 		emit: (selColors: [
 			number,
 			number,
 			number
-		][], cellEntries: SelCellEntry[], setIds: (ids: Set<number>) => void) => void;
+		][], cellEntries: SelCellEntry[], setIds: (ids: SelectedIds) => void) => void;
 	};
 	useMapList: () => MapMeta[];
 	useTagCounts: () => Record<number, number>;
 	useCurrentMap: () => MapData | null;
 	useMapVersion: () => number;
-	useSelectedLocationIds: () => Set<number>;
+	useSelectedLocationIds: () => SelectedIds;
 	useActiveLocation: () => Location_Serialize | null;
 	useDuplicateLocations: () => Location_Serialize[];
 	useWorkArea: () => WorkArea;

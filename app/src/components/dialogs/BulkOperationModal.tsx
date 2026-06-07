@@ -547,7 +547,7 @@ function BulkProgress({
 	operation: BulkOperation;
 	force: boolean;
 	scope: Scope;
-	selectedIds: Set<number>;
+	selectedIds: Iterable<number>;
 	clearKeys?: string[];
 	setField?: Partial<Location>;
 	headingDirection?: RoadDirection;
