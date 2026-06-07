@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { Location, Tag } from "@/types";
 import { createTags } from "@/store/useMapStore";
+import { locDate } from "@/lib/util/format";
 
 function tagIdsToNames(tagIds: number[], tags: Record<string, Tag>): string[] {
 	return tagIds.map((id) => tags[id]?.name ?? String(id));
@@ -52,11 +53,11 @@ export function JsonEditorPanel() {
 			<div style={{ fontSize: "11px", opacity: 0.5, marginBottom: 4 }}>
 				id: {active.id}
 				<br />
-				created: {active.createdAt}
+				created: {locDate(active.createdAt).toISOString()}
 				{active.modifiedAt && (
 					<>
 						<br />
-						modified: {active.modifiedAt}
+						modified: {locDate(active.modifiedAt).toISOString()}
 					</>
 				)}
 			</div>

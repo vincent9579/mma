@@ -14,7 +14,7 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 use serde_json::Value;
 use uuid::Uuid;
-use crate::util::now_iso;
+use crate::util::{now_iso, now_unix};
 
 use tauri::Emitter;
 use crate::arrow_bridge;
@@ -118,7 +118,7 @@ fn parse_csv(text: &str) -> ParsedMap {
             (0, 1, None, None, None, None, false)
         };
 
-    let now = now_iso();
+    let now = now_unix();
     let mut locations = Vec::new();
 
     let parse_row = |record: &csv::StringRecord| -> Option<Location> {
@@ -134,7 +134,7 @@ fn parse_csv(text: &str) -> ParsedMap {
         let flags = if pano_id.is_some() { LocationFlags::LOAD_AS_PANO_ID } else { LocationFlags::empty() };
         Some(Location {
             id: 0, lat, lng, heading, pitch, zoom, pano_id, flags,
-            tags: Vec::new(), extra: None, created_at: now.clone(), modified_at: None,
+            tags: Vec::new(), extra: None, created_at: now, modified_at: None,
         })
     };
 
@@ -371,7 +371,7 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
     let obj_ranges = find_object_boundaries(&buf[arr_start..arr_end]);
     let t_boundaries = t0.elapsed();
 
-    let now = now_iso();
+    let now = now_unix();
     let known_keys: &[&str] = &["lat", "latitude", "lng", "longitude", "lon", "heading", "pitch",
         "zoom", "panoId", "pano", "pano_id", "extra", "countryCode", "stateCode",
         "flags", "tags", "id", "createdAt", "modifiedAt"];
@@ -432,7 +432,7 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
                 flags,
                 tags: Vec::new(),
                 extra: if extra_map.is_empty() { None } else { Some(extra_map) },
-                created_at: now.clone(),
+                created_at: now,
                 modified_at: None,
             },
             raw_tags,

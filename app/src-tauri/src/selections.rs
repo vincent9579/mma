@@ -13,7 +13,7 @@ use roaring::RoaringBitmap;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::types::{Location, LocationFlags};
-use crate::util::{iso_to_unix, unix_to_month_day, unix_to_hour_min};
+use crate::util::{unix_to_month_day, unix_to_hour_min};
 
 /// Discriminated union of all selection types. Serialized with `{ "type": "..." }` tag
 /// for JS interop. Simple types (Tag, Untagged, PanoIds, etc.) resolve in O(N) with
@@ -769,8 +769,8 @@ fn resolve_field_loc(loc: &Location, field: &str) -> Option<serde_json::Value> {
         "pitch" => Some(serde_json::json!(loc.pitch)),
         "zoom" => Some(serde_json::json!(loc.zoom)),
         "id" => Some(serde_json::json!(loc.id)),
-        "createdAt" => iso_to_unix(&loc.created_at).map(|ts| serde_json::json!(ts)),
-        "modifiedAt" => loc.modified_at.as_deref().and_then(iso_to_unix).map(|ts| serde_json::json!(ts)),
+        "createdAt" => Some(serde_json::json!(loc.created_at as f64)),
+        "modifiedAt" => loc.modified_at.map(|ts| serde_json::json!(ts as f64)),
         _ => loc.extra.as_ref().and_then(|e| e.get(field).cloned()),
     }
 }

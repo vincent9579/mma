@@ -138,9 +138,12 @@ export const commands = {
 	tags: number[],
 	/**  Arbitrary key-value metadata */
 	extra?: any | null,
-	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
-	createdAt: string,
-	modifiedAt?: string | null,
+	/**
+	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
+	 *  it as a number and converts for display; never an ISO string.
+	 */
+	createdAt: number,
+	modifiedAt?: number | null,
 } | null, string>(__TAURI_INVOKE("store_get_location", { id })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:v.data } : v) as typeof v)),
 	/**  Fetch multiple locations by ID. Silently skips IDs that don't exist. */
 	storeGetLocationsByIds: (ids: number[]) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_get_locations_by_ids", { ids })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
@@ -633,8 +636,8 @@ export type LocationPatch_Deserialize = {
 	flags?: number | null,
 	tags?: number[] | null,
 	extra?: any | null,
-	createdAt?: string | null,
-	modifiedAt?: string | null,
+	createdAt?: number | null,
+	modifiedAt?: number | null,
 };
 
 /**
@@ -651,8 +654,8 @@ export type LocationPatch_Serialize = {
 	flags: number | null,
 	tags: number[] | null,
 	extra: any | null,
-	createdAt: string | null,
-	modifiedAt: string | null,
+	createdAt: number | null,
+	modifiedAt: number | null,
 };
 
 /**
@@ -681,9 +684,12 @@ export type Location_Deserialize = {
 	tags: number[],
 	/**  Arbitrary key-value metadata */
 	extra?: any | null,
-	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
-	createdAt: string,
-	modifiedAt?: string | null,
+	/**
+	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
+	 *  it as a number and converts for display; never an ISO string.
+	 */
+	createdAt: number,
+	modifiedAt?: number | null,
 };
 
 /**
@@ -712,9 +718,12 @@ export type Location_Serialize = {
 	tags: number[],
 	/**  Arbitrary key-value metadata */
 	extra?: any | null,
-	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
-	createdAt: string,
-	modifiedAt?: string | null,
+	/**
+	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
+	 *  it as a number and converts for display; never an ISO string.
+	 */
+	createdAt: number,
+	modifiedAt?: number | null,
 };
 
 export type MapData = {

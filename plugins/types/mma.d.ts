@@ -121,6 +121,10 @@ export type EditorImportPreview = {
 		number,
 		number
 	] | null;
+	/**
+	 *  True when this import exceeds `IMPORT_AUTOCOMMIT_THRESHOLD` and will be
+	 *  committed automatically (not undoable). Drives the import warning modal.
+	 */
 	willAutoCommit: boolean;
 };
 /**
@@ -129,8 +133,9 @@ export type EditorImportPreview = {
  */
 export type EditorImportResult_Serialize = {
 	importedCount: number;
-	autoCommit: boolean;
 	warnings: string[];
+	/**  True when the import was large enough to autocommit; the caller commits it. */
+	autoCommit: boolean;
 } & MutationResult_Serialize;
 /**
  *  Configuration for JSON export. Controls which fields are included and
@@ -213,8 +218,8 @@ export type LocationPatch_Deserialize = {
 	flags?: number | null;
 	tags?: number[] | null;
 	extra?: any | null;
-	createdAt?: string | null;
-	modifiedAt?: string | null;
+	createdAt?: number | null;
+	modifiedAt?: number | null;
 };
 /**
  *  A single Street View location on a map.
@@ -242,9 +247,12 @@ export type Location_Deserialize = {
 	tags: number[];
 	/**  Arbitrary key-value metadata */
 	extra?: any | null;
-	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
-	createdAt: string;
-	modifiedAt?: string | null;
+	/**
+	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
+	 *  it as a number and converts for display; never an ISO string.
+	 */
+	createdAt: number;
+	modifiedAt?: number | null;
 };
 /**
  *  A single Street View location on a map.
@@ -272,9 +280,12 @@ export type Location_Serialize = {
 	tags: number[];
 	/**  Arbitrary key-value metadata */
 	extra?: any | null;
-	/**  ISO 8601 timestamp, generated via `util::now_iso()`. */
-	createdAt: string;
-	modifiedAt?: string | null;
+	/**
+	 *  Unix timestamp (seconds), generated via `util::now_unix()`. JS receives
+	 *  it as a number and converts for display; never an ISO string.
+	 */
+	createdAt: number;
+	modifiedAt?: number | null;
 };
 export type MapData = {
 	meta: MapMeta;
@@ -1391,8 +1402,8 @@ declare const mma: {
 			flags: number;
 			tags: number[];
 			extra?: any | null;
-			createdAt: string;
-			modifiedAt?: string | null;
+			createdAt: number;
+			modifiedAt?: number | null;
 		} | null>;
 		storeGetLocationsByIds: (ids: number[]) => Promise<Location_Serialize[]>;
 		storeGetAllLocations: () => Promise<string>;

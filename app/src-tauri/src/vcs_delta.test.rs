@@ -13,7 +13,7 @@ fn loc(id: u32, lat: f64, lng: f64) -> Location {
         flags: crate::types::LocationFlags::empty(),
         tags: vec![],
         extra: None,
-        created_at: "2024-01-01T00:00:00Z".into(),
+        created_at: crate::util::iso_to_unix("2024-01-01T00:00:00Z").unwrap() as u32,
         modified_at: None,
     }
 }

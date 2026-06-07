@@ -13,6 +13,7 @@ import type {
 import { emit as emitEvent } from "@/lib/events";
 import { log } from "@/lib/util/log";
 import { trace } from "@/lib/util/debug";
+import { nowUnix } from "@/lib/util/format";
 import { mmaBufUrl } from "@/lib/util/util";
 import { fitMapToBounds } from "@/lib/map/mapState";
 import { getSettings, setSetting } from "@/store/settings.add";
@@ -619,7 +620,7 @@ export async function duplicateLocation(locId: number): Promise<number | null> {
 	if (!currentMap) return null;
 	const loc = await cmd.storeGetLocation(locId);
 	if (!loc) return null;
-	const now = new Date().toISOString();
+	const now = nowUnix();
 	const clone: Location = { ...loc, id: 0, createdAt: now, modifiedAt: now };
 	await addLocations([clone]);
 	return clone.id;

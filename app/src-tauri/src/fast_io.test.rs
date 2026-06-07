@@ -15,8 +15,8 @@ fn sample_loc() -> Location {
         flags: crate::types::LocationFlags::LOAD_AS_PANO_ID,
         tags: vec![1, 2, 3],
         extra: Some(serde_json::from_str(r#"{"country":"FR"}"#).unwrap()),
-        created_at: "2024-01-15T10:30:00Z".into(),
-        modified_at: Some("2024-01-15T11:00:00Z".into()),
+        created_at: crate::util::iso_to_unix("2024-01-15T10:30:00Z").unwrap() as u32,
+        modified_at: Some(crate::util::iso_to_unix("2024-01-15T11:00:00Z").unwrap() as u32),
     }
 }
 
@@ -29,11 +29,19 @@ fn location_data_serde_round_trip() {
 }
 
 #[test]
+fn timestamps_serialize_as_numbers_not_iso() {
+    let loc = sample_loc();
+    let v: serde_json::Value = serde_json::to_value(&loc).unwrap();
+    assert!(v["createdAt"].is_number(), "createdAt must reach JS as a number, not ISO");
+    assert!(v["modifiedAt"].is_number(), "modifiedAt must reach JS as a number, not ISO");
+}
+
+#[test]
 fn location_data_null_optionals() {
     let loc = Location {
         id: 1, lat: 0.0, lng: 0.0, heading: 0.0, pitch: 0.0, zoom: 0.0,
         pano_id: None, flags: crate::types::LocationFlags::empty(), tags: vec![], extra: None,
-        created_at: String::new(), modified_at: None,
+        created_at: 0, modified_at: None,
     };
     let json = serde_json::to_string(&loc).unwrap();
     assert!(!json.contains("extra"));
@@ -84,7 +92,7 @@ fn make_test_batch(ids: &[u32]) -> arrow::array::RecordBatch {
         heading: 0.0, pitch: 0.0, zoom: 1.0,
         pano_id: Some(format!("pano_{id}")),
         flags: crate::types::LocationFlags::empty(), tags: vec![1], extra: None,
-        created_at: "2024-01-01T00:00:00Z".into(),
+        created_at: crate::util::iso_to_unix("2024-01-01T00:00:00Z").unwrap() as u32,
         modified_at: None,
     }).collect();
     arrow_bridge::locations_to_batch(&locs)
@@ -175,13 +183,13 @@ fn mmap_preserves_nullable_fields() {
         Location {
             id: 1, lat: 0.0, lng: 0.0, heading: 0.0, pitch: 0.0, zoom: 0.0,
             pano_id: None, flags: crate::types::LocationFlags::empty(), tags: vec![], extra: None,
-            created_at: "2024-01-01T00:00:00Z".into(), modified_at: None,
+            created_at: crate::util::iso_to_unix("2024-01-01T00:00:00Z").unwrap() as u32, modified_at: None,
         },
         Location {
             id: 2, lat: 1.0, lng: 1.0, heading: 0.0, pitch: 0.0, zoom: 0.0,
             pano_id: Some("abc".into()), flags: crate::types::LocationFlags::empty(), tags: vec![1, 2],
             extra: Some(serde_json::from_str(r#"{"key":"val"}"#).unwrap()),
-            created_at: "2024-01-01T00:00:00Z".into(), modified_at: Some("2024-06-01T00:00:00Z".into()),
+            created_at: crate::util::iso_to_unix("2024-01-01T00:00:00Z").unwrap() as u32, modified_at: Some(crate::util::iso_to_unix("2024-06-01T00:00:00Z").unwrap() as u32),
         },
     ];
     let batch = arrow_bridge::locations_to_batch(&locs);

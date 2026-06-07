@@ -13,8 +13,8 @@ fn sample_locations() -> Vec<Location> {
             flags: crate::types::LocationFlags::LOAD_AS_PANO_ID,
             tags: vec![1, 2],
             extra: Some(serde_json::from_str(r#"{"countryCode":"FR","altitude":35.2}"#).unwrap()),
-            created_at: "2024-01-15T10:30:00Z".to_string(),
-            modified_at: Some("2024-01-15T11:00:00Z".to_string()),
+            created_at: crate::util::iso_to_unix("2024-01-15T10:30:00Z").unwrap() as u32,
+            modified_at: Some(crate::util::iso_to_unix("2024-01-15T11:00:00Z").unwrap() as u32),
         },
         Location {
             id: 2,
@@ -27,7 +27,7 @@ fn sample_locations() -> Vec<Location> {
             flags: crate::types::LocationFlags::empty(),
             tags: vec![],
             extra: None,
-            created_at: "2024-06-20T15:00:00Z".to_string(),
+            created_at: crate::util::iso_to_unix("2024-06-20T15:00:00Z").unwrap() as u32,
             modified_at: None,
         },
     ]
@@ -58,6 +58,7 @@ fn round_trip() {
             rest.extra.as_ref().map(|e| serde_json::to_string(e).unwrap()),
         );
         assert_eq!(orig.created_at, rest.created_at);
+        assert_eq!(orig.modified_at, rest.modified_at);
     }
 }
 

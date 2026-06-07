@@ -9,6 +9,16 @@ export const shortDateFmt = new Intl.DateTimeFormat("en-US", {
 	year: "numeric",
 });
 
+/** Location timestamps are Unix seconds; JS Date wants milliseconds. */
+export function locDate(secs: number): Date {
+	return new Date(secs * 1000);
+}
+
+/** Current time as Unix seconds, the form Location timestamps use. */
+export function nowUnix(): number {
+	return Math.floor(Date.now() / 1000);
+}
+
 const MINUTE = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;

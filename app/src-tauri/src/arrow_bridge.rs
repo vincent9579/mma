@@ -109,15 +109,8 @@ pub fn locations_to_batch(locs: &[Location]) -> RecordBatch {
         .map(|l| l.extra.as_ref().map(|e| serde_json::to_string(e).unwrap()))
         .collect();
 
-    let created_ats = UInt32Array::from(
-        locs.iter()
-            .map(|l| crate::util::iso_to_unix(&l.created_at).map(|s| s as u32).unwrap_or(0))
-            .collect::<Vec<_>>(),
-    );
-    let modified_ats: UInt32Array = locs
-        .iter()
-        .map(|l| l.modified_at.as_deref().and_then(crate::util::iso_to_unix).map(|s| s as u32))
-        .collect();
+    let created_ats = UInt32Array::from(locs.iter().map(|l| l.created_at).collect::<Vec<_>>());
+    let modified_ats: UInt32Array = locs.iter().map(|l| l.modified_at).collect();
 
     let schema = Arc::new(location_schema());
     let columns: Vec<ArrayRef> = vec![
@@ -163,7 +156,7 @@ pub fn row_to_location(batch: &RecordBatch, idx: usize) -> Location {
 
     let modified_at = {
         let col = col_modified_at(batch);
-        if col.is_null(idx) { None } else { Some(crate::util::unix_to_iso(col.value(idx))) }
+        if col.is_null(idx) { None } else { Some(col.value(idx)) }
     };
 
     Location {
@@ -177,7 +170,7 @@ pub fn row_to_location(batch: &RecordBatch, idx: usize) -> Location {
         flags: LocationFlags::from_bits_retain(col_flags(batch).value(idx)),
         tags,
         extra,
-        created_at: crate::util::unix_to_iso(col_created_at(batch).value(idx)),
+        created_at: col_created_at(batch).value(idx),
         modified_at,
     }
 }

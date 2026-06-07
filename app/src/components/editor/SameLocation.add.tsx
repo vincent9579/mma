@@ -98,7 +98,7 @@ export default function SameLocation() {
 			[...locations].sort((a, b) =>
 				a.tags.length !== b.tags.length
 					? b.tags.length - a.tags.length
-					: a.createdAt.localeCompare(b.createdAt),
+					: a.createdAt - b.createdAt,
 			),
 		[locations],
 	);

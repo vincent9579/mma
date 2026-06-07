@@ -1,4 +1,5 @@
 import type { Location_Serialize, Tag as _Tag, EditorImportResult_Serialize, EditorImportPreview } from "@/bindings.gen";
+import { nowUnix } from "@/lib/util/format";
 
 export type Location = Location_Serialize;
 export type Tag = _Tag;
@@ -53,7 +54,7 @@ export function createLocation(
 		panoId: null,
 		flags: LocationFlag.None,
 		tags: [],
-		createdAt: new Date().toISOString(),
+		createdAt: nowUnix(),
 		...partial,
 	};
 }

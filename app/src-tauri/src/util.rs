@@ -11,6 +11,12 @@ pub fn now_iso() -> String {
     Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 
+/// Returns the current UTC time as a Unix timestamp in seconds. Location
+/// timestamps use this compact form; ISO strings are only for SQLite metadata.
+pub fn now_unix() -> u32 {
+    Utc::now().timestamp() as u32
+}
+
 /// Parses an ISO 8601 datetime string (e.g. "2024-01-15T12:30:00Z") to Unix
 /// timestamp in seconds. Accepts optional fractional seconds and trailing 'Z'.
 pub fn iso_to_unix(s: &str) -> Option<f64> {

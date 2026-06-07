@@ -846,8 +846,8 @@ impl Store {
         if let Some(v) = patch.flags { loc.flags = LocationFlags::from_bits_retain(v); }
         if let Some(ref v) = patch.tags { loc.tags = v.clone(); }
         if let Some(ref v) = patch.extra { loc.extra = v.clone(); }
-        if let Some(ref v) = patch.created_at { loc.created_at = v.clone(); }
-        if let Some(ref v) = patch.modified_at { loc.modified_at = v.clone(); }
+        if let Some(v) = patch.created_at { loc.created_at = v; }
+        if let Some(v) = patch.modified_at { loc.modified_at = v; }
         // If it's in overlay_adds, update in place
         if let Ok(pos) = self.overlay.adds.binary_search_by_key(&id, |l| l.id) {
             self.overlay.adds[pos] = loc;
@@ -1144,10 +1144,10 @@ pub struct LocationPatch {
     #[serde(default, deserialize_with = "nullable")]
     #[specta(type = Option<Option<specta_typescript::Any>>)]
     pub extra: Option<Option<serde_json::Map<String, serde_json::Value>>>,
-    pub created_at: Option<String>,
+    pub created_at: Option<u32>,
     #[serde(default, deserialize_with = "nullable")]
-    #[specta(type = Option<Option<String>>)]
-    pub modified_at: Option<Option<String>>,
+    #[specta(type = Option<Option<u32>>)]
+    pub modified_at: Option<Option<u32>>,
 }
 
 
@@ -2261,7 +2261,7 @@ fn merge_group(members: &[Location]) -> Location {
     let mut new_survivor = survivor.clone();
     new_survivor.tags = tagset.into_iter().collect();
     new_survivor.extra = if merged_extra.is_empty() { None } else { Some(merged_extra) };
-    new_survivor.modified_at = Some(crate::util::now_iso());
+    new_survivor.modified_at = Some(crate::util::now_unix());
     new_survivor
 }
 

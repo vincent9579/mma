@@ -12,7 +12,7 @@ fn loc(id: u32, lat: f64, lng: f64) -> Location {
         flags: crate::types::LocationFlags::empty(),
         tags: vec![],
         extra: None,
-        created_at: String::new(),
+        created_at: 0,
         modified_at: None,
     }
 }
@@ -1738,14 +1738,14 @@ fn removal_bitmask_includes_affected_cell() {
 // merge_group (duplicate merge policy)
 // -----------------------------------------------------------------------
 
-fn loc_full(id: u32, tags: Vec<u32>, created_at: &str) -> Location {
-    Location { tags, created_at: created_at.into(), ..loc(id, 0.0, 0.0) }
+fn loc_full(id: u32, tags: Vec<u32>, created_at: u32) -> Location {
+    Location { tags, created_at, ..loc(id, 0.0, 0.0) }
 }
 
 #[test]
 fn merge_group_survivor_is_most_tags() {
-    let a = loc_full(1, vec![1], "2020-01-01");
-    let b = loc_full(2, vec![1, 2, 3], "2021-01-01");
+    let a = loc_full(1, vec![1], 2020);
+    let b = loc_full(2, vec![1, 2, 3], 2021);
     let s = merge_group(&[a, b]);
     assert_eq!(s.id, 2);
     assert_eq!(s.tags, vec![1, 2, 3]);
@@ -1753,33 +1753,33 @@ fn merge_group_survivor_is_most_tags() {
 
 #[test]
 fn merge_group_tie_breaks_on_earliest_created() {
-    let a = loc_full(1, vec![1], "2021-01-01");
-    let b = loc_full(2, vec![9], "2019-01-01"); // fewer-tag tie, but earlier
+    let a = loc_full(1, vec![1], 2021);
+    let b = loc_full(2, vec![9], 2019); // fewer-tag tie, but earlier
     let s = merge_group(&[a, b]);
     assert_eq!(s.id, 2);
 }
 
 #[test]
 fn merge_group_tie_breaks_on_lowest_id() {
-    let a = loc_full(5, vec![1], "2020-01-01");
-    let b = loc_full(2, vec![9], "2020-01-01"); // same tags+created, lower id
+    let a = loc_full(5, vec![1], 2020);
+    let b = loc_full(2, vec![9], 2020); // same tags+created, lower id
     let s = merge_group(&[a, b]);
     assert_eq!(s.id, 2);
 }
 
 #[test]
 fn merge_group_unions_and_dedupes_tags() {
-    let a = loc_full(1, vec![1, 2], "2020-01-01");
-    let b = loc_full(2, vec![2, 3], "2020-01-01");
+    let a = loc_full(1, vec![1, 2], 2020);
+    let b = loc_full(2, vec![2, 3], 2020);
     let s = merge_group(&[a, b]);
     assert_eq!(s.tags, vec![1, 2, 3]);
 }
 
 #[test]
 fn merge_group_extra_survivor_wins_and_unions_keys() {
-    let mut a = loc_full(1, vec![1, 2], "2020-01-01"); // survivor (most tags)
+    let mut a = loc_full(1, vec![1, 2], 2020); // survivor (most tags)
     a.extra = Some(serde_json::from_str(r#"{"k":"survivor"}"#).unwrap());
-    let mut b = loc_full(2, vec![3], "2020-01-01");
+    let mut b = loc_full(2, vec![3], 2020);
     b.extra = Some(serde_json::from_str(r#"{"k":"other","x":"y"}"#).unwrap());
     let s = merge_group(&[a, b]);
     let extra = s.extra.unwrap();
