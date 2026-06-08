@@ -1,7 +1,8 @@
 import { imageKeyToPanoId } from "@/lib/sv/svMeta";
 import { fovToZoom, schemeBase } from "@/lib/util/util";
 
-export interface ParsedUrl {
+/** A single location parsed out of a pasted Maps URL or a bare coordinate. */
+export interface ParsedLocation {
 	lat: number;
 	lng: number;
 	heading: number;
@@ -23,7 +24,7 @@ async function resolveShortUrl(url: URL): Promise<URL> {
 	return new URL(await res.json());
 }
 
-function parseExpandedMapsUrl(url: URL): ParsedUrl | null {
+function parseExpandedMapsUrl(url: URL): ParsedLocation | null {
 	let params: URLSearchParams | null = null;
 	if (url.hash) params = new URLSearchParams(url.hash.slice(1));
 	params ??= new URLSearchParams();
@@ -83,7 +84,41 @@ function parseExpandedMapsUrl(url: URL): ParsedUrl | null {
 	return null;
 }
 
-export async function parseMapsUrl(input: string): Promise<ParsedUrl | null> {
+// One coordinate component: signed degrees, optional `°`, optional minutes (with
+// `'`/`′`) and seconds (with `"`/`″`), optional N/S/E/W hemisphere. Markers are
+// required for DMS/DDM so bare integers can't masquerade as degrees+minutes.
+const COORD_COMPONENT = String.raw`([+-]?\d+(?:\.\d+)?)\s*°?\s*(?:(\d+(?:\.\d+)?)\s*['′]\s*(?:(\d+(?:\.\d+)?)\s*["″]?)?)?\s*([NSEWnsew])?`;
+const COORD_PAIR = new RegExp(`^${COORD_COMPONENT}\\s*[, ]\\s*${COORD_COMPONENT}$`);
+
+/** Parse a single bare coordinate pair in decimal, DMS, or DDM form into a
+ * single location. Returns null if the text isn't a recognizable lat/lng pair.
+ * Examples: `41.17, 14.04`, `41.17 14.04`, `40°26'46"N 79°58'56"W`,
+ * `40°26.7'N, 79°58.9'W`, `14.04 E, 41.17 N`. */
+export function parseCoordinates(input: string): ParsedLocation | null {
+	const m = COORD_PAIR.exec(input.trim());
+	if (!m) return null;
+
+	const component = (deg: string, min: string, sec: string, hemi: string) => {
+		let val = parseFloat(deg) + (min ? parseFloat(min) / 60 : 0) + (sec ? parseFloat(sec) / 3600 : 0);
+		const h = hemi?.toUpperCase();
+		if (h === "S" || h === "W") val = -Math.abs(val);
+		const axis = h === "N" || h === "S" ? "lat" : h === "E" || h === "W" ? "lng" : null;
+		return { val, axis };
+	};
+
+	const a = component(m[1]!, m[2]!, m[3]!, m[4]!);
+	const b = component(m[5]!, m[6]!, m[7]!, m[8]!);
+
+	// Lat first by default; explicit hemispheres can flip the order (e.g. lng, lat).
+	const swap = a.axis === "lng" || b.axis === "lat";
+	const lat = swap ? b.val : a.val;
+	const lng = swap ? a.val : b.val;
+	if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+
+	return { lat, lng, heading: 0, pitch: 0, zoom: 0, panoId: null, tags: [] };
+}
+
+export async function parseMapsUrl(input: string): Promise<ParsedLocation | null> {
 	let url: URL;
 	try {
 		url = new URL(input.trim());

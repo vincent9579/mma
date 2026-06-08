@@ -30,7 +30,7 @@ import { useHotkey, useCommandHotkeys, isEditableElement } from "@/lib/hooks/use
 import { useBinding } from "@/lib/util/hotkeys.add";
 import { useLocalStorage } from "@/lib/hooks/useLocalStorage";
 import { useSettings, setSetting, getSettings } from "@/store/settings.add";
-import { parseMapsUrl } from "@/lib/data/importExport";
+import { parseMapsUrl, parseCoordinates } from "@/lib/data/importExport";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiBackburger, mdiPencil } from "@mdi/js";
 import { PluginSidebarHost } from "@/components/editor/PluginSidebarHost";
@@ -52,17 +52,14 @@ function usePasteHandler() {
 
 			const isSingleLine = !text.trim().includes("\n");
 			if (isSingleLine) {
-				const parsed = await parseMapsUrl(text);
+				const parsed = (await parseMapsUrl(text)) ?? parseCoordinates(text);
 				if (parsed) {
 					let tagIds: number[] = [];
 					if (parsed.tags.length > 0) {
 						const resolved = await createTags(parsed.tags);
 						tagIds = resolved.map((t) => t.id);
 					}
-					const loc = createLocation({
-						...parsed,
-						tags: tagIds,
-					});
+					const loc = createLocation({ ...parsed, tags: tagIds });
 					await addLocations([loc]);
 					setActiveLocation(loc.id);
 					zoomToPasted([loc.lng, loc.lat, loc.lng, loc.lat]);
