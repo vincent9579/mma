@@ -430,6 +430,14 @@ export function MapEmbed() {
 		minRadius: searchRadius ?? undefined,
 	};
 
+	// Earcut tessellation of selection polygons is expensive and runs on every
+	// buildLayers call if the data reference changes. Cache the normalized fill/stroke
+	// arrays keyed by selection, invalidating only when the geometry object changes, so
+	// deck.gl reuses the same reference and re-tessellates once per geometry, not per render.
+	const polygonGeomCache = useRef(
+		new Map<string, { poly: object; fill: Position[][][]; stroke: Position[][] }>(),
+	);
+
 	const buildLayers = useCallback(() => {
 		const m = mapDataRef.current;
 		if (!m) {
@@ -464,16 +472,23 @@ export function MapEmbed() {
 		const polygonSels = allSelections.flatMap((sel) =>
 			sel.props.type === "Intersection" ? sel.props.selections : [sel],
 		);
+		const livePolygonKeys = new Set<string>();
 		for (const sel of polygonSels) {
 			if (sel.props.type !== "Polygon") continue;
 			const poly = sel.props.polygon;
-			const allPolygons = [poly.coordinates, ...(poly.extraPolygons ?? [])].map(normalizePolygonCoords);
+			livePolygonKeys.add(sel.key);
+			let geom = polygonGeomCache.current.get(sel.key);
+			if (!geom || geom.poly !== poly) {
+				const fill = [poly.coordinates, ...(poly.extraPolygons ?? [])].map(normalizePolygonCoords);
+				geom = { poly, fill, stroke: fill.flatMap((p) => p) as Position[][] };
+				polygonGeomCache.current.set(sel.key, geom);
+			}
 			const fillColor: [number, number, number, number] = [...sel.color, 26];
 			const strokeColor: [number, number, number, number] = [...sel.color, 153];
 			layers.push(
-				new PolygonLayer<number[][][]>({
+				new PolygonLayer<Position[][]>({
 					id: `selectionPolygonFill:${sel.key}`,
-					data: allPolygons,
+					data: geom.fill,
 					getPolygon: (d) => d,
 					getFillColor: fillColor,
 					stroked: false,
@@ -482,7 +497,7 @@ export function MapEmbed() {
 				}),
 				new PathLayer<Position[]>({
 					id: `selectionPolygonStroke:${sel.key}`,
-					data: allPolygons.flatMap((p) => p) as Position[][],
+					data: geom.stroke,
 					getPath: (d) => d,
 					getColor: strokeColor,
 					getWidth: 4,
@@ -492,6 +507,9 @@ export function MapEmbed() {
 					opacity: 1,
 				}),
 			);
+		}
+		for (const k of polygonGeomCache.current.keys()) {
+			if (!livePolygonKeys.has(k)) polygonGeomCache.current.delete(k);
 		}
 
 		const cm = cellMgrRef.current;
