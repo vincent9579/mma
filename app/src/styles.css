@@ -4972,6 +4972,13 @@ body {
 	font: inherit;
 }
 
+/* Kill drag text-selection (blue highlight) while panning the pano */
+.location-preview__embed,
+.location-preview__embed * {
+	user-select: none;
+	-webkit-user-select: none;
+}
+
 /* Hide Google logo in Street View panorama */
 .location-preview__embed a[href*="maps.google.com/maps"] {
 	display: none !important;
