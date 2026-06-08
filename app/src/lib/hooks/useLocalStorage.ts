@@ -1,5 +1,9 @@
 import { useState, useCallback } from "react";
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+	return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 export function useLocalStorage<T>(
 	key: string,
 	defaultValue: T,
@@ -7,7 +11,14 @@ export function useLocalStorage<T>(
 	const [value, setValue] = useState<T>(() => {
 		try {
 			const stored = localStorage.getItem(key);
-			return stored !== null ? JSON.parse(stored) : defaultValue;
+			if (stored === null) return defaultValue;
+			const parsed = JSON.parse(stored);
+			// Merge defaults under stored object values so keys added after the blob
+			// was saved still resolve. Primitives/arrays pass through unchanged.
+			if (isPlainObject(parsed) && isPlainObject(defaultValue)) {
+				return { ...defaultValue, ...parsed } as T;
+			}
+			return parsed as T;
 		} catch {
 			return defaultValue;
 		}
