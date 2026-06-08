@@ -74,14 +74,14 @@ function formatDisplay(
 	if (mode === "month") {
 		return `${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 	}
-	const hasTime = d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0;
+	const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
 	const dateStr = d.toLocaleDateString("en-US", {
 		year: "numeric",
 		month: "short",
 		day: "numeric",
 	});
 	if (hasTime) {
-		const timeStr = `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+		const timeStr = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 		return `${dateStr} ${timeStr}`;
 	}
 	return dateStr;
@@ -188,7 +188,8 @@ export function DatePicker({
 			} else {
 				const [h, m] = timeStr.split(":").map(Number);
 				const ts =
-					Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), h || 0, m || 0) / 1000;
+					new Date(date.getFullYear(), date.getMonth(), date.getDate(), h || 0, m || 0).getTime() /
+					1000;
 				onChange(String(Math.floor(ts)));
 			}
 		},
@@ -235,7 +236,7 @@ export function DatePicker({
 			if (isOpen) {
 				const existing = parseToDate(value);
 				if (existing) {
-					setTime(`${pad2(existing.getUTCHours())}:${pad2(existing.getUTCMinutes())}`);
+					setTime(`${pad2(existing.getHours())}:${pad2(existing.getMinutes())}`);
 				} else {
 					setTime("00:00");
 				}
@@ -290,7 +291,7 @@ export function DatePicker({
 							{showTime && !anyYear && (
 								<div className="date-picker__time">
 									<label>
-										Time (UTC):
+										Time:
 										<input
 											type="time"
 											value={time}
