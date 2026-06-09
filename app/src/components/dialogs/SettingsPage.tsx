@@ -284,18 +284,21 @@ function KeyboardShortcutsSection() {
 	}, []);
 
 	return (
-		<fieldset className="fieldset">
-			<legend className="fieldset__header">
+		// div, not fieldset: Chromium ignores position:sticky inside <fieldset>
+		<div className="fieldset">
+			<div className="fieldset__header">
 				Keyboard Shortcuts <span className="fieldset__divider" />
-			</legend>
-			<input
-				className="input"
-				type="text"
-				placeholder="Filter shortcuts..."
-				value={filter}
-				onChange={(e) => setFilter(e.target.value)}
-				style={{ width: "100%", marginBottom: ".5rem" }}
-			/>
+			</div>
+			<div className="settings-hotkey-filter">
+				<input
+					className="input"
+					type="text"
+					placeholder="Filter shortcuts..."
+					value={filter}
+					onChange={(e) => setFilter(e.target.value)}
+					style={{ width: "100%" }}
+				/>
+			</div>
 			{GROUPS.map((group) => {
 				const defs = allBindings.filter(
 					(d) => d.group === group && (!lower || d.label.toLowerCase().includes(lower) || getBinding(d.action).toLowerCase().includes(lower)),
@@ -332,7 +335,7 @@ function KeyboardShortcutsSection() {
 					Reset all to defaults
 				</button>
 			</div>
-		</fieldset>
+		</div>
 	);
 }
 
