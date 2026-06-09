@@ -13,7 +13,7 @@ use roaring::RoaringBitmap;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::types::{Location, LocationFlags};
-use crate::util::{unix_to_month_day, unix_to_hour_min};
+use crate::util::{unix_to_month_day, unix_to_hour_min, tz_offset_seconds};
 
 /// Discriminated union of all selection types. Serialized with `{ "type": "..." }` tag
 /// for JS interop. Simple types (Tag, Untagged, PanoIds, etc.) resolve in O(N) with
@@ -318,10 +318,15 @@ fn test_row(r: &RowRef, props: &SelectionProps) -> bool {
             if !include_informational && r.flags().contains(LocationFlags::INFORMATIONAL) { return false; }
             point_in_geometry(r.lng(), r.lat(), polygon)
         }
-        SelectionProps::Filter { field, op, value, value2 } => match r.resolve_field(field) {
-            Some(ref v) => compare_filter(v, op, value, value2.as_ref()),
-            None => op.as_str() == "neq" || op.as_str() == "nothas",
-        },
+        SelectionProps::Filter { field, op, value, value2 } => {
+            if op == "between_local" {
+                return compare_local_tz(r, field, value, value2.as_ref());
+            }
+            match r.resolve_field(field) {
+                Some(ref v) => compare_filter(v, op, value, value2.as_ref()),
+                None => op.as_str() == "neq" || op.as_str() == "nothas",
+            }
+        }
         _ => false,
     }
 }
@@ -878,6 +883,30 @@ fn compare_filter(field_val: &serde_json::Value, op: &str, value: &serde_json::V
         }
         _ => false,
     }
+}
+
+/// `between_local`: bucket a location's absolute `datetime` instant into its own
+/// timezone before range-checking. `lo`/`hi` are wall-clock instants encoded as
+/// UTC-epoch seconds (the numbers the user picked, the picker's wall-clock mode);
+/// the location's `timezone` (IANA) supplies the DST-correct offset. Locations
+/// lacking a resolvable `timezone` or `datetime` are excluded.
+fn compare_local_tz(r: &RowRef, field: &str, lo: &serde_json::Value, hi: Option<&serde_json::Value>) -> bool {
+    let ts = match r.resolve_field(field).as_ref().and_then(as_f64) {
+        Some(t) => t,
+        None => return false,
+    };
+    let tz_name = match r.resolve_field("timezone") {
+        Some(serde_json::Value::String(s)) => s,
+        _ => return false,
+    };
+    let offset = match tz_offset_seconds(&tz_name, ts) {
+        Some(o) => o,
+        None => return false,
+    };
+    let local = ts + offset as f64;
+    let lo = as_f64(lo).unwrap_or(f64::MIN);
+    let hi = hi.and_then(as_f64).unwrap_or(f64::MAX);
+    local >= lo && local <= hi
 }
 
 /// Equality comparison with type coercion: tries numeric, then string, then JSON equality.

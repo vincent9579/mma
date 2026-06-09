@@ -475,8 +475,25 @@ describe("selectionDisplayName", () => {
 			op: "gt",
 			value: 1700000000,
 		});
-		const expected = new Date(1700000000 * 1000).toISOString().slice(0, 16).replace("T", " ");
+		// Chip labels render date fields in local time to match the DatePicker.
+		const d = new Date(1700000000 * 1000);
+		const p = (n: number) => String(n).padStart(2, "0");
+		const expected = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 		expect(selectionDisplayName(map, sel)).toBe(`Exact date > ${expected}`);
+	});
+
+	it("display name for between_local renders wall-clock values in UTC", () => {
+		const map = makeMap();
+		const sel = buildSelection({
+			type: "Filter",
+			field: "exact",
+			op: "between_local",
+			value: 1583020800, // 2020-03-01 00:00 (wall-clock as UTC epoch)
+			value2: 1583107140, // 2020-03-01 23:59
+		});
+		expect(selectionDisplayName(map, sel)).toBe(
+			"Exact date between (location time) 2020-03-01 00:00..2020-03-01 23:59",
+		);
 	});
 
 	it("display name for Filter uses raw field name when no fieldDef exists", () => {

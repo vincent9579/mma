@@ -555,7 +555,7 @@ const ALL_OPS: FilterOp[] = ["eq", "neq", "gt", "lt", "gte", "lte", "between", "
 const EQUALITY_OPS: FilterOp[] = ["eq", "neq", "has", "nothas"];
 const filterBuilderState = new Map<
 	string,
-	{ field: string; op: FilterOp; value: string; value2: string; anyYear?: boolean; anyTime?: boolean }
+	{ field: string; op: FilterOp; value: string; value2: string; anyYear?: boolean; anyTime?: boolean; tzLocal?: boolean }
 >();
 
 function opsForType(type: string | undefined): FilterOp[] {
@@ -636,6 +636,9 @@ function FilterValueInput({
 	anyTime,
 	onAnyTimeToggle,
 	showAnyTime,
+	tzLocal,
+	onTzLocalToggle,
+	showTzLocal,
 	onYearSelect,
 }: {
 	fieldEntry: FieldEntry | undefined;
@@ -648,6 +651,9 @@ function FilterValueInput({
 	anyTime?: boolean;
 	onAnyTimeToggle?: (v: boolean) => void;
 	showAnyTime?: boolean;
+	tzLocal?: boolean;
+	onTzLocalToggle?: (v: boolean) => void;
+	showTzLocal?: boolean;
 	onYearSelect?: (year: number) => void;
 }) {
 	const type = fieldEntry?.fieldType;
@@ -680,6 +686,10 @@ function FilterValueInput({
 				anyTime={anyTime}
 				onAnyTimeToggle={onAnyTimeToggle}
 				showAnyTime={showAnyTime}
+				tzLocal={tzLocal}
+				onTzLocalToggle={onTzLocalToggle}
+				showTzLocal={showTzLocal}
+				wallClock={tzLocal}
 				onYearSelect={onYearSelect}
 			/>
 		);
@@ -714,6 +724,7 @@ type FilterFormSeed = {
 	value2: string;
 	anyYear?: boolean;
 	anyTime?: boolean;
+	tzLocal?: boolean;
 };
 
 /** Reverse of FilterForm.handleAdd: turn a stored Filter selection back into editable form state. */
@@ -721,12 +732,16 @@ function filterPropsToSeed(p: Extract<Selection["props"], { type: "Filter" }>): 
 	let op = p.op as FilterOp;
 	let anyYear = false;
 	let anyTime = false;
+	let tzLocal = false;
 	if (op === "between_anyyear") {
 		op = "between";
 		anyYear = true;
 	} else if (op === "between_anytime") {
 		op = "between";
 		anyTime = true;
+	} else if (op === "between_local") {
+		op = "between";
+		tzLocal = true;
 	}
 	return {
 		field: p.field,
@@ -735,6 +750,7 @@ function filterPropsToSeed(p: Extract<Selection["props"], { type: "Filter" }>): 
 		value2: p.value2 == null ? "" : String(p.value2),
 		anyYear,
 		anyTime,
+		tzLocal,
 	};
 }
 
@@ -766,13 +782,14 @@ function FilterForm({
 	const [value2, setValue2] = useState(saved?.value2 ?? "");
 	const [anyYear, setAnyYear] = useState(saved?.anyYear ?? false);
 	const [anyTime, setAnyTime] = useState(saved?.anyTime ?? false);
+	const [tzLocal, setTzLocal] = useState(saved?.tzLocal ?? false);
 	useEffect(() => {
 		if (!field && fields.length > 0) setField(fields[0].key);
 	}, [field, fields]);
 
 	useEffect(() => {
-		if (persistKey) filterBuilderState.set(persistKey, { field, op, value, value2, anyYear, anyTime });
-	}, [persistKey, field, op, value, value2, anyYear, anyTime]);
+		if (persistKey) filterBuilderState.set(persistKey, { field, op, value, value2, anyYear, anyTime, tzLocal });
+	}, [persistKey, field, op, value, value2, anyYear, anyTime, tzLocal]);
 
 	const fieldEntry = fields.find((f) => f.key === field);
 	const isNumeric = fieldEntry?.fieldType === "number" || fieldEntry?.fieldType === "date";
@@ -790,6 +807,7 @@ function FilterForm({
 		setValue2("");
 		setAnyYear(false);
 		setAnyTime(false);
+		setTzLocal(false);
 	};
 
 	const handleOpChange = (newOp: FilterOp) => {
@@ -797,13 +815,37 @@ function FilterForm({
 		if (newOp !== "between") {
 			setAnyYear(false);
 			setAnyTime(false);
+			setTzLocal(false);
 		}
+	};
+
+	// Toggle wall-clock-in-location-timezone mode. The picker re-encodes between a
+	// local-time instant (off) and a wall-clock-as-UTC instant (on); convert the
+	// existing values so the displayed wall-clock numbers are preserved.
+	const handleTzLocalToggle = (checked: boolean) => {
+		setTzLocal(checked);
+		if (checked) {
+			setAnyYear(false);
+			setAnyTime(false);
+		}
+		const convert = (v: string): string => {
+			const n = Number(v);
+			if (!v || isNaN(n)) return v;
+			const d = new Date(n * 1000);
+			const ts = checked
+				? Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes())
+				: new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes()).getTime();
+			return String(Math.floor(ts / 1000));
+		};
+		setValue(convert(value));
+		setValue2(convert(value2));
 	};
 
 	const handleAnyYearToggle = (checked: boolean) => {
 		setAnyYear(checked);
 		if (checked) {
 			setAnyTime(false);
+			setTzLocal(false);
 			const convert = (v: string): string => {
 				if (!v) return "";
 				if (isExactDate) {
@@ -842,6 +884,7 @@ function FilterForm({
 		setAnyTime(checked);
 		if (checked) {
 			setAnyYear(false);
+			setTzLocal(false);
 			const convert = (v: string): string => {
 				if (!v) return "";
 				const n = Number(v);
@@ -879,6 +922,7 @@ function FilterForm({
 		let finalOp: FilterOp = op;
 		if (isBetween && anyYear) finalOp = "between_anyyear";
 		if (isBetween && anyTime) finalOp = "between_anytime";
+		if (isBetween && tzLocal) finalOp = "between_local";
 		let parsed: string | number | null;
 		let parsed2: string | number | undefined;
 		if (anyYear && isBetween) {
@@ -909,6 +953,7 @@ function FilterForm({
 
 	const showAnyYear = isBetween && isDateLike;
 	const showAnyTime = isBetween && isExactDate;
+	const showTzLocal = isBetween && isExactDate;
 
 	const handleYearSelect = isBetween && fieldEntry?.fieldType === "month"
 		? (year: number) => {
@@ -950,6 +995,9 @@ function FilterForm({
 					anyTime={anyTime}
 					onAnyTimeToggle={handleAnyTimeToggle}
 					showAnyTime={showAnyTime}
+					tzLocal={tzLocal}
+					onTzLocalToggle={handleTzLocalToggle}
+					showTzLocal={showTzLocal}
 					onYearSelect={handleYearSelect}
 				/>
 			)}
@@ -961,6 +1009,7 @@ function FilterForm({
 					placeholder="Max"
 					anyYear={anyYear}
 					anyTime={anyTime}
+					tzLocal={tzLocal}
 				/>
 			)}
 			<button className="button" type="button" onClick={handleAdd}>

@@ -782,3 +782,31 @@ fn extra_filter_eq_on_adds() {
     });
     assert_eq!(ids, vec![1]);
 }
+
+// `between_local` buckets each location's absolute `datetime` into its own
+// timezone before range-checking. Same instant, different zones -> different days.
+#[test]
+fn filter_between_local_buckets_per_timezone() {
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    // 2020-03-01 00:00:00 UTC. In Tokyo that's Mar 1 09:00; in New York Feb 29 19:00.
+    let ts = 1583020800u64;
+    let mut tokyo = loc(1, 0.0, 0.0);
+    tokyo.extra = serde_json::json!({ "datetime": ts, "timezone": "Asia/Tokyo" }).as_object().cloned();
+    let mut newyork = loc(2, 0.0, 0.0);
+    newyork.extra = serde_json::json!({ "datetime": ts, "timezone": "America/New_York" }).as_object().cloned();
+    let mut no_tz = loc(3, 0.0, 0.0);
+    no_tz.extra = serde_json::json!({ "datetime": ts }).as_object().cloned();
+    let adds = vec![tokyo, newyork, no_tz];
+    let view = make_view(None, &dead, &patches, &adds);
+
+    // Filter "all of Mar 1, 2020" as wall-clock-as-UTC epoch seconds.
+    let lo = serde_json::json!(1583020800u64); // 2020-03-01 00:00
+    let hi = serde_json::json!(1583107140u64); // 2020-03-01 23:59
+    let ids = resolve(&view, &SelectionProps::Filter {
+        field: "datetime".into(), op: "between_local".into(),
+        value: lo, value2: Some(hi),
+    });
+    // Tokyo lands on Mar 1 -> in; New York is Feb 29 -> out; no timezone -> excluded.
+    assert_eq!(ids, vec![1]);
+}

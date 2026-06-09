@@ -30,6 +30,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 rmp-serde = "1"
 sha2 = "0.10"
 chrono = "0.4"
+chrono-tz = "0.10"
 rayon = "1.10"
 roaring = "0.10"
 arrow = { version = "54", features = ["ipc"] }

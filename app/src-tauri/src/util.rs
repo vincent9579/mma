@@ -39,6 +39,16 @@ pub fn unix_to_hour_min(ts: f64) -> (u32, u32) {
     (dt.hour(), dt.minute())
 }
 
+/// The DST-correct UTC offset (in seconds) of an IANA timezone at a given instant.
+/// `None` if the timezone name doesn't parse. Used to bucket an absolute instant
+/// into the wall-clock time at a location ("the date where the photo was taken").
+pub fn tz_offset_seconds(tz_name: &str, ts: f64) -> Option<i32> {
+    use chrono::{Offset, TimeZone};
+    let tz: chrono_tz::Tz = tz_name.parse().ok()?;
+    let dt = DateTime::<Utc>::from_timestamp(ts as i64, 0)?;
+    Some(tz.offset_from_utc_datetime(&dt.naive_utc()).fix().local_minus_utc())
+}
+
 /// Converts HSL to RGB. `h` is in degrees [0, 360), `s` and `l` in [0, 1].
 pub fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
     let a = s * l.min(1.0 - l);

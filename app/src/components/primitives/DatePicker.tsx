@@ -14,7 +14,14 @@ interface DatePickerProps {
 	anyTime?: boolean;
 	onAnyTimeToggle?: (v: boolean) => void;
 	showAnyTime?: boolean;
+	tzLocal?: boolean;
+	onTzLocalToggle?: (v: boolean) => void;
+	showTzLocal?: boolean;
 	onYearSelect?: (year: number) => void;
+	/** Treat the value as a wall-clock instant encoded as a UTC epoch (the picked
+	 *  numbers survive unshifted by the viewer's timezone). Used by location-time
+	 *  date filtering, where Rust re-interprets the wall-clock in each pano's zone. */
+	wallClock?: boolean;
 }
 
 const MONTHS_SHORT = [
@@ -36,7 +43,7 @@ function pad2(n: number): string {
 	return n < 10 ? `0${n}` : String(n);
 }
 
-function parseToDate(value: string): Date | null {
+function parseToDate(value: string, wallClock?: boolean): Date | null {
 	if (!value) return null;
 	// "MM" (anyYear month)
 	const mm = /^(\d{2})$/.exec(value);
@@ -49,8 +56,14 @@ function parseToDate(value: string): Date | null {
 	if (ym) return new Date(Number(ym[1]), Number(ym[2]) - 1, 1);
 	// unix timestamp
 	const n = Number(value);
-	if (!isNaN(n) && value !== "") return new Date(n * 1000);
-	return null;
+	if (isNaN(n) || value === "") return null;
+	const d = new Date(n * 1000);
+	// In wall-clock mode the epoch encodes the picked numbers as UTC; re-home them
+	// onto a local Date so every local getter below reads the wall-clock value.
+	if (wallClock) {
+		return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes());
+	}
+	return d;
 }
 
 function formatDisplay(
@@ -58,12 +71,13 @@ function formatDisplay(
 	mode: "date" | "month",
 	anyYear?: boolean,
 	anyTime?: boolean,
+	wallClock?: boolean,
 ): string {
 	if (!value) return "Select...";
 	if (anyTime) {
 		return /^\d{2}:\d{2}$/.test(value) ? value : "Select...";
 	}
-	const d = parseToDate(value);
+	const d = parseToDate(value, wallClock);
 	if (!d) return "Select...";
 	if (anyYear) {
 		if (mode === "month") {
@@ -172,14 +186,26 @@ export function DatePicker({
 	anyTime,
 	onAnyTimeToggle,
 	showAnyTime,
+	tzLocal,
+	onTzLocalToggle,
+	showTzLocal,
 	onYearSelect,
+	wallClock,
 }: DatePickerProps) {
 	const [open, setOpen] = useState(false);
 
-	const selectedDate = parseToDate(value) ?? undefined;
+	const selectedDate = parseToDate(value, wallClock) ?? undefined;
 	const [navMonth, setNavMonth] = useState<Date>(() => selectedDate ?? new Date());
 	const [pendingDate, setPendingDate] = useState<Date | null>(null);
 	const [time, setTime] = useState("00:00");
+
+	// Encode the picked Y/M/D[/H/M] to a Unix-seconds epoch. Wall-clock mode emits
+	// the numbers as a UTC epoch; otherwise as the local-time instant.
+	const encode = useCallback(
+		(y: number, mo: number, da: number, h: number, mi: number) =>
+			Math.floor((wallClock ? Date.UTC(y, mo, da, h, mi) : new Date(y, mo, da, h, mi).getTime()) / 1000),
+		[wallClock],
+	);
 
 	const commitValue = useCallback(
 		(date: Date, timeStr: string) => {
@@ -187,13 +213,10 @@ export function DatePicker({
 				onChange(`${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`);
 			} else {
 				const [h, m] = timeStr.split(":").map(Number);
-				const ts =
-					new Date(date.getFullYear(), date.getMonth(), date.getDate(), h || 0, m || 0).getTime() /
-					1000;
-				onChange(String(Math.floor(ts)));
+				onChange(String(encode(date.getFullYear(), date.getMonth(), date.getDate(), h || 0, m || 0)));
 			}
 		},
-		[anyYear, onChange],
+		[anyYear, onChange, encode],
 	);
 
 	const handleDaySelect = useCallback(
@@ -206,12 +229,12 @@ export function DatePicker({
 				if (anyYear) {
 					onChange(`${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`);
 				} else {
-					onChange(String(Math.floor(date.getTime() / 1000)));
+					onChange(String(encode(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0)));
 				}
 				setOpen(false);
 			}
 		},
-		[anyYear, onChange, showTime, time, commitValue],
+		[anyYear, onChange, showTime, time, commitValue, encode],
 	);
 
 	const handleTimeChange = useCallback(
@@ -234,7 +257,7 @@ export function DatePicker({
 	const handleOpenChange = useCallback(
 		(isOpen: boolean) => {
 			if (isOpen) {
-				const existing = parseToDate(value);
+				const existing = parseToDate(value, wallClock);
 				if (existing) {
 					setTime(`${pad2(existing.getHours())}:${pad2(existing.getMinutes())}`);
 				} else {
@@ -244,14 +267,14 @@ export function DatePicker({
 			}
 			setOpen(isOpen);
 		},
-		[value],
+		[value, wallClock],
 	);
 
 	return (
 		<Popover.Root open={open} onOpenChange={handleOpenChange}>
 			<Popover.Trigger asChild>
 				<button type="button" className="date-picker__trigger">
-					{formatDisplay(value, mode, anyYear, anyTime)}
+					{formatDisplay(value, mode, anyYear, anyTime, wallClock)}
 				</button>
 			</Popover.Trigger>
 			<Popover.Portal>
@@ -302,7 +325,7 @@ export function DatePicker({
 							)}
 						</>
 					)}
-					{(showAnyYear || showAnyTime) && (
+					{(showAnyYear || showAnyTime || showTzLocal) && (
 						<div className="date-picker__toggles">
 							{showAnyYear && (
 								<label className="date-picker__any-year">
@@ -322,6 +345,16 @@ export function DatePicker({
 										onChange={(e) => onAnyTimeToggle?.(e.target.checked)}
 									/>
 									Any date
+								</label>
+							)}
+							{showTzLocal && (
+								<label className="date-picker__any-year">
+									<input
+										type="checkbox"
+										checked={tzLocal ?? false}
+										onChange={(e) => onTzLocalToggle?.(e.target.checked)}
+									/>
+									Location timezone
 								</label>
 							)}
 						</div>

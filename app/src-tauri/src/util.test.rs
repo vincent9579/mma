@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn tz_offset_fixed_and_dst() {
+    // 2020-03-01 00:00 UTC. Tokyo is +9h year-round; New York is EST (-5h) in winter.
+    let winter = 1583020800.0;
+    assert_eq!(tz_offset_seconds("Asia/Tokyo", winter), Some(9 * 3600));
+    assert_eq!(tz_offset_seconds("America/New_York", winter), Some(-5 * 3600));
+    // 2020-07-01 00:00 UTC: New York is EDT (-4h) under daylight saving.
+    let summer = 1593561600.0;
+    assert_eq!(tz_offset_seconds("America/New_York", summer), Some(-4 * 3600));
+    assert_eq!(tz_offset_seconds("Not/AZone", winter), None);
+}
+
+#[test]
 fn hsl_pure_red() {
     let (r, g, b) = hsl_to_rgb(0.0, 1.0, 0.5);
     assert_eq!(r, 255);

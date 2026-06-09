@@ -22,6 +22,12 @@ export function localDateTime(secs: number): string {
 	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** Compact "YYYY-MM-DD HH:MM" reading the instant in UTC. For wall-clock values
+ *  that encode the picked numbers as a UTC epoch (DatePicker `wallClock` mode). */
+export function utcDateTime(secs: number): string {
+	return new Date(secs * 1000).toISOString().slice(0, 16).replace("T", " ");
+}
+
 /** Current time as Unix seconds, the form Location timestamps use. */
 export function nowUnix(): number {
 	return Math.floor(Date.now() / 1000);

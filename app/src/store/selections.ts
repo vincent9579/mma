@@ -4,7 +4,7 @@ import { match, P } from "ts-pattern";
 import type { MapData } from "@/types";
 import { hslToRgb } from "@/lib/util/color";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
-import { localDateTime } from "@/lib/util/format";
+import { localDateTime, utcDateTime } from "@/lib/util/format";
 import { isVariant, unionTuple, type Variant } from "@/lib/util/union";
 
 export type { Selection, SelectionProps, PolygonGeometry } from "@/bindings.gen";
@@ -40,6 +40,7 @@ export type FilterOp =
 	| "between"
 	| "between_anyyear"
 	| "between_anytime"
+	| "between_local"
 	| "has"
 	| "nothas";
 
@@ -54,6 +55,7 @@ export const OP_LABELS: Record<FilterOp, string> = {
 	between: "between",
 	between_anyyear: "between (any year)",
 	between_anytime: "between (any date)",
+	between_local: "between (location time)",
 	has: "has",
 	nothas: "does not have",
 };
@@ -475,6 +477,8 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 				return `${fieldLabel} ${OP_LABELS[p.op]} ${fmtMD(p.value)}..${fmtMD(p.value2)}`;
 			if (p.op === "between_anytime")
 				return `${fieldLabel} ${OP_LABELS[p.op]} ${p.value}..${p.value2}`;
+			if (p.op === "between_local")
+				return `${fieldLabel} ${OP_LABELS[p.op]} ${utcDateTime(Number(p.value))}..${utcDateTime(Number(p.value2))}`;
 			if (p.op === "between")
 				return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}..${fmtVal(p.value2)}`;
 			return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}`;
