@@ -1115,6 +1115,11 @@ function LocationPreviewInner() {
 			singletonPano.setZoom(Math.max(0, singletonPano.getZoom() - 1));
 		}
 	});
+	useHotkey(useBinding("panoZoomReset"), () => {
+		if (singletonPano) {
+			singletonPano.setZoom(0);
+		}
+	});
 	useHotkey(useBinding("copyLink"), () => {
 		if (!location) return;
 		const btn = document.querySelector<HTMLButtonElement>('button[aria-label^="Copy link"]');

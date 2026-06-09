@@ -23,6 +23,7 @@ export type HotkeyAction =
 	| "centerRoad"
 	| "zoomIn"
 	| "zoomOut"
+	| "panoZoomReset"
 	| "copyLink"
 	| "copyLinkLong"
 	| "toggleCrosshair"
@@ -143,6 +144,12 @@ const RAW_HOTKEY_DEFS: HotkeyDef[] = [
 	},
 	{ action: "zoomIn", label: "Zoom in", group: "Location Editor", defaultBinding: "+" },
 	{ action: "zoomOut", label: "Zoom out", group: "Location Editor", defaultBinding: "-" },
+	{
+		action: "panoZoomReset",
+		label: "Zoom all the way out",
+		group: "Location Editor",
+		defaultBinding: "0",
+	},
 	{
 		action: "copyLink",
 		label: "Copy Street View link",
