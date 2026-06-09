@@ -1336,6 +1336,12 @@ declare const DEFAULTS: {
 	geocodeProvider: GeocodeProvider;
 	nominatimApiKey: string;
 	panToImported: boolean;
+	followActiveInReview: boolean;
+	activeLocationColor: {
+		r: number;
+		g: number;
+		b: number;
+	};
 	tagViewMode: TagViewMode;
 	borderDetail: BorderDetail;
 	previewAspectRatio: PreviewAspectRatio;
@@ -1575,6 +1581,12 @@ declare const mma: {
 		geocodeProvider: GeocodeProvider;
 		nominatimApiKey: string;
 		panToImported: boolean;
+		followActiveInReview: boolean;
+		activeLocationColor: {
+			r: number;
+			g: number;
+			b: number;
+		};
 		tagViewMode: TagViewMode;
 		borderDetail: BorderDetail;
 		previewAspectRatio: PreviewAspectRatio;

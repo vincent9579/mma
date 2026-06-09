@@ -95,6 +95,8 @@ const DEFAULTS = {
 	geocodeProvider: "local" as GeocodeProvider,
 	nominatimApiKey: "",
 	panToImported: true,
+	followActiveInReview: true,
+	activeLocationColor: { r: 200, g: 0, b: 0 },
 	tagViewMode: "flat" as TagViewMode,
 	borderDetail: "light" as BorderDetail,
 	previewAspectRatio: "16 / 9" as PreviewAspectRatio,

@@ -115,11 +115,11 @@ function keyForProps(props: SelectionProps, locations: number[]): string {
 		.exhaustive();
 }
 
-/** Overlay color for a selection. Reviewed/unreviewed get fixed complementary colors —
- *  hues 145 and 325 are exact opposites (180° apart) — everything else is hashed from its key. */
+/** Overlay color for a selection. Reviewed is green (145), unreviewed is violet (280): both stay
+ *  well clear of the red active-location marker so the cursor never blends in — everything else is hashed from its key. */
 function selectionColor(props: SelectionProps, key: string): [number, number, number] {
 	if (props.type !== "Reviewed") return colorForKey(key);
-	return props.mode === "unreviewed" ? hslToRgb(325, 0.6, 0.5) : hslToRgb(145, 0.6, 0.5);
+	return props.mode === "unreviewed" ? hslToRgb(280, 0.6, 0.5) : hslToRgb(145, 0.6, 0.5);
 }
 
 /** Create a Selection with a deterministic key and overlay color from its props. */

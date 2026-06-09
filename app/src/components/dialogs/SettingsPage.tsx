@@ -36,6 +36,7 @@ import {
 	PREVIEW_ASPECT_RATIOS,
 } from "@/store/settings";
 import { useUpdateState, checkForUpdate, installUpdate, relaunchApp } from "@/lib/util/updateCheck";
+import { ColorPicker } from "@/components/primitives/ColorPicker";
 
 function SettingSelect<K extends keyof AppSettings>({
 	setting,
@@ -406,6 +407,24 @@ function StreetViewSection() {
 				Default movement mode
 				<SettingSelect setting="defaultMovementMode" options={MOVEMENT_MODES} />
 			</label>
+			<label
+				className="settings-popup__item"
+				style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+			>
+				Pano look speed
+				<input
+					type="range"
+					min={1}
+					max={10}
+					step={1}
+					value={s.panoLookSpeed}
+					onChange={(e) => setSetting("panoLookSpeed", Number(e.target.value))}
+					style={{ flex: 1 }}
+				/>
+				<span style={{ minWidth: "1.5rem", textAlign: "right", fontSize: "0.85rem" }}>
+					{s.panoLookSpeed}
+				</span>
+			</label>
 			<label className="settings-popup__item">
 				Preview aspect ratio
 				<SettingSelect setting="previewAspectRatio" options={PREVIEW_ASPECT_RATIOS} />
@@ -564,24 +583,28 @@ function MapNavigationSection() {
 					{s.mapPanSpeed}
 				</span>
 			</label>
-			<label
-				className="settings-popup__item"
-				style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-			>
-				Pano look speed
+			<label className="settings-popup__item">
 				<input
-					type="range"
-					min={1}
-					max={10}
-					step={1}
-					value={s.panoLookSpeed}
-					onChange={(e) => setSetting("panoLookSpeed", Number(e.target.value))}
-					style={{ flex: 1 }}
+					type="checkbox"
+					checked={s.panToImported}
+					onChange={(e) => setSetting("panToImported", e.target.checked)}
 				/>
-				<span style={{ minWidth: "1.5rem", textAlign: "right", fontSize: "0.85rem" }}>
-					{s.panoLookSpeed}
-				</span>
+				Pan to imported locations
 			</label>
+		</fieldset>
+	);
+}
+
+function NavigationSection() {
+	const s = useSettings();
+	return (
+		<fieldset className="fieldset">
+			<legend className="fieldset__header">
+				Navigation <span className="fieldset__divider" />
+			</legend>
+			<p style={{ margin: "0 0 0.25rem", fontSize: "0.85rem", color: "#888" }}>
+				Hold Alt to slow down map panning and pano look.
+			</p>
 			<label
 				className="settings-popup__item"
 				style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
@@ -600,13 +623,32 @@ function MapNavigationSection() {
 					{s.slowModifier}x
 				</span>
 			</label>
+		</fieldset>
+	);
+}
+
+function ActiveLocationSection() {
+	const s = useSettings();
+	return (
+		<fieldset className="fieldset">
+			<legend className="fieldset__header">
+				Active location <span className="fieldset__divider" />
+			</legend>
+			<div className="settings-popup__item">
+				Marker color
+				<ColorPicker
+					color={s.activeLocationColor}
+					onChange={(color) => setSetting("activeLocationColor", color)}
+					ariaLabel="Active location marker color"
+				/>
+			</div>
 			<label className="settings-popup__item">
 				<input
 					type="checkbox"
-					checked={s.panToImported}
-					onChange={(e) => setSetting("panToImported", e.target.checked)}
+					checked={s.followActiveInReview}
+					onChange={(e) => setSetting("followActiveInReview", e.target.checked)}
 				/>
-				Pan to imported locations
+				Center map on active location during review
 			</label>
 		</fieldset>
 	);
@@ -668,10 +710,11 @@ function CustomCssSection() {
 	);
 }
 
-type SettingsTab = "controls" | "streetview" | "advanced";
+type SettingsTab = "controls" | "map" | "streetview" | "advanced";
 
 const TABS: { id: SettingsTab; label: string }[] = [
 	{ id: "controls", label: "Controls" },
+	{ id: "map", label: "Map" },
 	{ id: "streetview", label: "Street View" },
 	{ id: "advanced", label: "Advanced" },
 ];
@@ -680,7 +723,16 @@ function ControlsTab() {
 	return (
 		<>
 			<KeyboardShortcutsSection />
+			<NavigationSection />
+		</>
+	);
+}
+
+function MapTab() {
+	return (
+		<>
 			<MapNavigationSection />
+			<ActiveLocationSection />
 		</>
 	);
 }
@@ -948,6 +1000,7 @@ export function SettingsPage({
 					))}
 				</div>
 				{tab === "controls" && <ControlsTab />}
+				{tab === "map" && <MapTab />}
 				{tab === "streetview" && <StreetViewTab />}
 				{tab === "advanced" && <AdvancedTab />}
 			</DialogContent>

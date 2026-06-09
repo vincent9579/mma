@@ -66,6 +66,36 @@ describe("colorForKey", () => {
 	});
 });
 
+describe("review overlay colors stay clear of the active marker", () => {
+	// The active-location marker is red (hue 0 by default). The reviewed/unreviewed overlays must
+	// not blend into it, or into each other, or the cursor gets lost in a field of queued markers.
+	const hueOf = ([r, g, b]: [number, number, number]): number => {
+		const max = Math.max(r, g, b);
+		const d = max - Math.min(r, g, b);
+		if (d === 0) return 0;
+		let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+		h *= 60;
+		return h < 0 ? h + 360 : h;
+	};
+	const circ = (a: number, b: number): number => {
+		const d = Math.abs(a - b) % 360;
+		return Math.min(d, 360 - d);
+	};
+	const colorFor = (mode: "reviewed" | "unreviewed") =>
+		buildSelection({ type: "Reviewed", locations: [], sessionId: "s", mode }).color;
+	const ACTIVE_HUE = 0; // default active-location marker is red
+
+	it("unreviewed is well clear of red", () => {
+		expect(circ(hueOf(colorFor("unreviewed")), ACTIVE_HUE)).toBeGreaterThanOrEqual(60);
+	});
+	it("reviewed is well clear of red", () => {
+		expect(circ(hueOf(colorFor("reviewed")), ACTIVE_HUE)).toBeGreaterThanOrEqual(60);
+	});
+	it("reviewed and unreviewed are well separated from each other", () => {
+		expect(circ(hueOf(colorFor("reviewed")), hueOf(colorFor("unreviewed")))).toBeGreaterThanOrEqual(60);
+	});
+});
+
 describe("buildSelection", () => {
 	it("Everything gets correct key", () => {
 		const sel = buildSelection({ type: "Everything" });

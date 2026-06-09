@@ -390,6 +390,7 @@ export function MapEmbed() {
 	const coordDisplayRef = useRef<HTMLSpanElement>(null);
 	const [mapZoom, setMapZoom] = useState(2);
 	const scoreMaxError = useScoreMaxError();
+	const activeLocationColor = useSetting("activeLocationColor");
 
 	const [pointAlongRoad] = useMapSetting("pointAlongRoad");
 	const [preferDirection] = useMapSetting("preferDirection");
@@ -686,6 +687,12 @@ export function MapEmbed() {
 
 		if (activeLocRef.current && cm.totalCount > 0) {
 			const activeLoc = activeLocRef.current;
+			const activeColor: [number, number, number, number] = [
+				activeLocationColor.r,
+				activeLocationColor.g,
+				activeLocationColor.b,
+				255,
+			];
 			if (markerStyle === "arrow") {
 				layers.push(
 					new SDFMarkerLayer<Location>({
@@ -694,7 +701,7 @@ export function MapEmbed() {
 						getPosition: (d) => [d.lng, d.lat],
 						shape: "arrow",
 						radiusPixels: 12,
-						getFillColor: [200, 0, 0, 255],
+						getFillColor: activeColor,
 						getAngle: (d: Location) => 180 - d.heading,
 						pickable: true,
 						updateTriggers: {
@@ -711,7 +718,7 @@ export function MapEmbed() {
 						getRadius: 6,
 						radiusUnits: "pixels",
 						radiusMinPixels: 3,
-						getFillColor: [200, 0, 0, 255],
+						getFillColor: activeColor,
 						pickable: true,
 					}),
 				);
@@ -723,7 +730,7 @@ export function MapEmbed() {
 						getPosition: (d) => [d.lng, d.lat],
 						shape: "pin",
 						radiusPixels: 16,
-						getFillColor: [200, 0, 0, 255],
+						getFillColor: activeColor,
 						pickable: true,
 					}),
 				);
@@ -849,6 +856,7 @@ export function MapEmbed() {
 	}, [
 		markerOpacity,
 		markerStyle,
+		activeLocationColor,
 		showPerfectScoreCircle,
 		scoreMaxError,
 		svPanoramas,
