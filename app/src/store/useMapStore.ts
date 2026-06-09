@@ -536,14 +536,16 @@ function syncMutationResult(r: MutationResult) {
 	if (r.tags) {
 		const oldTags = currentMap.meta.tags;
 		currentMap = { ...currentMap, meta: { ...currentMap.meta, tags: r.tags } };
+		const removedKeys: string[] = [];
 		for (const idStr of Object.keys(oldTags)) {
 			const id = Number(idStr);
 			const was = oldTags[id];
 			const now = r.tags[id];
 			if (was && was.visible !== false && (!now || now.visible === false)) {
-				removeSelections([`tag:${id}`]);
+				removedKeys.push(`tag:${id}`);
 			}
 		}
+		removeSelections(removedKeys);
 	}
 	if (r.selectionSync) {
 		applySelectionSync(r.selectionSync);
@@ -845,10 +847,14 @@ export function addSelections(props: SelectionProps[]) {
 	});
 }
 
+/** No-op (no sync) when none of the keys are live selections. */
 export function removeSelections(keys: string[]) {
+	const live = new Set(selections.map((s) => s.key));
+	const present = keys.filter((k) => live.has(k));
+	if (present.length === 0) return;
 	return applySelectionUpdate((sels) => {
 		let result = sels;
-		for (const k of keys) result = removeSel(result, k);
+		for (const k of present) result = removeSel(result, k);
 		return result;
 	});
 }
