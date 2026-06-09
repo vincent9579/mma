@@ -14,6 +14,14 @@ export function locDate(secs: number): Date {
 	return new Date(secs * 1000);
 }
 
+/** Compact local-time "YYYY-MM-DD HH:MM" for a Unix-seconds instant. Matches the
+ *  local-time interpretation the DatePicker uses, so filter chips agree with it. */
+export function localDateTime(secs: number): string {
+	const d = new Date(secs * 1000);
+	const p = (n: number) => String(n).padStart(2, "0");
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** Current time as Unix seconds, the form Location timestamps use. */
 export function nowUnix(): number {
 	return Math.floor(Date.now() / 1000);

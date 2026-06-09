@@ -4,6 +4,7 @@ import { match, P } from "ts-pattern";
 import type { MapData } from "@/types";
 import { hslToRgb } from "@/lib/util/color";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
+import { localDateTime } from "@/lib/util/format";
 import { isVariant, unionTuple, type Variant } from "@/lib/util/union";
 
 export type { Selection, SelectionProps, PolygonGeometry } from "@/bindings.gen";
@@ -466,7 +467,7 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 				if (fieldDef?.type === "enum" && fieldDef.labels?.[s]) return fieldDef.labels[s];
 				if (fieldDef?.type === "date") {
 					const n = Number(v);
-					if (!isNaN(n)) return new Date(n * 1000).toISOString().slice(0, 16).replace("T", " ");
+					if (!isNaN(n)) return localDateTime(n);
 				}
 				return s;
 			};
