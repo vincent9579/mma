@@ -339,6 +339,22 @@ function rewriteSelection(
 	return sel;
 }
 
+/** A date pick denotes a period, not an instant: a day in date-only mode, a minute in
+ *  datetime mode (the picker can't express seconds). Used as an upper bound (or gt/lte
+ *  operand) the pick means the period's END, computed calendar-aware (next period start
+ *  - 1s) rather than by adding a constant: +86399 is wrong on DST-transition days, and
+ *  flooring first makes the expansion idempotent so re-submitting an edited filter
+ *  doesn't drift. `wallClock` = location-timezone mode, where the value encodes
+ *  wall-clock numbers in a UTC frame (no DST). */
+export function pickPeriodEnd(v: number, granularity: "day" | "minute", wallClock: boolean): number {
+	if (granularity === "minute") return v - (v % 60) + 59;
+	const d = new Date(v * 1000);
+	const nextDay = wallClock
+		? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)
+		: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+	return Math.floor(nextDay / 1000) - 1;
+}
+
 /** Group locations by the string value of `field` in their `extra`. Skips null/empty.
  *  Returns a map from field-value to the location ids that carry it. */
 export function groupByField(locations: Location[], field: string): Map<string, number[]> {

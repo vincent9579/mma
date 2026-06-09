@@ -10,6 +10,7 @@ import {
 	fieldPatch,
 	groupByField,
 	rewriteSelectionFields,
+	pickPeriodEnd,
 } from "@/lib/data/fieldOps";
 import { buildSelection } from "@/store/selections";
 import type { Location, MapData } from "@/types";
@@ -258,5 +259,44 @@ describe("field expressions", () => {
 		const loc = makeLoc(1, { sunAzimuth: 90, keep: "x" });
 		const { updates } = planFieldExpr([loc], "sunHalf", parseFieldExpr("sunAzimuth / 2"));
 		expect(updates).toEqual([{ id: 1, patch: { extra: { sunAzimuth: 90, keep: "x", sunHalf: 45 } } }]);
+	});
+});
+
+describe("pickPeriodEnd", () => {
+	const localMidnight = (y: number, m: number, d: number) =>
+		Math.floor(new Date(y, m, d).getTime() / 1000);
+
+	it("day end is 23:59:59 of the same local day, every day of the year (DST-safe)", () => {
+		for (let day = 1; day <= 366; day++) {
+			const v = localMidnight(2024, 0, day);
+			const start = new Date(v * 1000);
+			const end = new Date(pickPeriodEnd(v, "day", false) * 1000);
+			expect([end.getFullYear(), end.getMonth(), end.getDate()]).toEqual([
+				start.getFullYear(),
+				start.getMonth(),
+				start.getDate(),
+			]);
+			expect([end.getHours(), end.getMinutes(), end.getSeconds()]).toEqual([23, 59, 59]);
+		}
+	});
+
+	it("day end is idempotent", () => {
+		const v = localMidnight(2024, 5, 3);
+		const end = pickPeriodEnd(v, "day", false);
+		expect(pickPeriodEnd(end, "day", false)).toBe(end);
+	});
+
+	it("wall-clock day end adds a fixed 24h period (no DST in the UTC frame)", () => {
+		const v = Math.floor(Date.UTC(2024, 5, 3) / 1000);
+		const end = pickPeriodEnd(v, "day", true);
+		expect(end).toBe(v + 86399);
+		expect(pickPeriodEnd(end, "day", true)).toBe(end);
+	});
+
+	it("minute end floors to the minute and adds 59s, idempotently", () => {
+		const v = Math.floor(Date.UTC(2024, 5, 3, 0, 5) / 1000);
+		const end = pickPeriodEnd(v, "minute", false);
+		expect(end).toBe(v + 59);
+		expect(pickPeriodEnd(end, "minute", false)).toBe(end);
 	});
 });

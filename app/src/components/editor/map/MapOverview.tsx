@@ -34,7 +34,8 @@ import {
 } from "@/store/useMapStore";
 import { toast } from "@/lib/util/toast";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
-import { groupByField } from "@/lib/data/fieldOps";
+import { groupByField, pickPeriodEnd } from "@/lib/data/fieldOps";
+import { useSetting } from "@/store/settings";
 import { cmd } from "@/lib/commands";
 
 import { RgbColorPicker } from "react-colorful";
@@ -598,6 +599,9 @@ function SelectionRow({
 
 const ALL_OPS: FilterOp[] = ["eq", "neq", "gt", "lt", "gte", "lte", "between", "has", "nothas"];
 const EQUALITY_OPS: FilterOp[] = ["eq", "neq", "has", "nothas"];
+// Exact dates are second-precision timestamps: eq/neq at stored precision is a trap
+// (matches a single second). Day/minute queries are intervals -> the between family.
+const DATE_OPS: FilterOp[] = ["between", "gt", "lt", "gte", "lte", "has", "nothas"];
 const filterBuilderState = new Map<
 	string,
 	{ field: string; op: FilterOp; value: string; value2: string; anyYear?: boolean; anyTime?: boolean; tzLocal?: boolean }
@@ -605,6 +609,7 @@ const filterBuilderState = new Map<
 
 function opsForType(type: string | undefined): FilterOp[] {
 	if (type === "enum") return EQUALITY_OPS;
+	if (type === "date") return DATE_OPS;
 	return ALL_OPS;
 }
 
@@ -704,6 +709,7 @@ function FilterValueInput({
 	const type = fieldEntry?.fieldType;
 	const def = fieldEntry?.fieldDef;
 	const enumValues = useEnumValues(fieldEntry?.key, def, type);
+	const exactDateFormat = useSetting("exactDateFormat");
 
 	if (type === "enum") {
 		return (
@@ -727,7 +733,7 @@ function FilterValueInput({
 				anyYear={anyYear}
 				onAnyYearToggle={onAnyYearToggle}
 				showAnyYear={showAnyYear}
-				showTime={type === "date"}
+				showTime={type === "date" && exactDateFormat === "datetime"}
 				anyTime={anyTime}
 				onAnyTimeToggle={onAnyTimeToggle}
 				showAnyTime={showAnyTime}
@@ -842,6 +848,11 @@ function FilterForm({
 	const isExactDate = fieldEntry?.fieldType === "date";
 	const availableOps = opsForType(fieldEntry?.fieldType);
 	const isBetween = op === "between" || op === "between_anyyear" || op === "between_anytime";
+	const exactDateFormat = useSetting("exactDateFormat");
+	// Persisted/legacy state can hold an op the field type no longer offers (e.g. eq on a date).
+	useEffect(() => {
+		if (fieldEntry && !availableOps.includes(op)) setOp(availableOps[0]);
+	}, [fieldEntry, availableOps, op]);
 
 	const handleFieldChange = (key: string) => {
 		setField(key);
@@ -989,10 +1000,19 @@ function FilterForm({
 			parsed2 != null &&
 			Number(parsed) > Number(parsed2)
 		) {
-			onSubmit(field, finalOp, parsed2, parsed);
-		} else {
-			onSubmit(field, finalOp, parsed, parsed2);
+			[parsed, parsed2] = [parsed2, parsed];
 		}
+		// A date pick denotes a period (day or minute), not an instant; bounds that mean
+		// "through the end of the pick" expand to the period end. See pickPeriodEnd.
+		if (isExactDate && !anyYear && !anyTime) {
+			const granularity = exactDateFormat === "datetime" ? "minute" : "day";
+			if (isBetween && typeof parsed2 === "number") {
+				parsed2 = pickPeriodEnd(parsed2, granularity, tzLocal);
+			} else if ((op === "gt" || op === "lte") && typeof parsed === "number") {
+				parsed = pickPeriodEnd(parsed, granularity, tzLocal);
+			}
+		}
+		onSubmit(field, finalOp, parsed, parsed2);
 		onClose?.();
 	};
 
