@@ -8,7 +8,7 @@ import { SettingsPanel } from "./SettingsPanel";
 import { ProgressDisplay } from "./ProgressDisplay";
 import { google } from "@/lib/sv/opensv";
 import { getSelections, getCurrentMap, createTags } from "@/store/useMapStore";
-import type { Selection } from "@/store/selections";
+import type { Selection } from "@/bindings.gen";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiArrowLeft } from "@mdi/js";
 import "./generator.css";

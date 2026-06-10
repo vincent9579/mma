@@ -7,7 +7,8 @@ import { fmt } from "@/lib/util/format";
 import { toggleTagSelections, reorderTags } from "@/store/useMapStore";
 import { TagContextMenuContent } from "./TagManager";
 import { rangeToggleTagIds, reorderSiblingsFlatOrder } from "./tagTreeRange";
-import type { Tag, TagSortMode } from "@/types";
+import type { TagSortMode } from "@/types";
+import type { Tag } from "@/bindings.gen";
 
 interface TreeDrag {
 	enabled: boolean;

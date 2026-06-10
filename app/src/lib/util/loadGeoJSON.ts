@@ -1,5 +1,5 @@
 import { addSelections } from "@/store/useMapStore";
-import type { PolygonGeometry, SelectionProps } from "@/store/selections";
+import type { PolygonGeometry, SelectionProps } from "@/bindings.gen";
 
 export async function loadGeoJSON() {
 	const input = document.createElement("input");

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiArrowLeft } from "@mdi/js";
-import type { ExtraFieldDef } from "@/types";
+import type { ExtraFieldDef } from "@/bindings.gen";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { compareNatural, bucketize } from "@/lib/util/util";
 import { gradientColor, isNumericField, fieldScale } from "./gradientMath";

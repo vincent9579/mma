@@ -7,7 +7,7 @@ import {
 	deleteField,
 	fetchAllLocations,
 } from "@/store/useMapStore";
-import type { ExtraFieldDef } from "@/types";
+import type { ExtraFieldDef } from "@/bindings.gen";
 import type { MergeWinner } from "@/lib/data/fieldOps";
 import { getFieldDef, getAllFieldDefs } from "@/lib/data/fieldDefRegistry";
 

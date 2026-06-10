@@ -1,13 +1,12 @@
 /** Pure selection transforms. These only manipulate the JS selection tree; Rust resolves the actual bitmasks. */
 
 import { match, P } from "ts-pattern";
-import type { MapData } from "@/types";
+import type { MapData } from "@/bindings.gen";
 import { hslToRgb } from "@/lib/util/color";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { localDateTime, utcDateTime } from "@/lib/util/format";
 import { isVariant, unionTuple, type Variant } from "@/lib/util/union";
 
-export type { Selection, SelectionProps, PolygonGeometry } from "@/bindings.gen";
 import type { Selection, SelectionProps } from "@/bindings.gen";
 
 /** Variants that wrap children — derived as exactly those carrying a `selections` array. */

@@ -1,4 +1,4 @@
-import type { ExtraFieldDef } from "@/types";
+import type { ExtraFieldDef } from "@/bindings.gen";
 import type { Location } from "@/types";
 import { registerPluginFieldDefs, unregisterPluginFieldDefs } from "@/lib/data/fieldDefRegistry";
 import { trackDisposable } from "@/plugins/scope";

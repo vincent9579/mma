@@ -1,4 +1,4 @@
-import type { ExtraFieldDef } from "@/types";
+import type { ExtraFieldDef } from "@/bindings.gen";
 
 export function lerp(
 	a: [number, number, number],

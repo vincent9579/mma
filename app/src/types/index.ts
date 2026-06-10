@@ -1,10 +1,9 @@
-import type { Location_Serialize, Tag as _Tag, EditorImportResult_Serialize, EditorImportPreview } from "@/bindings.gen";
+import type { Location_Serialize, EditorImportResult_Serialize, EditorImportPreview } from "@/bindings.gen";
 // Relative (not "@/") so the e2e runner's tsx loader can resolve this runtime value import
 // when it pulls in this module via test helpers; the `@/` alias isn't applied there.
 import { nowUnix } from "../lib/util/format";
 
 export type Location = Location_Serialize;
-export type Tag = _Tag;
 export type ImportResult = EditorImportResult_Serialize;
 export type ImportPreview = EditorImportPreview;
 
@@ -64,8 +63,6 @@ export function createLocation(
 	};
 }
 
-export type { ExtraFieldDef, MapSettings, MapMeta, MapData, MapExtra, ScoreBounds } from "@/bindings.gen";
-
 export type SortMode = "name" | "created" | "opened" | "amount";
 export type TagSortMode = "default" | "name" | "amount";
 
@@ -75,5 +72,3 @@ export interface DuplicateGroup {
 	distance: number;
 	locations: Location[];
 }
-
-export type { CommitInfo } from "@/bindings.gen";

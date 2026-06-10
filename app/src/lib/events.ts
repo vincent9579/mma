@@ -1,6 +1,6 @@
 import { log } from "@/lib/util/log";
-import type { Location, MapData } from "@/types";
-import type { Selection } from "@/store/selections";
+import type { Location } from "@/types";
+import type { MapData, Selection } from "@/bindings.gen";
 
 /** Payload type for each editor event. `void` means the event carries no payload. */
 export interface EditorEventMap {

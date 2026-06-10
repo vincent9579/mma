@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { MapData, MapMeta, Location, Tag, WorkArea, ExtraFieldDef, ImportPreview } from "@/types";
+import type { Location, WorkArea, ImportPreview } from "@/types";
+import type { MapData, MapMeta, Tag, ExtraFieldDef } from "@/bindings.gen";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { emit as tauriEmit, listen } from "@tauri-apps/api/event";
 import { cmd } from "@/lib/commands";
@@ -55,10 +56,8 @@ type SelectionBitmaskHandler = (
 /** Fires when selection bitmasks are resolved. Subscribers apply per-cell masks to the render overlay. */
 export const selBitmaskBus = createBus<SelectionBitmaskHandler>();
 
+import type { Selection, SelectionProps, PolygonGeometry } from "@/bindings.gen";
 import {
-	type Selection,
-	type SelectionProps,
-	type PolygonGeometry,
 	type GroupType,
 	addSelection as addSel,
 	removeSelection as removeSel,

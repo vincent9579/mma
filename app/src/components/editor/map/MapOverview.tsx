@@ -39,7 +39,8 @@ import { useSetting } from "@/store/settings";
 import { cmd } from "@/lib/commands";
 
 import { RgbColorPicker } from "react-colorful";
-import type { Selection, FilterOp } from "@/store/selections";
+import type { FilterOp } from "@/store/selections";
+import type { Selection } from "@/bindings.gen";
 import { selectionDisplayName, OP_LABELS } from "@/store/selections";
 import { TagManager } from "@/components/editor/TagManager";
 import { MergeDuplicatesModal } from "@/components/dialogs/MergeDuplicatesModal";
@@ -659,8 +660,8 @@ function opsForType(type: string | undefined): FilterOp[] {
 interface FieldEntry {
 	key: string;
 	label: string;
-	fieldType: import("@/types").ExtraFieldDef["type"];
-	fieldDef?: import("@/types").ExtraFieldDef;
+	fieldType: import("@/bindings.gen").ExtraFieldDef["type"];
+	fieldDef?: import("@/bindings.gen").ExtraFieldDef;
 }
 
 const VIRTUAL_FIELDS: FieldEntry[] = [
@@ -692,7 +693,7 @@ const TIMEZONE_VALUES = Intl.supportedValuesOf("timeZone");
 
 function useEnumValues(
 	fieldKey: string | undefined,
-	def: import("@/types").ExtraFieldDef | undefined,
+	def: import("@/bindings.gen").ExtraFieldDef | undefined,
 	fieldType: string | undefined,
 ): string[] {
 	const [values, setValues] = useState<string[]>([]);

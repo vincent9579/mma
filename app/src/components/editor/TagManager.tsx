@@ -15,7 +15,8 @@ import {
 	getVisibleTags,
     removeTagFromLocations,
 } from "@/store/useMapStore";
-import type { Tag, TagSortMode } from "@/types";
+import type { TagSortMode } from "@/types";
+import type { Tag } from "@/bindings.gen";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiPencil } from "@mdi/js";

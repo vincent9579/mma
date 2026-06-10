@@ -6,9 +6,8 @@ import {
 	clearSeen,
 	getSeenCountries,
 	getSeenMaps,
-	type SeenEntry,
-	type SeenFilter,
 } from "@/lib/seen/seen";
+import type { SeenEntry, SeenFilter } from "@/bindings.gen";
 
 const PAGE_SIZE = 9;
 

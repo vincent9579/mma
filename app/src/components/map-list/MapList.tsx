@@ -35,7 +35,8 @@ import {
 	mdiExport,
 } from "@mdi/js";
 import clsx from "clsx";
-import type { MapMeta, SortMode } from "@/types";
+import type { SortMode } from "@/types";
+import type { MapMeta } from "@/bindings.gen";
 import { fmt, relativeTime, shortDateFmt } from "@/lib/util/format";
 import { useSetting, type MapListField } from "@/store/settings";
 import { toast } from "@/lib/util/toast";

@@ -4,8 +4,8 @@
  * orchestrates IPC, definitions, and persistence. Kept side-effect-free for testability.
  */
 
-import type { Location, ExtraFieldDef } from "@/types";
-import type { Selection, SelectionProps } from "@/store/selections";
+import type { Location } from "@/types";
+import type { ExtraFieldDef, Selection, SelectionProps } from "@/bindings.gen";
 import { buildSelection } from "@/store/selections";
 
 /** When a move target already holds a value, which field's value survives. */

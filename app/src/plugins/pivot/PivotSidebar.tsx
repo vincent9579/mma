@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import type { Selection, SelectionProps } from "@/store/selections";
+import type { Selection, SelectionProps } from "@/bindings.gen";
 import { selectionDisplayName } from "@/store/selections";
 import {
 	savedToSelectionProps,
@@ -8,7 +8,7 @@ import {
 } from "@/store/savedSelections";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiArrowLeft } from "@mdi/js";
-import type { ExtraFieldDef } from "@/types";
+import type { ExtraFieldDef } from "@/bindings.gen";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { bucketize, compareNatural } from "@/lib/util/util";
 import type { LocationStore } from "@/api";

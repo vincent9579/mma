@@ -16,7 +16,7 @@
  * or `undefined` if no metadata is declared (the UI falls back to the raw key name).
  */
 
-import type { ExtraFieldDef } from "@/types";
+import type { ExtraFieldDef } from "@/bindings.gen";
 
 let pluginDefs: Record<string, ExtraFieldDef> = {};
 let userDefs: Record<string, ExtraFieldDef> = {};

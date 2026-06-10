@@ -1,4 +1,4 @@
-import type { MapSettings } from "@/types";
+import type { MapSettings } from "@/bindings.gen";
 import { useCurrentMap, updateMapMeta } from "@/store/useMapStore";
 
 /**

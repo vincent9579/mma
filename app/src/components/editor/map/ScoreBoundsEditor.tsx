@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef } from "react";
-import type { ScoreBounds } from "@/types";
+import type { ScoreBounds } from "@/bindings.gen";
 import { useCurrentMap, updateMapMeta } from "@/store/useMapStore";
 import {
 	resolveScoreMaxError,

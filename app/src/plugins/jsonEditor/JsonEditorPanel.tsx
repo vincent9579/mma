@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import type { Location, Tag } from "@/types";
+import type { Location } from "@/types";
+import type { Tag } from "@/bindings.gen";
 import { createTags } from "@/store/useMapStore";
 import { locDate } from "@/lib/util/format";
 

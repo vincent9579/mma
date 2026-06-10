@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useSelections } from "@/store/useMapStore";
-import type { Selection } from "@/store/selections";
+import type { Selection } from "@/bindings.gen";
 import type { GeneratorRegionMeta } from "../engine/types";
 
 function getPolygonName(sel: Selection): string {

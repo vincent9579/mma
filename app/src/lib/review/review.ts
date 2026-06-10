@@ -18,10 +18,9 @@ import {
 	removeSelections,
 	removeLocations,
 } from "@/store/useMapStore";
-import { selectionDisplayName, type Selection } from "@/store/selections";
+import { selectionDisplayName } from "@/store/selections";
 
-export type { ReviewSession } from "@/bindings.gen";
-import type { ReviewSession } from "@/bindings.gen";
+import type { ReviewSession, Selection } from "@/bindings.gen";
 
 // --- Pure helpers (unit-tested; no side effects) ---
 

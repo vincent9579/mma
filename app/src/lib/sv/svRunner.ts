@@ -9,7 +9,8 @@
  * "Street View" operation runs an arbitrary set of resolvers.
  */
 
-import type { Location, ExtraFieldDef } from "@/types";
+import type { Location } from "@/types";
+import type { ExtraFieldDef } from "@/bindings.gen";
 import { batchUpdateLocations, fetchLocationsByIds } from "@/store/useMapStore";
 import { fetchSvMetadata } from "@/lib/sv/svMeta";
 import { resolvePanoIds } from "@/lib/sv/lookup";

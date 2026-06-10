@@ -7,8 +7,8 @@ import {
 	resumeReview,
 	deleteSession,
 	selectReviewSet,
-	type ReviewSession,
 } from "@/lib/review/review";
+import type { ReviewSession } from "@/bindings.gen";
 
 function ProgressBar({ done, total }: { done: number; total: number }) {
 	const pct = total > 0 ? Math.round((done / total) * 100) : 0;

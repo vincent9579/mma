@@ -9,7 +9,8 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { LocationFlag, createLocation } from "@/types";
-import type { Location, Tag } from "@/types";
+import type { Location } from "@/types";
+import type { Tag } from "@/bindings.gen";
 import {
 	useActiveLocation,
 	useCurrentMap,
@@ -73,8 +74,8 @@ import {
 	seenSetCanvas,
 	seenSkipNext,
 	seenUpdateGeo,
-	type SeenEntry,
 } from "@/lib/seen/seen";
+import type { SeenEntry } from "@/bindings.gen";
 import { useReverseGeocode } from "@/components/editor/location/useReverseGeocode";
 import { useCameraType } from "@/components/editor/location/useCameraType";
 import { useExactDate } from "@/components/editor/location/useExactDate";

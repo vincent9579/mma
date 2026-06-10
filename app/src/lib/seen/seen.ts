@@ -4,7 +4,6 @@ import { getCurrentMapId } from "@/store/useMapStore";
 import { log } from "@/lib/util/log";
 import type { LocationPOV } from "@/types";
 
-export type { SeenEntry } from "@/bindings.gen";
 import type { SeenEntry } from "@/bindings.gen";
 
 interface PendingEntry {
@@ -140,7 +139,6 @@ async function writeEntry(
 	}
 }
 
-export type { SeenFilter } from "@/bindings.gen";
 import type { SeenFilter } from "@/bindings.gen";
 
 export async function getSeenEntries(
