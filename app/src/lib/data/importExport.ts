@@ -1,9 +1,9 @@
 import { imageKeyToPanoId } from "@/lib/sv/svMeta";
 import { fovToZoom, schemeBase } from "@/lib/util/util";
-import type { Location } from "@/types";
+import { LocationFlag, type Location } from "@/types";
 
 /** A single location parsed out of a pasted Maps URL or a bare coordinate. */
-export type ParsedLocation = Pick<Location, "lat" | "lng" | "heading" | "pitch" | "zoom" | "panoId"> & {
+export type ParsedLocation = Pick<Location, "lat" | "lng" | "heading" | "pitch" | "zoom" | "panoId" | "flags"> & {
 	/** Tag names */
 	tags: string[];
 };
@@ -28,6 +28,10 @@ function parseExpandedMapsUrl(url: URL): ParsedLocation | null {
 	const tags = params.has("extra[tags]")
 		? params.getAll("extra[tags]")
 		: url.searchParams.getAll("extra[tags]");
+	const panoFlags =
+		(params.get("extra[loadMode]") ?? url.searchParams.get("extra[loadMode]")) === "latLng"
+			? LocationFlag.None
+			: LocationFlag.LoadAsPanoId;
 
 	if (url.hostname.startsWith("www.google.") && url.pathname.startsWith("/maps")) {
 		const m =
@@ -43,7 +47,7 @@ function parseExpandedMapsUrl(url: URL): ParsedLocation | null {
 			const rawId = m[7] ?? null;
 			const type = m[8] ? parseInt(m[8], 10) : 0;
 			const panoId = rawId ? imageKeyToPanoId([type === 0 ? 2 : type, rawId]) : null;
-			return { lat, lng, heading, pitch, zoom, panoId, tags };
+			return { lat, lng, heading, pitch, zoom, panoId, flags: panoId ? panoFlags : LocationFlag.None, tags };
 		}
 
 		if (url.searchParams.get("map_action") === "pano") {
@@ -56,7 +60,7 @@ function parseExpandedMapsUrl(url: URL): ParsedLocation | null {
 			const pitch = parseFloat(url.searchParams.get("pitch") ?? "0");
 			const panoId = url.searchParams.get("pano") || null;
 			const zoom = fovToZoom(parseFloat(url.searchParams.get("fov") ?? "90"));
-			return { lat, lng, heading, pitch, zoom, panoId, tags };
+			return { lat, lng, heading, pitch, zoom, panoId, flags: panoId ? panoFlags : LocationFlag.None, tags };
 		}
 
 		if (url.searchParams.get("layer") === "c" && url.searchParams.has("cbll")) {
@@ -64,7 +68,7 @@ function parseExpandedMapsUrl(url: URL): ParsedLocation | null {
 			if (cbll) {
 				const lat = parseFloat(cbll[0] ?? "");
 				const lng = parseFloat(cbll[1] ?? "");
-				return { lat, lng, heading: 0, pitch: 0, zoom: 0, panoId: null, tags };
+				return { lat, lng, heading: 0, pitch: 0, zoom: 0, panoId: null, flags: LocationFlag.None, tags };
 			}
 		}
 	} else if (url.hostname.startsWith("artsandculture.google.") && url.searchParams.has("sv_pid")) {
@@ -74,9 +78,9 @@ function parseExpandedMapsUrl(url: URL): ParsedLocation | null {
 		const pitch = parseFloat(url.searchParams.get("s_p") ?? "0");
 		const panoId = url.searchParams.get("sv_pid");
 		const zoom = parseFloat(url.searchParams.get("sv_z") ?? "0");
-		return { lat, lng, heading, pitch, zoom, panoId, tags };
+		return { lat, lng, heading, pitch, zoom, panoId, flags: LocationFlag.LoadAsPanoId, tags };
 	}
-
+	
 	return null;
 }
 
@@ -111,7 +115,7 @@ export function parseCoordinates(input: string): ParsedLocation | null {
 	const lng = swap ? a.val : b.val;
 	if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
 
-	return { lat, lng, heading: 0, pitch: 0, zoom: 0, panoId: null, tags: [] };
+	return { lat, lng, heading: 0, pitch: 0, zoom: 0, panoId: null, flags: LocationFlag.None, tags: [] };
 }
 
 export async function parseMapsUrl(input: string): Promise<ParsedLocation | null> {

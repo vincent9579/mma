@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseMapsUrl, parseCoordinates } from "@/lib/data/importExport";
+import { LocationFlag } from "@/types";
 
 describe("parseMapsUrl", () => {
 	it("returns null for non-URL strings", async () => {
@@ -23,6 +24,25 @@ describe("parseMapsUrl", () => {
 		expect(result!.heading).toBe(90);
 		expect(result!.pitch).toBe(-5);
 		expect(result!.panoId).toBe("CAoSK0FGtest");
+		expect(result!.flags).toBe(LocationFlag.LoadAsPanoId);
+	});
+
+	it("sets LoadAsPanoId on /maps/@ URLs with a pano (historical date pastes)", async () => {
+		const url =
+			"https://www.google.com/maps/@58.6190505,49.7204709,3a,75y,265.69h,98.54t/data=!3m8!1e1!3m6!1sbUp3OlCW2UH3MA4lYMRirQ!2e0!5s20130901T000000!7i13312!8i6656";
+		const result = await parseMapsUrl(url);
+		expect(result).not.toBeNull();
+		expect(result!.panoId).toBe("bUp3OlCW2UH3MA4lYMRirQ");
+		expect(result!.flags).toBe(LocationFlag.LoadAsPanoId);
+	});
+
+	it("extra[loadMode]=latLng opts out of LoadAsPanoId", async () => {
+		const url =
+			"https://www.google.com/maps?map_action=pano&viewpoint=48.8566,2.3522&pano=CAoSK0FGtest&extra[loadMode]=latLng";
+		const result = await parseMapsUrl(url);
+		expect(result).not.toBeNull();
+		expect(result!.panoId).toBe("CAoSK0FGtest");
+		expect(result!.flags).toBe(LocationFlag.None);
 	});
 
 	it("parses Google Maps pano URL without panoId", async () => {
@@ -32,6 +52,7 @@ describe("parseMapsUrl", () => {
 		expect(result!.lat).toBeCloseTo(40.7128, 4);
 		expect(result!.lng).toBeCloseTo(-74.006, 3);
 		expect(result!.panoId).toBeNull();
+		expect(result!.flags).toBe(LocationFlag.None);
 	});
 
 	it("returns null for pano URL missing viewpoint", async () => {
