@@ -186,11 +186,21 @@ fn invoke<R: Runtime>(handle: &AppHandle<R>, cmd: String, args: serde_json::Valu
         None => return (500, err_json("ipc webview not ready")),
     };
 
+    // Must be the app's real local origin or Tauri's ACL treats it as remote and
+    // denies every custom command. The IPC host webview is about:blank, so we
+    // can't read it off the webview — derive it per-platform (matches schemeBase
+    // on the JS side; Windows/Android serve custom protocols as http://*.localhost).
+    let url = if cfg!(any(windows, target_os = "android")) {
+        "http://tauri.localhost"
+    } else {
+        "tauri://localhost"
+    };
+
     let request = InvokeRequest {
         cmd,
         callback: CallbackFn(0),
         error: CallbackFn(1),
-        url: "http://tauri.localhost".parse().unwrap(),
+        url: url.parse().unwrap(),
         body: InvokeBody::Json(args),
         headers: Default::default(),
         invoke_key: handle.invoke_key().to_string(),
