@@ -9,13 +9,14 @@ function makeData(opts: {
 	countryCode?: string | null;
 	levelId?: string | null;
 	lat?: number;
+	source?: string | null;
 }): SvData {
-	const { height, imageDate, countryCode = null, levelId = null, lat = 0 } = opts;
+	const { height, imageDate, countryCode = null, levelId = null, lat = 0, source = null } = opts;
 	return {
 		tiles: { worldSize: { width: 0, height } },
 		imageDate,
 		location: { latLng: { lat: () => lat, lng: () => 0 } },
-		extra: { countryCode, _levelId: levelId },
+		extra: { countryCode, _levelId: levelId, _source: source },
 	} as unknown as SvData;
 }
 
@@ -55,13 +56,35 @@ describe("detectCameraType", () => {
 		).toBe("gen2");
 	});
 
-	it("badcam takes priority over tripod when both apply (matches original nf)", () => {
-		// Tripod (_levelId) AND in a badcam country past threshold -> original returns badcam.
+	it("badcam takes priority over tripod when both apply", () => {
+		// Tripod (_levelId) AND in a badcam country past threshold -> returns badcam.
 		expect(
 			detectCameraType(
 				makeData({ height: 6656, countryCode: "IN", imageDate: "2022-01", levelId: "L1" }),
 			),
 		).toBe("badcam");
+	});
+
+	it("scout source refines plain gen2/gen4 to trekker", () => {
+		expect(detectCameraType(makeData({ height: 8192, source: "scout" }))).toBe("trekker");
+		expect(detectCameraType(makeData({ height: 6656, source: "scout" }))).toBe("trekker");
+	});
+
+	it("scout does not override badcam, tripod, or gen1", () => {
+		// Indoor tripods are also scout-sourced (e.g. museum floors)
+		expect(detectCameraType(makeData({ height: 6656, levelId: "L1", source: "scout" }))).toBe(
+			"tripod",
+		);
+		expect(
+			detectCameraType(
+				makeData({ height: 6656, countryCode: "IN", imageDate: "2022-01", source: "scout" }),
+			),
+		).toBe("badcam");
+		expect(detectCameraType(makeData({ height: 1664, source: "scout" }))).toBe("gen1");
+	});
+
+	it("launch source keeps height-based classification", () => {
+		expect(detectCameraType(makeData({ height: 8192, source: "launch" }))).toBe("gen4");
 	});
 
 	it("US badcam only above latitude 52", () => {

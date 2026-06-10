@@ -56,16 +56,27 @@ export function cameraTypeFromHeight(height: number): CameraType {
 	}
 }
 
+/**
+ * Best-effort: limited by Google's own tagging. Known edge cases:
+ * - _source "scout" = the special-collects pipeline (trekker/snowmobile/museum tripod),
+ *   not literally "trekker"; ~2012-2014 collects are tagged sloppily both ways
+ *   (tripods without _levelId read as trekker, trekkers with _levelId read as tripod).
+ * - Modern Google-ops on-foot gen4 collects are tagged "launch" like cars, so they read as gen4.
+ * - scout only refines plain gen2/gen4 results; badcam/tripod/gen1 take precedence
+ *   (indoor tripods are also scout).
+ */
 export function detectCameraType(data: google.maps.StreetViewResolvedPanoramaData): CameraType {
+	const scout = data.extra?._source === "scout";
 	const base = cameraTypeFromHeight(data.tiles.worldSize.height);
-	if (base !== "gen2") return base;
+	if (base !== "gen2") return base === "gen4" && scout ? "trekker" : base;
 	const imgDate = data.imageDate ? new Date(data.imageDate) : null;
 	if (imgDate && imgDate.getFullYear() > 2000) {
 		const cc = data.extra?.countryCode;
 		const check = cc && BADCAM_THRESHOLDS.get(cc);
 		if (check && check(imgDate, data.location.latLng.lat())) return "badcam";
 	}
-	return data.extra?._levelId != null ? "tripod" : "gen2";
+	if (data.extra?._levelId != null) return "tripod";
+	return scout ? "trekker" : "gen2";
 }
 
 /* Pano ID → imageKey array for protobuf request */
@@ -180,6 +191,8 @@ function parseResult(r: any): google.maps.StreetViewResolvedPanoramaData | null 
 	const drivingDirection = locData?.[2]?.[0] ?? null;
 	const countryCode = locData?.[4] || null;
 	const levelId = locData?.[3]?.[0] ?? null;
+	// "launch" = car, "scout" = trekker/alleycat
+	const source = dateInfo?.[5]?.[2] ?? null;
 
 	const incDate = dateInfo?.[7];
 	const imageDate =
@@ -246,6 +259,7 @@ function parseResult(r: any): google.maps.StreetViewResolvedPanoramaData | null 
 			uploaderName,
 			drivingDirection,
 			_levelId: levelId,
+			_source: source,
 		},
 	} as google.maps.StreetViewResolvedPanoramaData;
 

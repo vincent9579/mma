@@ -103,6 +103,8 @@ function PanoBadge({ cameraType }: { cameraType: FullCameraType | null }) {
 			return <span className="pano-option__badge badge badge--badcam">Badcam</span>;
 		case "tripod":
 			return <span className="pano-option__badge badge badge--tripod">Tripod</span>;
+		case "trekker":
+			return <span className="pano-option__badge badge badge--rb">Trekker</span>;
 		default:
 			return null;
 	}

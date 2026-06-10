@@ -4,7 +4,7 @@
 type Google = typeof google;
 
 /** Street View camera generation, derived from panorama tile worldSize height. */
-type CameraType = "gen1" | "gen2" | "gen4" | "badcam" | "tripod" | null;
+type CameraType = "gen1" | "gen2" | "gen4" | "badcam" | "tripod" | "trekker" | null;
 type FullCameraType = CameraType | "unofficial";
 
 /** Undocumented metadata opensv attaches to StreetViewPanoramaData. */
@@ -18,6 +18,8 @@ interface SvExtra {
 	drivingDirection: number | null;
 	/** Indoor level ID; non-null indicates a tripod/indoor pano. */
 	_levelId: number | null;
+	/** Capture source: "launch" = car, "scout" = trekker/alleycat. */
+	_source: string | null;
 }
 
 declare namespace google.maps {
