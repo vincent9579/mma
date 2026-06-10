@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { Location, WorkArea, ImportPreview } from "@/types";
-import type { MapData, MapMeta, Tag, ExtraFieldDef } from "@/bindings.gen";
+import type { MapData, MapMeta, Tag, ExtraFieldDef, FilterOp } from "@/bindings.gen";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { emit as tauriEmit, listen } from "@tauri-apps/api/event";
 import { cmd } from "@/lib/commands";
@@ -950,7 +950,7 @@ export function selectPolygon(polygon: PolygonGeometry, includeInformational = f
 
 export function selectFilter(
 	field: string,
-	op: import("@/bindings.gen").FilterOp,
+	op: FilterOp,
 	value: unknown,
 	value2?: unknown,
 	tzLocal = false,
