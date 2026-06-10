@@ -39,8 +39,7 @@ import { useSetting } from "@/store/settings";
 import { cmd } from "@/lib/commands";
 
 import { RgbColorPicker } from "react-colorful";
-import type { FilterOp } from "@/store/selections";
-import type { Selection } from "@/bindings.gen";
+import type { Selection, FilterOp } from "@/bindings.gen";
 import { selectionDisplayName, OP_LABELS } from "@/store/selections";
 import { TagManager } from "@/components/editor/TagManager";
 import { MergeDuplicatesModal } from "@/components/dialogs/MergeDuplicatesModal";

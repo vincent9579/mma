@@ -39,7 +39,25 @@ pub enum SelectionProps {
     Intersection { selections: Vec<Selection> },
     Union { selections: Vec<Selection> },
     Invert { selections: Vec<Selection> },
-    Filter { field: String, op: String, #[specta(type = specta_typescript::Any)] value: serde_json::Value, #[serde(default)] #[specta(type = Option<specta_typescript::Any>)] value2: Option<serde_json::Value>, #[serde(default, rename = "tzLocal")] tz_local: bool },
+    Filter { field: String, op: FilterOp, #[specta(type = specta_typescript::Any)] value: serde_json::Value, #[serde(default)] #[specta(type = Option<specta_typescript::Any>)] value2: Option<serde_json::Value>, #[serde(default, rename = "tzLocal")] tz_local: bool },
+}
+
+/// Filter comparison operator. Single source of truth: specta renders the literal
+/// union, so the TS `FilterOp` type and `OP_LABELS` derive from this enum.
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum FilterOp {
+    Eq,
+    Neq,
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+    Between,
+    BetweenAnyyear,
+    BetweenAnytime,
+    Has,
+    Nothas,
 }
 
 /// GeoJSON-like polygon geometry. `coordinates` is the primary polygon (outer ring +
@@ -352,12 +370,12 @@ fn test_row(r: &RowRef, props: &SelectionProps) -> bool {
         SelectionProps::Filter { field, op, value, value2, tz_local } => {
             // tz_local only applies where a clock frame matters; has/nothas/eq/neq
             // keep their normal semantics even if the flag is set.
-            if *tz_local && matches!(op.as_str(), "gt" | "lt" | "gte" | "lte" | "between" | "between_anyyear" | "between_anytime") {
-                return compare_filter_local_tz(r, field, op, value, value2.as_ref());
+            if *tz_local && matches!(op, FilterOp::Gt | FilterOp::Lt | FilterOp::Gte | FilterOp::Lte | FilterOp::Between | FilterOp::BetweenAnyyear | FilterOp::BetweenAnytime) {
+                return compare_filter_local_tz(r, field, *op, value, value2.as_ref());
             }
             match r.resolve_field(field) {
-                Some(ref v) => compare_filter(v, op, value, value2.as_ref()),
-                None => op.as_str() == "neq" || op.as_str() == "nothas",
+                Some(ref v) => compare_filter(v, *op, value, value2.as_ref()),
+                None => matches!(op, FilterOp::Neq | FilterOp::Nothas),
             }
         }
         _ => false,
@@ -956,22 +974,22 @@ fn resolve_field_arrow(view: &LocView, idx: usize, field: &str) -> Option<serde_
 /// Core comparison dispatch. Supports eq, neq, has, nothas, gt, lt, gte, lte, between,
 /// between_anyyear (month-day range ignoring year), and between_anytime (time-of-day range).
 /// Numeric comparison is attempted first; falls back to lexicographic string comparison.
-fn compare_filter(field_val: &serde_json::Value, op: &str, value: &serde_json::Value, value2: Option<&serde_json::Value>) -> bool {
+fn compare_filter(field_val: &serde_json::Value, op: FilterOp, value: &serde_json::Value, value2: Option<&serde_json::Value>) -> bool {
     match op {
-        "eq" => val_eq(field_val, value),
-        "neq" => !val_eq(field_val, value),
-        "has" => true,
-        "nothas" => false,
-        "gt" | "lt" | "gte" | "lte" | "between" => {
+        FilterOp::Eq => val_eq(field_val, value),
+        FilterOp::Neq => !val_eq(field_val, value),
+        FilterOp::Has => true,
+        FilterOp::Nothas => false,
+        FilterOp::Gt | FilterOp::Lt | FilterOp::Gte | FilterOp::Lte | FilterOp::Between => {
             let fv = as_f64(field_val);
             let cv = as_f64(value);
             match (fv, cv) {
                 (Some(a), Some(b)) => match op {
-                    "gt" => a > b,
-                    "lt" => a < b,
-                    "gte" => a >= b,
-                    "lte" => a <= b,
-                    "between" => {
+                    FilterOp::Gt => a > b,
+                    FilterOp::Lt => a < b,
+                    FilterOp::Gte => a >= b,
+                    FilterOp::Lte => a <= b,
+                    FilterOp::Between => {
                         let upper = value2.and_then(as_f64).unwrap_or(f64::MAX);
                         a >= b && a <= upper
                     }
@@ -981,11 +999,11 @@ fn compare_filter(field_val: &serde_json::Value, op: &str, value: &serde_json::V
                     let fs = field_val.as_str().unwrap_or("");
                     let vs = value.as_str().unwrap_or("");
                     match op {
-                        "gt" => fs > vs,
-                        "lt" => fs < vs,
-                        "gte" => fs >= vs,
-                        "lte" => fs <= vs,
-                        "between" => {
+                        FilterOp::Gt => fs > vs,
+                        FilterOp::Lt => fs < vs,
+                        FilterOp::Gte => fs >= vs,
+                        FilterOp::Lte => fs <= vs,
+                        FilterOp::Between => {
                             let upper = value2.and_then(|v| v.as_str()).unwrap_or("");
                             fs >= vs && fs <= upper
                         }
@@ -994,7 +1012,7 @@ fn compare_filter(field_val: &serde_json::Value, op: &str, value: &serde_json::V
                 }
             }
         }
-        "between_anyyear" => {
+        FilterOp::BetweenAnyyear => {
             let lo = value.as_str().unwrap_or("");
             let hi = value2.and_then(|v| v.as_str()).unwrap_or("12-31");
             let fv_md = if let Some(ts) = as_f64(field_val) {
@@ -1015,7 +1033,7 @@ fn compare_filter(field_val: &serde_json::Value, op: &str, value: &serde_json::V
                 fv_md.as_str() >= lo || fv_md.as_str() <= hi
             }
         }
-        "between_anytime" => {
+        FilterOp::BetweenAnytime => {
             let lo = value.as_str().unwrap_or("00:00");
             let hi = value2.and_then(|v| v.as_str()).unwrap_or("23:59");
             let fv_hm = if let Some(ts) = as_f64(field_val) {
@@ -1030,7 +1048,6 @@ fn compare_filter(field_val: &serde_json::Value, op: &str, value: &serde_json::V
                 fv_hm.as_str() >= lo || fv_hm.as_str() <= hi
             }
         }
-        _ => false,
     }
 }
 
@@ -1041,7 +1058,7 @@ fn compare_filter(field_val: &serde_json::Value, op: &str, value: &serde_json::V
 /// anyyear/anytime shapes bucket month-day / hour-min in the pano's local clock.
 /// The location's `timezone` (IANA) supplies the DST-correct offset; locations lacking
 /// a resolvable `timezone` or field value are excluded.
-fn compare_filter_local_tz(r: &RowRef, field: &str, op: &str, value: &serde_json::Value, value2: Option<&serde_json::Value>) -> bool {
+fn compare_filter_local_tz(r: &RowRef, field: &str, op: FilterOp, value: &serde_json::Value, value2: Option<&serde_json::Value>) -> bool {
     let (fv, tz_name) = r.resolve_field_and_tz(field);
     let ts = match fv.as_ref().and_then(as_f64) {
         Some(t) => t,

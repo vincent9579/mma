@@ -1,7 +1,7 @@
 /** Pure selection transforms. These only manipulate the JS selection tree; Rust resolves the actual bitmasks. */
 
 import { match, P } from "ts-pattern";
-import type { MapData } from "@/bindings.gen";
+import type { MapData, FilterOp } from "@/bindings.gen";
 import { hslToRgb } from "@/lib/util/color";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { localDateTime, utcDateTime } from "@/lib/util/format";
@@ -28,19 +28,6 @@ export enum ValidationState {
 }
 
 export type SelectionType = SelectionProps["type"];
-
-export type FilterOp =
-	| "eq"
-	| "neq"
-	| "gt"
-	| "lt"
-	| "gte"
-	| "lte"
-	| "between"
-	| "between_anyyear"
-	| "between_anytime"
-	| "has"
-	| "nothas";
 
 /** Display symbol/word for each filter operator. */
 export const OP_LABELS: Record<FilterOp, string> = {

@@ -950,7 +950,7 @@ export function selectPolygon(polygon: PolygonGeometry, includeInformational = f
 
 export function selectFilter(
 	field: string,
-	op: import("./selections").FilterOp,
+	op: import("@/bindings.gen").FilterOp,
 	value: unknown,
 	value2?: unknown,
 	tzLocal = false,

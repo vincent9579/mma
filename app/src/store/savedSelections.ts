@@ -1,5 +1,4 @@
-import type { MapData, Selection, SelectionProps, PolygonGeometry } from "@/bindings.gen";
-import type { FilterOp } from "./selections";
+import type { MapData, Selection, SelectionProps, PolygonGeometry, FilterOp } from "@/bindings.gen";
 import { buildSelection } from "./selections";
 import { getSettings, setSetting } from "./settings";
 import { addSelections } from "./useMapStore";

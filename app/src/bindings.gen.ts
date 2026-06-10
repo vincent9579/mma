@@ -537,6 +537,12 @@ export type FieldCount = {
 	count: number,
 };
 
+/**
+ *  Filter comparison operator. Single source of truth: specta renders the literal
+ *  union, so the TS `FilterOp` type and `OP_LABELS` derive from this enum.
+ */
+export type FilterOp = "eq" | "neq" | "gt" | "lt" | "gte" | "lte" | "between" | "between_anyyear" | "between_anytime" | "has" | "nothas";
+
 /**  Reverse geocode result: nearest populated place to a coordinate. */
 export type GeoResult = {
 	city: string,
@@ -1028,7 +1034,7 @@ export type SelectionInput = {
  *   parallel batch scans. Composites (Intersection, Union, Invert) recursively resolve
  *  children. Duplicates uses a grid-accelerated spatial scan.
  */
-export type SelectionProps = { type: "Locations"; locations: number[]; name: string | null } | { type: "Everything" } | { type: "Polygon"; polygon: PolygonGeometry; includeInformational: boolean } | { type: "Tag"; tagId: number } | { type: "Untagged" } | { type: "Unpanned" } | { type: "PanoIds" } | { type: "NotPanoIds" } | { type: "Manual"; locations: number[] } | { type: "Duplicates"; distance: number } | { type: "ValidationState"; locations: number[]; state: number } | { type: "Reviewed"; locations: number[]; sessionId: string; mode: string } | { type: "Intersection"; selections: Selection[] } | { type: "Union"; selections: Selection[] } | { type: "Invert"; selections: Selection[] } | { type: "Filter"; field: string; op: string; value: any; value2?: any | null; tzLocal?: boolean };
+export type SelectionProps = { type: "Locations"; locations: number[]; name: string | null } | { type: "Everything" } | { type: "Polygon"; polygon: PolygonGeometry; includeInformational: boolean } | { type: "Tag"; tagId: number } | { type: "Untagged" } | { type: "Unpanned" } | { type: "PanoIds" } | { type: "NotPanoIds" } | { type: "Manual"; locations: number[] } | { type: "Duplicates"; distance: number } | { type: "ValidationState"; locations: number[]; state: number } | { type: "Reviewed"; locations: number[]; sessionId: string; mode: string } | { type: "Intersection"; selections: Selection[] } | { type: "Union"; selections: Selection[] } | { type: "Invert"; selections: Selection[] } | { type: "Filter"; field: string; op: FilterOp; value: any; value2?: any | null; tzLocal?: boolean };
 
 /**
  *  Selection bitmask sync payload. `bitmask` carries the packed per-cell bitmask bytes
