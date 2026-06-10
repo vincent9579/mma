@@ -142,16 +142,30 @@
 		return realInvoke(cmd, args);
 	}
 
-	// Rewrite custom-scheme URLs (http://<scheme>.localhost/...) to /__scheme/.
+	// Rewrite custom-scheme URLs to /__scheme/. Both forms Tauri uses, generically
+	// for any scheme: http://<scheme>.localhost/... (Windows/Android) and
+	// <scheme>://localhost/... (Linux/macOS — browsers can't fetch raw custom
+	// schemes, so without this rewrite those requests just fail).
 	// Two layers: (1) a synchronous fetch() patch so fetch-based calls (e.g. the
 	// render buffer) work IMMEDIATELY — no service-worker activation race; (2) a
-	// service worker for subresources that bypass fetch (e.g. <img> map tiles).
+	// service worker for subresources that bypass fetch (e.g. <img> map tiles;
+	// http-form only — custom-scheme requests never reach a service worker).
+	// TODO: raw-scheme <img>/XHR subresources (Linux/macOS browsers) are caught by
+	// neither layer; if one surfaces (candidate: unofficial-pano svtile tiles, if
+	// opensv loads them via <img>), patch XMLHttpRequest.open + the
+	// HTMLImageElement.src setter through this same rewrite.
 	function rewriteSchemeUrl(url) {
 		try {
 			const u = new URL(url, location.href);
-			if (!u.hostname.endsWith(".localhost")) return null;
-			const scheme = u.hostname.slice(0, -".localhost".length);
-			return location.origin + "/__scheme/" + scheme + u.pathname + u.search;
+			if (u.hostname.endsWith(".localhost")) {
+				const scheme = u.hostname.slice(0, -".localhost".length);
+				return location.origin + "/__scheme/" + scheme + u.pathname + u.search;
+			}
+			if (u.protocol !== "http:" && u.protocol !== "https:" && u.hostname === "localhost") {
+				const scheme = u.protocol.slice(0, -1);
+				return location.origin + "/__scheme/" + scheme + u.pathname + u.search;
+			}
+			return null;
 		} catch {
 			return null;
 		}
