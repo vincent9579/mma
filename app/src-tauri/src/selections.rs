@@ -39,7 +39,7 @@ pub enum SelectionProps {
     Intersection { selections: Vec<Selection> },
     Union { selections: Vec<Selection> },
     Invert { selections: Vec<Selection> },
-    Filter { field: String, op: String, #[specta(type = specta_typescript::Any)] value: serde_json::Value, #[serde(default)] #[specta(type = Option<specta_typescript::Any>)] value2: Option<serde_json::Value> },
+    Filter { field: String, op: String, #[specta(type = specta_typescript::Any)] value: serde_json::Value, #[serde(default)] #[specta(type = Option<specta_typescript::Any>)] value2: Option<serde_json::Value>, #[serde(default, rename = "tzLocal")] tz_local: bool },
 }
 
 /// GeoJSON-like polygon geometry. `coordinates` is the primary polygon (outer ring +
@@ -318,9 +318,11 @@ fn test_row(r: &RowRef, props: &SelectionProps) -> bool {
             if !include_informational && r.flags().contains(LocationFlags::INFORMATIONAL) { return false; }
             point_in_geometry(r.lng(), r.lat(), polygon)
         }
-        SelectionProps::Filter { field, op, value, value2 } => {
-            if op == "between_local" {
-                return compare_local_tz(r, field, value, value2.as_ref());
+        SelectionProps::Filter { field, op, value, value2, tz_local } => {
+            // tz_local only applies where a clock frame matters; has/nothas/eq/neq
+            // keep their normal semantics even if the flag is set.
+            if *tz_local && matches!(op.as_str(), "gt" | "lt" | "gte" | "lte" | "between" | "between_anyyear" | "between_anytime") {
+                return compare_filter_local_tz(r, field, op, value, value2.as_ref());
             }
             match r.resolve_field(field) {
                 Some(ref v) => compare_filter(v, op, value, value2.as_ref()),
@@ -1001,12 +1003,14 @@ fn compare_filter(field_val: &serde_json::Value, op: &str, value: &serde_json::V
     }
 }
 
-/// `between_local`: bucket a location's absolute `datetime` instant into its own
-/// timezone before range-checking. `lo`/`hi` are wall-clock instants encoded as
-/// UTC-epoch seconds (the numbers the user picked, the picker's wall-clock mode);
-/// the location's `timezone` (IANA) supplies the DST-correct offset. Locations
-/// lacking a resolvable `timezone` or `datetime` are excluded.
-fn compare_local_tz(r: &RowRef, field: &str, lo: &serde_json::Value, hi: Option<&serde_json::Value>) -> bool {
+/// `tz_local` filters: bucket the location's absolute timestamp into its own timezone's
+/// wall-clock before comparing, for any frame-sensitive op. The shifted value runs
+/// through the normal `compare_filter` dispatch, so range ops compare against wall-clock
+/// instants encoded as UTC-epoch seconds (the picker's wall-clock mode) and the
+/// anyyear/anytime shapes bucket month-day / hour-min in the pano's local clock.
+/// The location's `timezone` (IANA) supplies the DST-correct offset; locations lacking
+/// a resolvable `timezone` or field value are excluded.
+fn compare_filter_local_tz(r: &RowRef, field: &str, op: &str, value: &serde_json::Value, value2: Option<&serde_json::Value>) -> bool {
     let ts = match r.resolve_field(field).as_ref().and_then(as_f64) {
         Some(t) => t,
         None => return false,
@@ -1019,10 +1023,7 @@ fn compare_local_tz(r: &RowRef, field: &str, lo: &serde_json::Value, hi: Option<
         Some(o) => o,
         None => return false,
     };
-    let local = ts + offset as f64;
-    let lo = as_f64(lo).unwrap_or(f64::MIN);
-    let hi = hi.and_then(as_f64).unwrap_or(f64::MAX);
-    local >= lo && local <= hi
+    compare_filter(&serde_json::Value::from(ts + offset as f64), op, value, value2)
 }
 
 /// Equality comparison with type coercion: tries numeric, then string, then JSON equality.

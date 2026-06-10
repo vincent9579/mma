@@ -250,14 +250,16 @@ function SelectionRow({
 		const p = selection.props;
 		if (p.type !== "Filter") return null;
 		const ft = fieldEntries.find((f) => f.key === p.field)?.fieldType;
-		if (stepFilterWindow(ft, p.op, p.value, p.value2, 1) == null) return null;
+		const wallClock = p.tzLocal ?? false;
+		if (stepFilterWindow(ft, p.op, p.value, p.value2, 1, wallClock) == null) return null;
 		return (dir: 1 | -1) => {
-			const next = stepFilterWindow(ft, p.op, p.value, p.value2, dir);
+			const next = stepFilterWindow(ft, p.op, p.value, p.value2, dir, wallClock);
 			if (next) {
 				updateFilterSelection(selection.key, {
 					type: "Filter",
 					field: p.field,
 					op: p.op,
+					tzLocal: p.tzLocal,
 					value: next.value,
 					value2: next.value2,
 				});
@@ -574,8 +576,8 @@ function SelectionRow({
 				<FilterForm
 					initial={filterPropsToSeed(selection.props)}
 					submitLabel="Update filter"
-					onSubmit={(field, op, value, value2) =>
-						updateFilterSelection(selection.key, { type: "Filter", field, op, value, value2 })
+					onSubmit={(field, op, value, value2, tzLocal) =>
+						updateFilterSelection(selection.key, { type: "Filter", field, op, value, value2, tzLocal })
 					}
 					onClose={() => setEditingFilter(false)}
 				/>
@@ -824,16 +826,12 @@ function filterPropsToSeed(p: Extract<Selection["props"], { type: "Filter" }>): 
 	let op = p.op as FilterOp;
 	let anyYear = false;
 	let anyTime = false;
-	let tzLocal = false;
 	if (op === "between_anyyear") {
 		op = "between";
 		anyYear = true;
 	} else if (op === "between_anytime") {
 		op = "between";
 		anyTime = true;
-	} else if (op === "between_local") {
-		op = "between";
-		tzLocal = true;
 	}
 	return {
 		field: p.field,
@@ -842,7 +840,7 @@ function filterPropsToSeed(p: Extract<Selection["props"], { type: "Filter" }>): 
 		value2: p.value2 == null ? "" : String(p.value2),
 		anyYear,
 		anyTime,
-		tzLocal,
+		tzLocal: p.tzLocal ?? false,
 	};
 }
 
@@ -863,6 +861,7 @@ function FilterForm({
 		op: FilterOp,
 		value: string | number | null,
 		value2: string | number | undefined,
+		tzLocal: boolean,
 	) => void;
 	onClose?: () => void;
 }) {
@@ -906,12 +905,13 @@ function FilterForm({
 		setTzLocal(false);
 	};
 
+	// tzLocal is an independent toggle: it survives op changes (the values' encoding
+	// frame never silently flips) and composes with anyYear/anyTime.
 	const handleOpChange = (newOp: FilterOp) => {
 		setOp(newOp);
 		if (newOp !== "between") {
 			setAnyYear(false);
 			setAnyTime(false);
-			setTzLocal(false);
 		}
 	};
 
@@ -920,10 +920,8 @@ function FilterForm({
 	// existing values so the displayed wall-clock numbers are preserved.
 	const handleTzLocalToggle = (checked: boolean) => {
 		setTzLocal(checked);
-		if (checked) {
-			setAnyYear(false);
-			setAnyTime(false);
-		}
+		// Re-encode epoch values between frames; anyYear/anyTime string values
+		// ("MM-DD"/"HH:MM") pass through the NaN guard untouched.
 		const convert = (v: string): string => {
 			const n = Number(v);
 			if (!v || isNaN(n)) return v;
@@ -941,14 +939,15 @@ function FilterForm({
 		setAnyYear(checked);
 		if (checked) {
 			setAnyTime(false);
-			setTzLocal(false);
 			const convert = (v: string): string => {
 				if (!v) return "";
 				if (isExactDate) {
 					const n = Number(v);
 					if (!isNaN(n) && v !== "") {
 						const d = new Date(n * 1000);
-						return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+						return tzLocal
+							? `${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
+							: `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 					}
 				}
 				const ym = /^\d{4}-(\d{2})$/.exec(v);
@@ -965,7 +964,10 @@ function FilterForm({
 				if (isExactDate) {
 					const md = /^(\d{2})-(\d{2})$/.exec(v);
 					if (md) {
-						return String(Math.floor(Date.UTC(yr, Number(md[1]) - 1, Number(md[2])) / 1000));
+						const ts = tzLocal
+							? Date.UTC(yr, Number(md[1]) - 1, Number(md[2]))
+							: new Date(yr, Number(md[1]) - 1, Number(md[2])).getTime();
+						return String(Math.floor(ts / 1000));
 					}
 				}
 				if (/^\d{2}$/.test(v)) return `${yr}-${v}`;
@@ -980,13 +982,14 @@ function FilterForm({
 		setAnyTime(checked);
 		if (checked) {
 			setAnyYear(false);
-			setTzLocal(false);
 			const convert = (v: string): string => {
 				if (!v) return "";
 				const n = Number(v);
 				if (!isNaN(n) && v !== "") {
 					const d = new Date(n * 1000);
-					return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+					return tzLocal
+						? `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`
+						: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 				}
 				return "";
 			};
@@ -1018,7 +1021,6 @@ function FilterForm({
 		let finalOp: FilterOp = op;
 		if (isBetween && anyYear) finalOp = "between_anyyear";
 		if (isBetween && anyTime) finalOp = "between_anytime";
-		if (isBetween && tzLocal) finalOp = "between_local";
 		let parsed: string | number | null;
 		let parsed2: string | number | undefined;
 		if (anyYear && isBetween) {
@@ -1052,13 +1054,13 @@ function FilterForm({
 				parsed = pickPeriodEnd(parsed, grain(parsed), tzLocal);
 			}
 		}
-		onSubmit(field, finalOp, parsed, parsed2);
+		onSubmit(field, finalOp, parsed, parsed2, isExactDate && tzLocal);
 		onClose?.();
 	};
 
 	const showAnyYear = isBetween && isDateLike;
 	const showAnyTime = isBetween && isExactDate;
-	const showTzLocal = isBetween && isExactDate;
+	const showTzLocal = isExactDate;
 
 	const handleYearSelect = isBetween && fieldEntry?.fieldType === "month"
 		? (year: number) => {
@@ -1154,7 +1156,7 @@ function FilterBuilder({ mapId }: { mapId: string }) {
 		<FilterForm
 			persistKey={mapId}
 			submitLabel="Add filter"
-			onSubmit={(field, op, value, value2) => selectFilter(field, op, value, value2)}
+			onSubmit={(field, op, value, value2, tzLocal) => selectFilter(field, op, value, value2, tzLocal)}
 		/>
 	);
 }

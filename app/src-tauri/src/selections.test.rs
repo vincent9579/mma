@@ -867,17 +867,17 @@ fn extra_filter_eq_on_adds() {
     let view = make_view(None, &dead, &patches, &adds);
     let ids = resolve(&view, &SelectionProps::Filter {
         field: "country".into(), op: "eq".into(),
-        value: serde_json::json!("BR"), value2: None,
+        value: serde_json::json!("BR"), value2: None, tz_local: false,
     });
     assert_eq!(ids, vec![1]);
 }
 
-// `between_local` buckets each location's absolute `datetime` into its own
-// timezone before range-checking. Same instant, different zones -> different days.
-#[test]
-fn filter_between_local_buckets_per_timezone() {
-    let dead = HashSet::new();
-    let patches = HashMap::new();
+// -----------------------------------------------------------------------
+// tz_local filters: bucket each location's absolute `datetime` into its own
+// timezone before comparing. Same instant, different zones -> different days.
+// -----------------------------------------------------------------------
+
+fn tz_fixture() -> Vec<Location> {
     // 2020-03-01 00:00:00 UTC. In Tokyo that's Mar 1 09:00; in New York Feb 29 19:00.
     let ts = 1583020800u64;
     let mut tokyo = loc(1, 0.0, 0.0);
@@ -886,16 +886,71 @@ fn filter_between_local_buckets_per_timezone() {
     newyork.extra = serde_json::json!({ "datetime": ts, "timezone": "America/New_York" }).as_object().cloned();
     let mut no_tz = loc(3, 0.0, 0.0);
     no_tz.extra = serde_json::json!({ "datetime": ts }).as_object().cloned();
-    let adds = vec![tokyo, newyork, no_tz];
+    vec![tokyo, newyork, no_tz]
+}
+
+#[test]
+fn filter_tz_local_between_buckets_per_timezone() {
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let adds = tz_fixture();
     let view = make_view(None, &dead, &patches, &adds);
 
     // Filter "all of Mar 1, 2020" as wall-clock-as-UTC epoch seconds.
     let lo = serde_json::json!(1583020800u64); // 2020-03-01 00:00
     let hi = serde_json::json!(1583107140u64); // 2020-03-01 23:59
     let ids = resolve(&view, &SelectionProps::Filter {
-        field: "datetime".into(), op: "between_local".into(),
-        value: lo, value2: Some(hi),
+        field: "datetime".into(), op: "between".into(),
+        value: lo, value2: Some(hi), tz_local: true,
     });
     // Tokyo lands on Mar 1 -> in; New York is Feb 29 -> out; no timezone -> excluded.
     assert_eq!(ids, vec![1]);
+}
+
+#[test]
+fn filter_tz_local_anyyear_uses_local_month_day() {
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let adds = tz_fixture();
+    let view = make_view(None, &dead, &patches, &adds);
+
+    // Feb 29 in the pano's local clock: only New York (Feb 29 19:00 local) matches.
+    let ids = resolve(&view, &SelectionProps::Filter {
+        field: "datetime".into(), op: "between_anyyear".into(),
+        value: serde_json::json!("02-29"), value2: Some(serde_json::json!("02-29")), tz_local: true,
+    });
+    assert_eq!(ids, vec![2]);
+}
+
+#[test]
+fn filter_tz_local_anytime_uses_local_clock() {
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let adds = tz_fixture();
+    let view = make_view(None, &dead, &patches, &adds);
+
+    // Morning (in the pano's local clock): Tokyo is 09:00 -> in; New York 19:00 -> out.
+    let ids = resolve(&view, &SelectionProps::Filter {
+        field: "datetime".into(), op: "between_anytime".into(),
+        value: serde_json::json!("06:00"), value2: Some(serde_json::json!("12:00")), tz_local: true,
+    });
+    assert_eq!(ids, vec![1]);
+}
+
+// The flag is ignored for ops where a clock frame is meaningless: nothas keeps its
+// normal missing-field semantics instead of excluding everything.
+#[test]
+fn filter_tz_local_ignored_for_nothas() {
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let mut with_field = loc(1, 0.0, 0.0);
+    with_field.extra = serde_json::json!({ "datetime": 100 }).as_object().cloned();
+    let without = loc(2, 0.0, 0.0);
+    let adds = vec![with_field, without];
+    let view = make_view(None, &dead, &patches, &adds);
+    let ids = resolve(&view, &SelectionProps::Filter {
+        field: "datetime".into(), op: "nothas".into(),
+        value: serde_json::Value::Null, value2: None, tz_local: true,
+    });
+    assert_eq!(ids, vec![2]);
 }

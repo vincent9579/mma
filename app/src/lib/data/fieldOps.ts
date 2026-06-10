@@ -384,6 +384,7 @@ export function stepFilterWindow(
 	value: unknown,
 	value2: unknown,
 	dir: 1 | -1,
+	wallClock = false,
 ): { value: number | string; value2?: number | string } | null {
 	const MONTH = /^(\d{4})-(\d{2})$/;
 	if (fieldType === "month" && typeof value === "string") {
@@ -401,11 +402,10 @@ export function stepFilterWindow(
 		}
 		return null;
 	}
-	if (fieldType === "date" && (op === "between" || op === "between_local")) {
+	if (fieldType === "date" && op === "between") {
 		const lo = Number(value);
 		const hi = Number(value2);
 		if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) return null;
-		const wallClock = op === "between_local";
 		if (!hasTimeOfDay(lo, wallClock) && !hasTimeOfDay(hi + 1, wallClock)) {
 			// Day-grain window: [midnight, day-end]. Shift by its day count.
 			const days = Math.round((hi + 1 - lo) / 86400);

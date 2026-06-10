@@ -40,7 +40,6 @@ export type FilterOp =
 	| "between"
 	| "between_anyyear"
 	| "between_anytime"
-	| "between_local"
 	| "has"
 	| "nothas";
 
@@ -55,7 +54,6 @@ export const OP_LABELS: Record<FilterOp, string> = {
 	between: "between",
 	between_anyyear: "between (any year)",
 	between_anytime: "between (any date)",
-	between_local: "between (location time)",
 	has: "has",
 	nothas: "does not have",
 };
@@ -113,7 +111,7 @@ function keyForProps(props: SelectionProps, locations: number[]): string {
 		.with(
 			{ type: "Filter" },
 			(p) =>
-				`filter:${p.field}:${p.op}:${String(p.value)}${p.value2 != null ? `:${String(p.value2)}` : ""}`,
+				`filter:${p.field}:${p.op}:${String(p.value)}${p.value2 != null ? `:${String(p.value2)}` : ""}${p.tzLocal ? ":local" : ""}`,
 		)
 		.exhaustive();
 }
@@ -464,24 +462,24 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 				}
 				return s;
 			};
+			// tzLocal values are wall-clock instants encoded as UTC epochs: render via UTC getters.
 			const fmtVal = (v: unknown) => {
 				const s = String(v);
 				if (fieldDef?.type === "enum" && fieldDef.labels?.[s]) return fieldDef.labels[s];
 				if (fieldDef?.type === "date") {
 					const n = Number(v);
-					if (!isNaN(n)) return localDateTime(n);
+					if (!isNaN(n)) return p.tzLocal ? utcDateTime(n) : localDateTime(n);
 				}
 				return s;
 			};
+			const tzSuffix = p.tzLocal ? " (location time)" : "";
 			if (p.op === "between_anyyear")
-				return `${fieldLabel} ${OP_LABELS[p.op]} ${fmtMD(p.value)}..${fmtMD(p.value2)}`;
+				return `${fieldLabel} ${OP_LABELS[p.op]} ${fmtMD(p.value)}..${fmtMD(p.value2)}${tzSuffix}`;
 			if (p.op === "between_anytime")
-				return `${fieldLabel} ${OP_LABELS[p.op]} ${p.value}..${p.value2}`;
-			if (p.op === "between_local")
-				return `${fieldLabel} ${OP_LABELS[p.op]} ${utcDateTime(Number(p.value))}..${utcDateTime(Number(p.value2))}`;
+				return `${fieldLabel} ${OP_LABELS[p.op]} ${p.value}..${p.value2}${tzSuffix}`;
 			if (p.op === "between")
-				return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}..${fmtVal(p.value2)}`;
-			return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}`;
+				return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}..${fmtVal(p.value2)}${tzSuffix}`;
+			return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}${tzSuffix}`;
 		})
 		.exhaustive();
 }

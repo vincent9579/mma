@@ -954,8 +954,9 @@ export function selectFilter(
 	op: import("./selections").FilterOp,
 	value: unknown,
 	value2?: unknown,
+	tzLocal = false,
 ) {
-	return addSelections([{ type: "Filter", field, op, value, value2 }]);
+	return addSelections([{ type: "Filter", field, op, value, value2, tzLocal }]);
 }
 
 /** Edit an existing filter (or any selection) in place by key, preserving its

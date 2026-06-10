@@ -482,18 +482,26 @@ describe("selectionDisplayName", () => {
 		expect(selectionDisplayName(map, sel)).toBe(`Exact date > ${expected}`);
 	});
 
-	it("display name for between_local renders wall-clock values in UTC", () => {
+	it("display name for tzLocal filters renders wall-clock values in UTC", () => {
 		const map = makeMap();
 		const sel = buildSelection({
 			type: "Filter",
 			field: "exact",
-			op: "between_local",
+			op: "between",
 			value: 1583020800, // 2020-03-01 00:00 (wall-clock as UTC epoch)
 			value2: 1583107140, // 2020-03-01 23:59
+			tzLocal: true,
 		});
 		expect(selectionDisplayName(map, sel)).toBe(
-			"Exact date between (location time) 2020-03-01 00:00..2020-03-01 23:59",
+			"Exact date between 2020-03-01 00:00..2020-03-01 23:59 (location time)",
 		);
+	});
+
+	it("tzLocal filters get a distinct key from absolute-frame filters", () => {
+		const abs = buildSelection({ type: "Filter", field: "exact", op: "between", value: 1, value2: 2 });
+		const local = buildSelection({ type: "Filter", field: "exact", op: "between", value: 1, value2: 2, tzLocal: true });
+		expect(abs.key).not.toBe(local.key);
+		expect(local.key.endsWith(":local")).toBe(true);
 	});
 
 	it("display name for Filter uses raw field name when no fieldDef exists", () => {
