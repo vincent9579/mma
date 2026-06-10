@@ -907,6 +907,22 @@ fn filter_tz_local_between_buckets_per_timezone() {
     assert_eq!(ids, vec![1]);
 }
 
+// Same assertions against baked Arrow rows: covers the single-parse extras path
+// in resolve_field_and_tz (the adds-based tests go through the Location path).
+#[test]
+fn filter_tz_local_between_on_base_batch() {
+    let batch = locations_to_batch(&tz_fixture());
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let view = make_view(Some(&batch), &dead, &patches, &[]);
+    let ids = resolve(&view, &SelectionProps::Filter {
+        field: "datetime".into(), op: "between".into(),
+        value: serde_json::json!(1583020800u64), value2: Some(serde_json::json!(1583107140u64)),
+        tz_local: true,
+    });
+    assert_eq!(ids, vec![1]);
+}
+
 #[test]
 fn filter_tz_local_anyyear_uses_local_month_day() {
     let dead = HashSet::new();

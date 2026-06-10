@@ -181,6 +181,37 @@ impl<'a, 'v> RowRef<'a, 'v> {
             RowInner::Loc(l) => resolve_field_loc(l, field),
         }
     }
+    /// Resolve `field` plus the companion `timezone` with at most one extras-JSON parse.
+    /// The tz_local filter path reads both per row; going through `resolve_field` twice
+    /// would parse the extras blob twice.
+    pub fn resolve_field_and_tz(&self, field: &str) -> (Option<serde_json::Value>, Option<String>) {
+        match &self.inner {
+            RowInner::Loc(l) => (
+                resolve_field_loc(l, field),
+                l.extra.as_ref()
+                    .and_then(|e| e.get("timezone"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
+            ),
+            RowInner::Base(v, i) => {
+                let extras: Option<serde_json::Map<String, serde_json::Value>> = v.extras.and_then(|c| {
+                    if c.is_null(*i) { return None; }
+                    serde_json::from_str(c.value(*i)).ok()
+                });
+                let tz = extras.as_ref()
+                    .and_then(|m| m.get("timezone"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned);
+                // Built-in names come from their columns; keep in sync with resolve_field_arrow.
+                let fv = match field {
+                    "lat" | "lng" | "heading" | "pitch" | "zoom" | "id" | "createdAt" | "modifiedAt" =>
+                        resolve_field_arrow(v, *i, field),
+                    _ => extras.as_ref().and_then(|m| m.get(field).cloned()),
+                };
+                (fv, tz)
+            }
+        }
+    }
     pub fn to_location(&self) -> Location {
         match &self.inner {
             RowInner::Base(v, i) => v.loc_at(*i),
@@ -1011,13 +1042,14 @@ fn compare_filter(field_val: &serde_json::Value, op: &str, value: &serde_json::V
 /// The location's `timezone` (IANA) supplies the DST-correct offset; locations lacking
 /// a resolvable `timezone` or field value are excluded.
 fn compare_filter_local_tz(r: &RowRef, field: &str, op: &str, value: &serde_json::Value, value2: Option<&serde_json::Value>) -> bool {
-    let ts = match r.resolve_field(field).as_ref().and_then(as_f64) {
+    let (fv, tz_name) = r.resolve_field_and_tz(field);
+    let ts = match fv.as_ref().and_then(as_f64) {
         Some(t) => t,
         None => return false,
     };
-    let tz_name = match r.resolve_field("timezone") {
-        Some(serde_json::Value::String(s)) => s,
-        _ => return false,
+    let tz_name = match tz_name {
+        Some(s) => s,
+        None => return false,
     };
     let offset = match tz_offset_seconds(&tz_name, ts) {
         Some(o) => o,
