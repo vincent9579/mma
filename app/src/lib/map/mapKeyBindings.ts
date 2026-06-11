@@ -14,16 +14,44 @@ import { parseHotkey, matchesKey, isEditableElement } from "@/lib/hooks/useHotke
 type ActionType = MapKeyAction["type"];
 type ActionOf<T extends ActionType> = Extract<MapKeyAction, { type: T }>;
 
-const handlers = new Map<ActionType, (action: MapKeyAction) => void>();
+/** A handler may return false to decline (e.g. action target no longer applies);
+ *  the key then falls through to the global hotkey layer. */
+type MapKeyActionHandler<T extends ActionType> = (action: ActionOf<T>) => boolean | void;
+
+const handlers = new Map<ActionType, (action: MapKeyAction) => boolean | void>();
 
 export function registerMapKeyActionHandler<T extends ActionType>(
 	type: T,
-	fn: (action: ActionOf<T>) => void,
+	fn: MapKeyActionHandler<T>,
 ): () => void {
-	handlers.set(type, fn as (action: MapKeyAction) => void);
+	const wrapped = fn as (action: MapKeyAction) => boolean | void;
+	handlers.set(type, wrapped);
 	return () => {
-		if (handlers.get(type) === fn) handlers.delete(type);
+		if (handlers.get(type) === wrapped) handlers.delete(type);
 	};
+}
+
+/** Combo currently assigned to a tag, if any. */
+export function getTagBindingKey(bindings: MapKeyBinding[], tagId: number): string | undefined {
+	return bindings.find((b) => b.action.type === "applyTag" && b.action.tagId === tagId)?.key;
+}
+
+/**
+ * New bindings list with `key` assigned to `tagId`. Enforces uniqueness both
+ * ways: the key is taken from any binding that held it, and the tag's previous
+ * key is dropped. An empty `key` just clears the tag's binding.
+ */
+export function withTagKeyBinding(
+	bindings: MapKeyBinding[],
+	tagId: number,
+	key: string,
+): MapKeyBinding[] {
+	const rest = bindings.filter(
+		(b) =>
+			!(b.action.type === "applyTag" && b.action.tagId === tagId) && (!key || b.key !== key),
+	);
+	if (!key) return rest;
+	return [...rest, { key, action: { type: "applyTag", tagId } }];
 }
 
 export function matchMapKeyBinding(
@@ -43,8 +71,7 @@ export function matchMapKeyBinding(
 export function executeMapKeyAction(action: MapKeyAction): boolean {
 	const fn = handlers.get(action.type);
 	if (!fn) return false;
-	fn(action);
-	return true;
+	return fn(action) !== false;
 }
 
 /** Resolve a keydown against the current bindings; consume it if handled. */

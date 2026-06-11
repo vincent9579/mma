@@ -5,6 +5,8 @@ import {
 	executeMapKeyAction,
 	registerMapKeyActionHandler,
 	handleMapKeyEvent,
+	getTagBindingKey,
+	withTagKeyBinding,
 } from "@/lib/map/mapKeyBindings";
 import { isEditableElement } from "@/lib/hooks/useHotkey";
 import type { MapKeyBinding } from "@/bindings.gen";
@@ -62,6 +64,51 @@ describe("action handler registry", () => {
 		const unregister = registerMapKeyActionHandler("applyTag", () => {});
 		unregister();
 		expect(executeMapKeyAction(applyTag(1))).toBe(false);
+	});
+
+	it("a handler returning false declines the action (key falls through)", () => {
+		cleanups.push(registerMapKeyActionHandler("applyTag", () => false));
+		expect(executeMapKeyAction(applyTag(1))).toBe(false);
+		const e = keyEvent("m");
+		expect(handleMapKeyEvent(e, [{ key: "m", action: applyTag(1) }])).toBe(false);
+		expect(e.defaultPrevented).toBe(false);
+	});
+});
+
+describe("tag binding helpers", () => {
+	const base: MapKeyBinding[] = [
+		{ key: "m", action: applyTag(1) },
+		{ key: "x", action: applyTag(2) },
+	];
+
+	it("getTagBindingKey finds the tag's combo", () => {
+		expect(getTagBindingKey(base, 1)).toBe("m");
+		expect(getTagBindingKey(base, 99)).toBeUndefined();
+	});
+
+	it("assigns a new key", () => {
+		const next = withTagKeyBinding(base, 3, "q");
+		expect(getTagBindingKey(next, 3)).toBe("q");
+		expect(next).toHaveLength(3);
+	});
+
+	it("a key is unique: assigning steals it from its previous holder", () => {
+		const next = withTagKeyBinding(base, 3, "m");
+		expect(getTagBindingKey(next, 3)).toBe("m");
+		expect(getTagBindingKey(next, 1)).toBeUndefined();
+	});
+
+	it("a tag holds one key: reassigning drops its previous key", () => {
+		const next = withTagKeyBinding(base, 1, "z");
+		expect(getTagBindingKey(next, 1)).toBe("z");
+		expect(next.filter((b) => b.action.tagId === 1)).toHaveLength(1);
+	});
+
+	it("empty key clears the tag's binding", () => {
+		const next = withTagKeyBinding(base, 1, "");
+		expect(getTagBindingKey(next, 1)).toBeUndefined();
+		expect(next).toHaveLength(1);
+		expect(withTagKeyBinding(base, 99, "")).toHaveLength(2);
 	});
 });
 

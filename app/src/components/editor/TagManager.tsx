@@ -26,6 +26,10 @@ import { fmt } from "@/lib/util/format";
 import { textColorFor, hexToHsl, hslToHex } from "@/lib/util/color";
 import { useLocalStorage } from "@/lib/hooks/useLocalStorage";
 import { useSetting } from "@/store/settings";
+import { useMapSetting } from "@/components/editor/map/useMapSetting";
+import { formatBinding, buildComboString } from "@/lib/hooks/useHotkey";
+import { getConflicts } from "@/lib/util/hotkeys";
+import { getTagBindingKey, withTagKeyBinding } from "@/lib/map/mapKeyBindings";
 import { TagTreeView } from "./TagTree";
 
 export function TagManager() {
@@ -496,9 +500,30 @@ function EditTagDialog({
 	const [name, setName] = useState(tag.name);
 	const [hsl, setHsl] = useState(() => hexToHsl(tag.color));
 	const hexValue = hslToHex(hsl.h, hsl.s, hsl.l);
+	const [bindings, setBindings] = useMapSetting("keyBindings");
+	const [hotkey, setHotkey] = useState(() => getTagBindingKey(bindings ?? [], tag.id) ?? "");
+	const [recording, setRecording] = useState(false);
+
+	// Informational only: per-map bindings preempt these while this map is open,
+	// and assigning steals the key from whichever tag held it.
+	const globalConflicts = hotkey ? getConflicts("", hotkey) : [];
+	const holder = hotkey
+		? (bindings ?? []).find(
+				(b) =>
+					b.key === hotkey && !(b.action.type === "applyTag" && b.action.tagId === tag.id),
+			)
+		: undefined;
+	const holderTag =
+		holder?.action.type === "applyTag"
+			? getVisibleTags().find((t) => t.id === holder.action.tagId)
+			: undefined;
 
 	const handleSave = () => {
 		updateTags([{ id: tag.id, patch: { name: name.trim() || tag.name, color: hexValue } }]);
+		const cur = bindings ?? [];
+		if ((getTagBindingKey(cur, tag.id) ?? "") !== hotkey) {
+			setBindings(withTagKeyBinding(cur, tag.id, hotkey));
+		}
 		onClose();
 	};
 
@@ -546,6 +571,51 @@ function EditTagDialog({
 							color={hsl}
 							onChange={setHsl}
 						/>
+					</div>
+					<div className="edit-tag-modal__hotkey">
+						<span>Hotkey:</span>
+						<input
+							className="input"
+							type="text"
+							readOnly
+							value={recording ? "" : hotkey ? formatBinding(hotkey) : ""}
+							placeholder={recording ? "Press a key..." : "None"}
+							onFocus={() => setRecording(true)}
+							onBlur={() => setRecording(false)}
+							onKeyDown={(e) => {
+								if (!recording) return;
+								e.preventDefault();
+								e.stopPropagation();
+								if (e.key === "Escape") {
+									e.currentTarget.blur();
+									return;
+								}
+								if (e.key === "Backspace" || e.key === "Delete") {
+									setHotkey("");
+									return;
+								}
+								const combo = buildComboString(e.nativeEvent);
+								if (!combo) return;
+								setHotkey(combo);
+								e.currentTarget.blur();
+							}}
+						/>
+						<button
+							type="button"
+							className="button"
+							disabled={!hotkey}
+							onClick={() => setHotkey("")}
+						>
+							Clear
+						</button>
+						{(holderTag || globalConflicts.length > 0) && (
+							<p className="edit-tag-modal__hotkey-note">
+								{holderTag && <>Takes the key from "{holderTag.name}". </>}
+								{globalConflicts.length > 0 && (
+									<>Overrides "{globalConflicts[0].label}" while this map is open.</>
+								)}
+							</p>
+						)}
 					</div>
 					<div className="edit-tag-modal__actions">
 						<button
