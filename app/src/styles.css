@@ -3656,13 +3656,14 @@ summary.button {
 	visibility: hidden;
 }
 .tag.is-dragging {
-	opacity: 0.4;
+	visibility: hidden;
 }
-.tag[data-drop="before"] {
-	box-shadow: -2px 0 0 0 #4a9eff;
-}
-.tag[data-drop="after"] {
-	box-shadow: 2px 0 0 0 #4a9eff;
+.tag-drag-preview {
+	position: fixed;
+	margin: 0;
+	pointer-events: none;
+	z-index: 1000;
+	opacity: 0.9;
 }
 .tag > label > input {
 	display: none;
