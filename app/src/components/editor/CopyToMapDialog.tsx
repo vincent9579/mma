@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { cmd } from "@/lib/commands";
 import { log } from "@/lib/util/log";
 import type { MapMeta } from "@/bindings.gen";
@@ -8,29 +8,79 @@ import { useMapSetting } from "@/components/editor/map/useMapSetting";
 import { getMapCopyBindingKey, withMapCopyBinding } from "@/lib/map/mapKeyBindings";
 import { getCurrentMapId } from "@/store/useMapStore";
 
-/** Assign per-map hotkeys that copy the active location into other maps (#36).
- *  Bindings persist to this map's settings as they are changed. */
+/** Assign per-map hotkeys that copy the active location into other maps.
+ *  Shows only configured maps; new targets are added via autocomplete (type a
+ *  map name), then keyed. Bindings persist to this map's settings as changed. */
 export function CopyToMapDialog({ onClose }: { onClose: () => void }) {
 	const [maps, setMaps] = useState<MapMeta[] | null>(null);
-	const [filter, setFilter] = useState("");
 	const [bindings, setBindings] = useMapSetting("keyBindings");
+	// Added via autocomplete but not yet keyed; persisted only once a key is recorded.
+	const [pendingIds, setPendingIds] = useState<string[]>([]);
+	const [query, setQuery] = useState("");
+	const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+	const addRowRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		cmd.storeListMaps().then(setMaps).catch((e) => log.error("[copyToMap] list failed:", e));
 	}, []);
 
-	const rows = useMemo(() => {
-		const currentId = getCurrentMapId();
-		const others = (maps ?? []).filter((m) => m.id !== currentId);
-		const lower = filter.toLowerCase();
-		const shown = lower ? others.filter((m) => m.name.toLowerCase().includes(lower)) : others;
-		const keyOf = (m: MapMeta) => getMapCopyBindingKey(bindings ?? [], m.id);
-		return shown.sort((a, b) => {
-			const ab = keyOf(a) ? 0 : 1;
-			const bb = keyOf(b) ? 0 : 1;
-			return ab - bb || a.name.localeCompare(b.name);
-		});
-	}, [maps, filter, bindings]);
+	useEffect(() => {
+		if (!suggestionsOpen) return;
+		const handler = (e: MouseEvent) => {
+			if (addRowRef.current && !addRowRef.current.contains(e.target as Node)) {
+				setSuggestionsOpen(false);
+			}
+		};
+		document.addEventListener("mousedown", handler);
+		return () => document.removeEventListener("mousedown", handler);
+	}, [suggestionsOpen]);
+
+	const byId = useMemo(() => new Map((maps ?? []).map((m) => [m.id, m])), [maps]);
+
+	const boundIds = useMemo(() => {
+		const ids = (bindings ?? []).flatMap((b) =>
+			b.action.type === "copyToMap" ? [b.action.mapId] : [],
+		);
+		return ids.sort((a, b) =>
+			(byId.get(a)?.name ?? "").localeCompare(byId.get(b)?.name ?? ""),
+		);
+	}, [bindings, byId]);
+
+	const rowIds = [...boundIds, ...pendingIds.filter((id) => !boundIds.includes(id))];
+
+	const lower = query.trim().toLowerCase();
+	const suggestions = lower
+		? (maps ?? [])
+				.filter(
+					(m) =>
+						m.id !== getCurrentMapId() &&
+						!rowIds.includes(m.id) &&
+						m.name.toLowerCase().includes(lower),
+				)
+				.sort((a, b) => a.name.localeCompare(b.name))
+				.slice(0, 8)
+		: [];
+
+	const addMap = (id: string) => {
+		setPendingIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+		setQuery("");
+		setSuggestionsOpen(false);
+	};
+
+	const removeRow = (id: string) => {
+		setBindings(withMapCopyBinding(bindings ?? [], id, ""));
+		setPendingIds((prev) => prev.filter((p) => p !== id));
+	};
+
+	const setRowKey = (id: string, combo: string) => {
+		setBindings(withMapCopyBinding(bindings ?? [], id, combo));
+		if (combo) {
+			setPendingIds((prev) => prev.filter((p) => p !== id));
+		} else if (!pendingIds.includes(id)) {
+			// Cleared via Backspace: keep the row visible, just unkeyed.
+			setPendingIds((prev) => [...prev, id]);
+		}
+	};
 
 	return (
 		<Dialog
@@ -39,49 +89,71 @@ export function CopyToMapDialog({ onClose }: { onClose: () => void }) {
 				if (!open) onClose();
 			}}
 		>
-			<DialogContent title="Add location to map" className="copy-to-map-modal">
+			<DialogContent title="Add location to map" className="copy-to-map-modal-host">
+				<div className="copy-to-map-modal">
 				<p className="copy-to-map-modal__hint">
-					Assign a key to a map. Pressing it while a location is open copies that location into
-					the map (duplicates are skipped).
+					Pressing an assigned key while a location is open copies that location into the map
+					(duplicates are skipped).
 				</p>
-				<input
-					className="input"
-					type="text"
-					placeholder="Filter maps..."
-					value={filter}
-					onChange={(e) => setFilter(e.target.value)}
-					autoFocus
-				/>
-				<ul className="copy-to-map-modal__list">
-					{rows.map((m) => {
-						const key = getMapCopyBindingKey(bindings ?? [], m.id) ?? "";
-						return (
-							<li key={m.id} className="copy-to-map-modal__row">
-								<span className="copy-to-map-modal__name">
-									{m.name || "(unnamed)"}
-									{m.folder && <small> · {m.folder}</small>}
-								</span>
-								<HotkeyInput
-									value={key}
-									onChange={(combo) =>
-										setBindings(withMapCopyBinding(bindings ?? [], m.id, combo))
-									}
-								/>
-								<button
-									type="button"
-									className="button"
-									disabled={!key}
-									onClick={() => setBindings(withMapCopyBinding(bindings ?? [], m.id, ""))}
-								>
-									Clear
+				{rowIds.length > 0 && (
+					<ul className="copy-to-map-modal__list">
+						{rowIds.map((id) => {
+							const meta = byId.get(id);
+							const key = getMapCopyBindingKey(bindings ?? [], id) ?? "";
+							return (
+								<li key={id} className="copy-to-map-modal__row">
+									<span className="copy-to-map-modal__name">
+										{meta ? meta.name || "(unnamed)" : "(missing map)"}
+										{meta?.folder && <small> · {meta.folder}</small>}
+									</span>
+									<HotkeyInput value={key} onChange={(combo) => setRowKey(id, combo)} />
+									<button type="button" className="button" onClick={() => removeRow(id)}>
+										Remove
+									</button>
+								</li>
+							);
+						})}
+					</ul>
+				)}
+				<div className="copy-to-map-modal__add" ref={addRowRef}>
+					<input
+						className="input"
+						type="text"
+						placeholder="Add a map..."
+						value={query}
+						onChange={(e) => {
+							setQuery(e.target.value);
+							setSuggestionsOpen(e.target.value.trim().length > 0);
+						}}
+						onFocus={() => setSuggestionsOpen(query.trim().length > 0)}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" && suggestions.length > 0) {
+								e.preventDefault();
+								addMap(suggestions[0].id);
+							}
+							if (e.key === "Escape" && suggestionsOpen) {
+								e.stopPropagation();
+								setSuggestionsOpen(false);
+							}
+						}}
+						autoFocus
+					/>
+					<ol
+						className="search-results"
+						hidden={!suggestionsOpen || suggestions.length === 0}
+						style={{ top: "100%", left: 0, right: 0, zIndex: 10 }}
+					>
+						{suggestions.map((m) => (
+							<li key={m.id}>
+								<button className="search-result" onClick={() => addMap(m.id)}>
+									<strong>{m.name || "(unnamed)"}</strong>
+									{m.folder && <span className="search-result__context"> · {m.folder}</span>}
 								</button>
 							</li>
-						);
-					})}
-					{maps !== null && rows.length === 0 && (
-						<li className="copy-to-map-modal__empty">No other maps.</li>
-					)}
-				</ul>
+						))}
+					</ol>
+				</div>
+				</div>
 			</DialogContent>
 		</Dialog>
 	);

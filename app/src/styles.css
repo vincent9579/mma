@@ -3840,16 +3840,22 @@ summary.button {
 	grid-column: 1 / -1;
 	margin: 0;
 	font-size: 0.85em;
-	color: #ffffff99;
+	color: #888;
+}
+/* The add-row suggestion dropdown must overlay the dialog edge, not become
+   scrollable content inside it. Row overflow is handled by the list itself. */
+.copy-to-map-modal-host .modal__content {
+	overflow: visible;
 }
 .copy-to-map-modal {
 	display: grid;
-	grid-gap: 0.5rem;
+	grid-gap: 0.75rem;
+	min-width: 26rem;
 }
 .copy-to-map-modal__hint {
 	margin: 0;
 	font-size: 0.85em;
-	color: #ffffff99;
+	color: #888;
 }
 .copy-to-map-modal__list {
 	margin: 0;
@@ -3865,6 +3871,7 @@ summary.button {
 	grid-template-columns: 1fr 9rem auto;
 	grid-gap: 0.25rem;
 	align-items: center;
+	padding: 0.25rem 0;
 }
 .copy-to-map-modal__name {
 	overflow: hidden;
@@ -3872,10 +3879,22 @@ summary.button {
 	white-space: nowrap;
 }
 .copy-to-map-modal__name small {
-	color: #ffffff80;
+	color: #888;
 }
-.copy-to-map-modal__empty {
-	color: #ffffff80;
+.copy-to-map-modal__add {
+	position: relative;
+	padding-bottom: 0.5rem;
+}
+.copy-to-map-modal__add .input,
+.copy-to-map-modal__add .search-results {
+	width: 100%;
+	box-sizing: border-box;
+}
+.copy-to-map-modal__add .search-results {
+	box-shadow: var(--shadow-1);
+}
+.copy-to-map-modal__add .search-result {
+	color: #000;
 }
 .edit-tag-modal__color {
 	grid-gap: 0.25rem;
