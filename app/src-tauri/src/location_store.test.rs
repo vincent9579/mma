@@ -1861,3 +1861,126 @@ fn selection_cell_segment_adapts_format() {
     let routed = selection_cell_indices(&render, &sparse, Some(&other_cell_only));
     assert!(routed[0].is_empty(), "out-of-scope cells must not be routed");
 }
+
+// -----------------------------------------------------------------------
+// next_id vs undo/redo resurrection (duplicate-id bake panic)
+// -----------------------------------------------------------------------
+
+#[test]
+fn history_max_id_spans_both_stacks_and_both_sides() {
+    let undo = vec![
+        EditEntry { created: vec![loc(3, 0.0, 0.0)], removed: vec![] },
+        EditEntry { created: vec![], removed: vec![loc(112, 0.0, 0.0)] },
+    ];
+    let redo = vec![EditEntry { created: vec![loc(7, 0.0, 0.0)], removed: vec![loc(9, 0.0, 0.0)] }];
+    assert_eq!(history_max_id(&undo, &redo), 112);
+    assert_eq!(history_max_id(&[], &[]), 0);
+}
+
+// Simulate "close map" (store_close_map + save_edit_history_inner) and "reopen"
+// (store_open_map's delta/history load + next_id seeding) at the Store level,
+// using the same serialization roundtrips the app uses.
+fn close_and_reopen(store: &Store) -> Store {
+    let delta_bytes = overlay_delta_bytes(store).unwrap();
+    let undo_bytes = rmp_serde::to_vec_named(&store.edits.undo).unwrap();
+    let redo_bytes = rmp_serde::to_vec_named(&store.edits.redo).unwrap();
+
+    let delta: DeltaOverlay = rmp_serde::from_slice(&delta_bytes).unwrap();
+    let undo: Vec<EditEntry> = rmp_serde::from_slice(&undo_bytes).unwrap();
+    let redo: Vec<EditEntry> = rmp_serde::from_slice(&redo_bytes).unwrap();
+
+    let mut reopened = Store::new();
+    reopened.map_id = store.map_id.clone();
+    reopened.batch = Some(empty_batch());
+    reopened.overlay.dead = delta.dead_ids.into_iter().collect();
+    for p in delta.patches { reopened.overlay.patches.insert(p.id, p); }
+    reopened.overlay.adds = delta.adds;
+    reopened.overlay.dirty = true;
+    reopened.next_id = seed_next_id(0, &reopened.overlay.adds, &undo, &redo);
+    reopened.alive_count = reopened.overlay.adds.len();
+    reopened.edits.undo = undo;
+    reopened.edits.redo = redo;
+    reopened
+}
+
+// store_add_locations: alloc an id and add, with the same undo entry it records.
+fn click_add(store: &mut Store, lat: f64, lng: f64) -> u32 {
+    let id = store.alloc_id();
+    let l = loc(id, lat, lng);
+    store.push_undo(EditEntry { created: vec![l.clone()], removed: vec![] });
+    store.edits.redo.clear();
+    store.overlay_add(l);
+    id
+}
+
+// store_remove_locations: remove with the same undo entry it records.
+fn delete_loc(store: &mut Store, id: u32) {
+    let l = store.get_loc_by_id(id).unwrap();
+    store.push_undo(EditEntry { created: vec![], removed: vec![l.clone()] });
+    store.edits.redo.clear();
+    store.overlay_remove(std::slice::from_ref(&l));
+}
+
+// store_undo / store_redo replay.
+fn press_undo(store: &mut Store) {
+    let entry = store.edits.undo.pop().unwrap();
+    apply_edit_reverse(store, &entry);
+    store.edits.redo.push(entry);
+}
+
+fn press_redo(store: &mut Store) {
+    let entry = store.edits.redo.pop().unwrap();
+    apply_edit_forward(store, &entry);
+    store.push_undo(entry);
+}
+
+fn assert_bake_sorted(store: &mut Store) {
+    store.bake_overlay();
+    let batch = store.batch.as_ref().unwrap();
+    let ids = col_id(batch);
+    assert!((1..batch.num_rows()).all(|i| ids.value(i - 1) < ids.value(i)),
+        "batch ids strictly sorted after bake");
+}
+
+// Open map -> click new location -> delete it -> close map -> reopen -> undo the
+// delete (resurrects the old id) -> click new location -> commit. Without seeding
+// next_id past the persisted history, the new click re-allocates the resurrected
+// id and bake panics on the strictly-sorted invariant ("oh jeff" corruption).
+#[test]
+fn undo_of_delete_after_reopen_does_not_collide() {
+    let mut store = setup_store_with(&[]);
+    let id = click_add(&mut store, 1.0, 1.0);
+    delete_loc(&mut store, id);
+
+    let mut store = close_and_reopen(&store);
+    assert_eq!(store.next_id, id + 1, "freed id must stay reserved for history replay");
+
+    press_undo(&mut store); // resurrects `id`
+    let new_id = click_add(&mut store, 2.0, 2.0);
+    assert_ne!(new_id, id);
+    assert_eq!(store.alive_count, 2);
+    assert_bake_sorted(&mut store);
+}
+
+// Same via redo: click -> undo the add -> close -> reopen -> redo (resurrects the
+// old id) -> click -> commit.
+#[test]
+fn redo_of_add_after_reopen_does_not_collide() {
+    let mut store = setup_store_with(&[]);
+    let id = click_add(&mut store, 1.0, 1.0);
+    press_undo(&mut store);
+
+    let mut store = close_and_reopen(&store);
+    press_redo(&mut store); // resurrects `id`
+    let new_id = click_add(&mut store, 2.0, 2.0);
+    assert_ne!(new_id, id);
+    assert_eq!(store.alive_count, 2);
+    assert_bake_sorted(&mut store);
+}
+
+#[test]
+#[should_panic(expected = "duplicate id 112")]
+fn overlay_add_duplicate_id_asserts_in_debug() {
+    let mut store = setup_store_with(&[loc(112, 1.0, 1.0)]);
+    store.overlay_add(loc(112, 9.0, 9.0));
+}

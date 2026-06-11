@@ -883,6 +883,10 @@ impl Store {
             // monotonic new id so this inserts at the end (cheap, like push); undo re-adds an old id,
             // which a plain push would append out of order — partition_point puts it in its sorted slot.
             let pos = self.overlay.adds.partition_point(|l| l.id < loc.id);
+            debug_assert!(
+                self.overlay.adds.get(pos).is_none_or(|l| l.id != loc.id),
+                "overlay_add duplicate id {} — next_id allocation bug", loc.id
+            );
             self.overlay.adds.insert(pos, loc);
         }
     }
@@ -1303,7 +1307,6 @@ pub async fn store_open_map(
     let mut store = Store::new();
     store.bump();
     store.map_id = Some(map_id.clone());
-    store.next_id = max_id + 1;
     store.batch = Some(batch);
     store.mmap_handle = mmap_handle;
 
@@ -1311,11 +1314,10 @@ pub async fn store_open_map(
     if let Some(d) = delta {
         store.overlay.dead = d.dead_ids.into_iter().collect();
         for p in d.patches { store.overlay.patches.insert(p.id, p); }
-        let max_add = d.adds.iter().map(|l| l.id).max().unwrap_or(0);
         store.overlay.adds = d.adds; // persisted in sorted-id order
         store.overlay.dirty = true;
-        store.next_id = store.next_id.max(max_add + 1);
     }
+    store.next_id = seed_next_id(max_id, &store.overlay.adds, &undo, &redo);
 
     let (alive, tag_counts) = store.count_tags();
     store.alive_count = alive;
@@ -1930,6 +1932,25 @@ fn save_edit_history_inner(app: &tauri::AppHandle, map_id: &str, undo: &[EditEnt
         rusqlite::params![map_id, undo_bytes, redo_bytes],
     )?;
     Ok(())
+}
+
+/// Highest location id referenced anywhere in the undo/redo stacks. Used to seed
+/// `next_id` on map open so undo/redo replay can never collide with a fresh allocation.
+pub(crate) fn history_max_id(undo: &[EditEntry], redo: &[EditEntry]) -> u32 {
+    undo.iter().chain(redo.iter())
+        .flat_map(|e| e.created.iter().chain(e.removed.iter()))
+        .map(|l| l.id)
+        .max()
+        .unwrap_or(0)
+}
+
+/// Open-time `next_id` seed. Must exceed every id the system can re-materialize:
+/// base rows, uncommitted overlay adds, and ids replayable from persisted undo/redo
+/// (replay resurrects locations with their original ids; re-allocating one would
+/// create a duplicate and break the strictly-sorted bake invariant).
+pub(crate) fn seed_next_id(base_max: u32, adds: &[Location], undo: &[EditEntry], redo: &[EditEntry]) -> u32 {
+    let max_add = adds.iter().map(|l| l.id).max().unwrap_or(0);
+    base_max.max(max_add).max(history_max_id(undo, redo)) + 1
 }
 
 /// Load undo/redo stacks from SQLite. Returns empty stacks if no history exists.
