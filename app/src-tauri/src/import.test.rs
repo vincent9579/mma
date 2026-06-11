@@ -164,3 +164,28 @@ fn parsed_tags_sorted_by_order() {
     assert_eq!(parsed.tags[2].name, "Alpha");
     assert_eq!(parsed.tags[2].order, Some(2));
 }
+
+#[test]
+fn staged_location_fetch_by_index() {
+    let json = br#"{"name":"Pasted URLs","customCoordinates":[
+        {"lat":10.5,"lng":20.5,"heading":90,"panoId":"abcdefghijklmnopqrstuv"},
+        {"lat":-3.25,"lng":7.75}
+    ]}"#;
+    let mut buf = json.to_vec();
+    let parsed = parse_single_json_mut(&mut buf);
+    *EDITOR_IMPORT_CACHE.lock().unwrap() = Some(parsed);
+
+    let first = store_import_staged_location(0).unwrap();
+    assert_eq!(first.id, 0); // staged sentinel id
+    assert_eq!(first.lat, 10.5);
+    assert_eq!(first.heading, 90.0);
+    assert_eq!(first.pano_id.as_deref(), Some("abcdefghijklmnopqrstuv"));
+
+    let second = store_import_staged_location(1).unwrap();
+    assert_eq!(second.lng, 7.75);
+
+    assert!(store_import_staged_location(2).is_err());
+
+    *EDITOR_IMPORT_CACHE.lock().unwrap() = None;
+    assert!(store_import_staged_location(0).is_err());
+}

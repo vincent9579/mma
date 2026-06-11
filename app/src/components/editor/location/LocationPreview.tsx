@@ -8,7 +8,7 @@ import {
 	useMemo,
 	useSyncExternalStore,
 } from "react";
-import { LocationFlag, createLocation } from "@/types";
+import { LocationFlag, createLocation, isVirtualLocation } from "@/types";
 import type { Location } from "@/types";
 import type { Tag } from "@/bindings.gen";
 import {
@@ -744,6 +744,7 @@ export function LocationPreview() {
 
 function LocationPreviewInner() {
 	const location = useActiveLocation();
+	const isStaged = location != null && isVirtualLocation(location);
 	const map = useCurrentMap();
 	const reviewSession = useReviewSession();
 	const isReviewMode = reviewSession !== null;
@@ -853,11 +854,13 @@ function LocationPreviewInner() {
 				});
 				if (pos) {
 					pushTrail(pos.lng(), pos.lat());
+					const activeForSeen = getActiveLocation();
 					seenPanoChanged(
 						panoId,
 						pos.lat(),
 						pos.lng(),
-						getActiveLocation()?.id ?? null,
+						// virtual locations have no persistent id to record against
+						activeForSeen && !isVirtualLocation(activeForSeen) ? activeForSeen.id : null,
 						(getActiveLocation()?.extra?.countryCode as string) ??
 							geoRef.current?.countryCode ??
 							null,
@@ -984,6 +987,7 @@ function LocationPreviewInner() {
 	const handleDateChange = useCallback(
 		(panoId: string | null) => {
 			if (!singletonPano || !location) return;
+			// updateLocation no-ops for staged (virtual) locations at the store level.
 			if (panoId == null) {
 				updateLocation(location, { flags: location.flags & ~LocationFlag.LoadAsPanoId });
 				if (location.panoId) singletonPano.setPano(location.panoId);
@@ -997,6 +1001,8 @@ function LocationPreviewInner() {
 
 	const handleSave = useCallback(() => {
 		if (!location || !singletonPano) return;
+		// Staged (virtual) location: updateLocation no-ops, cursorId can't match a
+		// negative id, so this falls through to setActiveLocation(null) = close.
 		const pov = singletonPano.getPov();
 		const zoom = singletonPano.getZoom();
 		const pano = singletonPano.getPano();
@@ -1035,7 +1041,7 @@ function LocationPreviewInner() {
 
 	const handleDelete = useCallback(() => {
 		if (!location) return;
-
+		// Staged: removeLocations treats virtual ids as "close the preview".
 		if (isReviewMode && reviewSession?.cursorId === location.id) {
 			reviewDelete();
 		} else {
@@ -1221,17 +1227,20 @@ function LocationPreviewInner() {
 	// Per-map bindings: registered only while a location is open, so the keys
 	// fall through to global hotkeys otherwise. Soft-deleted (invisible) tags
 	// keep their binding for undo symmetry; declining lets the key fall through.
+	// Staged (virtual) locations are read-only: both actions decline.
 	const hasLocation = location != null;
 	useEffect(() => {
 		if (!hasLocation) return;
 		const unregisterApply = registerMapKeyActionHandler("applyTag", ({ tagId }) => {
+			const active = getActiveLocation();
+			if (!active || isVirtualLocation(active)) return false;
 			if (!getVisibleTags().some((t) => t.id === tagId)) return false;
 			const cur = pendingTagsRef.current;
 			setPendingTags(cur.includes(tagId) ? cur.filter((t) => t !== tagId) : [...cur, tagId]);
 		});
 		const unregisterCopy = registerMapKeyActionHandler("copyToMap", ({ mapId }) => {
 			const loc = getActiveLocation();
-			if (!loc) return false;
+			if (!loc || isVirtualLocation(loc)) return false;
 			const container = fullscreenContainerRef.current ?? panoContainerRef.current?.parentElement;
 			const t0 = performance.now();
 			cmd
@@ -1545,6 +1554,13 @@ function LocationPreviewInner() {
 						</button>
 					</div>
 					<div className="location-preview__tags">
+						{isStaged ? (
+							<p>
+								This location is still being imported and cannot be modified. Complete the
+								import before making changes.
+							</p>
+						) : (
+						<>
 						<ul className="tag-list">
 							{locTags.map((t) => (
 								<li
@@ -1608,6 +1624,8 @@ function LocationPreviewInner() {
 									))}
 								</ol>
 							</div>
+						)}
+						</>
 						)}
 					</div>
 					<PluginLocationPanels />

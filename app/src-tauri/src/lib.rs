@@ -395,6 +395,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             import::bulk_import_confirm,
             import::store_import_preview,
             import::store_import_paste_preview,
+            import::store_import_staged_location,
             import::store_import_file,
             export::store_export_json,
             export::store_export_csv,

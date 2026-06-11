@@ -248,6 +248,11 @@ export const commands = {
 	 */
 	storeImportPastePreview: (text: string) => typedError<EditorImportPreview, string>(__TAURI_INVOKE("store_import_paste_preview", { text })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,bounds:v.data.bounds==null?v.data.bounds:v.data.bounds.map(i=>i)}) } : v) as typeof v)),
 	/**
+	 *  Fetch one staged (not yet imported) location by its preview index, for read-only
+	 *  preview in the editor. Indexes follow the preview positions order.
+	 */
+	storeImportStagedLocation: (index: number) => typedError<Location_Serialize, string>(__TAURI_INVOKE("store_import_staged_location", { index })),
+	/**
 	 *  Commit a previously previewed editor import, optionally dropping fields and/or
 	 *  applying a bulk tag to every imported location. Consumes the cached parse from
 	 *  `store_import_preview`/`store_import_paste_preview`. Fields in `dropped_fields`

@@ -769,6 +769,16 @@ fn build_preview(parsed: ParsedMap) -> AppResult<EditorImportPreview> {
 
 static EDITOR_IMPORT_CACHE: Mutex<Option<ParsedMap>> = Mutex::new(None);
 
+/// Fetch one staged (not yet imported) location by its preview index, for read-only
+/// preview in the editor. Indexes follow the preview positions order.
+#[tauri::command]
+#[specta::specta]
+pub fn store_import_staged_location(index: u32) -> AppResult<Location> {
+    let cache = EDITOR_IMPORT_CACHE.lock().unwrap();
+    let parsed = cache.as_ref().ok_or("no staged import")?;
+    parsed.locations.get(index as usize).cloned().ok_or_else(|| "staged index out of range".into())
+}
+
 /// Parse a file and return field-level statistics + preview positions for the editor
 /// import sidebar. Caches the parse result for `store_import_file` to consume on commit.
 #[tauri::command]

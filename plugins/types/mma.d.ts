@@ -1510,6 +1510,7 @@ declare const mma: {
 		bulkImportConfirm: (path: string, selectedIndices: number[]) => Promise<ImportedMapInfo[]>;
 		storeImportPreview: (path: string) => Promise<EditorImportPreview>;
 		storeImportPastePreview: (text: string) => Promise<EditorImportPreview>;
+		storeImportStagedLocation: (index: number) => Promise<Location_Serialize>;
 		storeImportFile: (droppedFields: string[], tagName: string | null) => Promise<EditorImportResult_Serialize>;
 		storeExportJson: (opts: ExportOpts) => Promise<string>;
 		storeExportCsv: (scope: number[] | null) => Promise<string>;
@@ -1647,6 +1648,7 @@ declare const mma: {
 	getTagCounts(): Record<number, number>;
 	refreshAfterMutation(): void;
 	getVisibleTags(): Tag[];
+	getActiveStagedIndex(): number | null;
 	getImportPreviewPositions(): Float32Array<ArrayBuffer>;
 	getCommitDiffPreview(): CommitDiffPreview | null;
 	hasCommitDiff(): boolean;
@@ -1688,7 +1690,7 @@ declare const mma: {
 		hideInDelta?: boolean;
 	}): Promise<void>;
 	duplicateLocation(locId: number): Promise<number | null>;
-	updateLocationNoUndo(id: number, patch: Partial<Location$1>): Promise<MutationResult_Serialize>;
+	updateLocationNoUndo(id: number, patch: Partial<Location$1>): Promise<null> | Promise<MutationResult_Serialize>;
 	removeLocations(ids: ReadonlyIdSet): Promise<void>;
 	updateLocation(loc: Location$1, patch: Partial<Location$1>): Promise<void>;
 	batchUpdateLocations(updates: {
@@ -1737,6 +1739,7 @@ declare const mma: {
 	removeChildFromSelection(parentKey: string, childKey: string): void;
 	toggleTagSelections(tagIds: number[]): void;
 	useSelectedTagIds(): Set<number>;
+	openStagedLocation(index: number): Promise<void>;
 	setActiveLocation(id: number | null, checkDuplicates?: boolean): Promise<void>;
 	openDuplicateLocation(loc: Location$1): void;
 	removeDuplicate(id: number): void;
