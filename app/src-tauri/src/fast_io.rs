@@ -36,7 +36,11 @@ pub(crate) fn open_db(app: &tauri::AppHandle) -> AppResult<Connection> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
     }
-    Connection::open(path).map_err(AppError::from)
+    let conn = Connection::open(path)?;
+    // Default busy timeout is 0: any write-lock contention (second window, lingering
+    // process) fails instantly with "database is locked" instead of waiting.
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    Ok(conn)
 }
 
 /// Apply all pending schema migrations from [`MIGRATIONS`] in order.

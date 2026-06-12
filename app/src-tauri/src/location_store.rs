@@ -1385,7 +1385,11 @@ pub fn store_close_map(
     };
     let still_open = mgr.window_map.values().any(|v| v == &map_id);
     if still_open {
+        log::debug!("[close_map] {map_id} still open in another window, skipping flush");
         return Ok(());
+    }
+    if mgr.stores.get(&map_id).is_none() {
+        log::debug!("[close_map] {map_id} has no store, nothing to flush");
     }
     if let Some(store) = mgr.stores.remove(&map_id) {
         if store.overlay.dirty {
@@ -1406,6 +1410,7 @@ pub fn store_close_map(
             write_tags_json(&conn, &map_id, &store.tags.all)?;
         }
         save_edit_history_inner(&app, &map_id, &store.edits.undo, &store.edits.redo)?;
+        log::debug!("[close_map] {map_id} flushed: undo={} redo={}", store.edits.undo.len(), store.edits.redo.len());
     }
     Ok(())
 }
@@ -2193,11 +2198,21 @@ fn load_edit_history_inner(app: &tauri::AppHandle, map_id: &str) -> AppResult<(V
     );
     match result {
         Ok((undo_bytes, redo_bytes)) => {
-            let undo: Vec<EditEntry> = rmp_serde::from_slice(&undo_bytes).unwrap_or_default();
-            let redo: Vec<EditEntry> = rmp_serde::from_slice(&redo_bytes).unwrap_or_default();
+            let undo: Vec<EditEntry> = rmp_serde::from_slice(&undo_bytes).unwrap_or_else(|e| {
+                log::warn!("[load_edit_history] {map_id} undo stack deserialize failed: {e}");
+                Vec::new()
+            });
+            let redo: Vec<EditEntry> = rmp_serde::from_slice(&redo_bytes).unwrap_or_else(|e| {
+                log::warn!("[load_edit_history] {map_id} redo stack deserialize failed: {e}");
+                Vec::new()
+            });
+            log::debug!("[load_edit_history] {map_id} loaded: undo={} redo={}", undo.len(), redo.len());
             Ok((undo, redo))
         }
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok((Vec::new(), Vec::new())),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            log::debug!("[load_edit_history] {map_id} no row");
+            Ok((Vec::new(), Vec::new()))
+        }
         Err(e) => Err(e.into()),
     }
 }
