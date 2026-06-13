@@ -1085,10 +1085,8 @@ summary.button {
 	grid-area: label;
 }
 .updates__container {
-	max-height: 480px;
 	padding-left: 3px;
 	list-style-type: none;
-	overflow-y: auto;
 }
 .updates__item {
 	--item-color: #ccc;
@@ -1142,6 +1140,60 @@ summary.button {
 	text-align: right;
 	color: #ccc;
 	font-size: 0.875rem;
+}
+.updates__skeleton {
+	max-height: 3.5rem;
+	overflow: hidden;
+	transition:
+		max-height 0.4s ease,
+		opacity 0.25s ease;
+}
+.updates__skeleton--hidden {
+	max-height: 0;
+	opacity: 0;
+}
+.updates__skeleton > span {
+	display: block;
+	height: 0.625rem;
+	border-radius: 3px;
+	margin: 0.5rem 0;
+	background: var(--item-color);
+	opacity: 0.15;
+	animation: updates-skeleton-pulse 1.4s ease-in-out infinite;
+}
+.updates__skeleton > span:nth-child(2) {
+	width: 85%;
+	animation-delay: 0.15s;
+}
+.updates__skeleton > span:nth-child(3) {
+	width: 60%;
+	animation-delay: 0.3s;
+}
+@keyframes updates-skeleton-pulse {
+	50% {
+		opacity: 0.35;
+	}
+}
+.updates__notes {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows 0.5s ease;
+	font-weight: 400;
+}
+.updates__notes--open {
+	grid-template-rows: 1fr;
+}
+.updates__notes > div {
+	overflow: hidden;
+}
+.updates__notes ul {
+	margin: 0;
+	padding-inline-start: 1rem;
+	opacity: 0;
+	transition: opacity 0.4s ease 0.15s;
+}
+.updates__notes--open ul {
+	opacity: 1;
 }
 
 /* Bulk import/export */

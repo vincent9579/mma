@@ -41,6 +41,75 @@ import { fmt, relativeTime, shortDateFmt } from "@/lib/util/format";
 import { useSetting, type MapListField } from "@/store/settings";
 import { toast } from "@/lib/util/toast";
 
+// --- What's new (latest release notes) ---
+
+interface ReleaseNotes {
+	tag: string;
+	notes: string[];
+}
+
+let releaseNotesPromise: Promise<ReleaseNotes | null> | null = null;
+
+function fetchLatestReleaseNotes(): Promise<ReleaseNotes | null> {
+	if (!releaseNotesPromise) {
+		releaseNotesPromise = fetch("https://api.github.com/repos/ccmdi/mma/releases/latest")
+			.then((r) => (r.ok ? r.json() : null))
+			.then((data) => {
+				if (!data?.body) return null;
+				const notes = (data.body as string)
+					.split(/\r?\n/)
+					.filter((l) => l.startsWith("- "))
+					.map((l) => l.slice(2).trim());
+				return notes.length ? { tag: data.tag_name as string, notes } : null;
+			})
+			.catch((e) => {
+				log.warn("Failed to fetch release notes", e);
+				return null;
+			});
+	}
+	return releaseNotesPromise;
+}
+
+function WhatsNew() {
+	const [release, setRelease] = useState<ReleaseNotes | null>(null);
+	const [failed, setFailed] = useState(false);
+
+	useEffect(() => {
+		let alive = true;
+		fetchLatestReleaseNotes().then((r) => {
+			if (!alive) return;
+			if (r) setRelease(r);
+			else setFailed(true);
+		});
+		return () => {
+			alive = false;
+		};
+	}, []);
+
+	if (failed) return null;
+
+	return (
+		<li className="updates__item updates__item--new">
+			<span className="updates__circle" />
+			<time className="updates__time">What's new{release ? ` · ${release.tag}` : ""}</time>
+			<div className={clsx("updates__skeleton", release && "updates__skeleton--hidden")}>
+				<span />
+				<span />
+				<span />
+			</div>
+			<div className={clsx("updates__notes", release && "updates__notes--open")}>
+				<div>
+					<ul>
+						{release?.notes.map((n, i) => (
+							<li key={i}>{n}</li>
+						))}
+					</ul>
+				</div>
+			</div>
+		</li>
+	);
+}
+
 // --- Drag types ---
 
 interface DragItem {
@@ -904,13 +973,12 @@ export function MapList() {
 				</ul>
 			</section>
 			<section className="updates">
-				<h2>Getting Started</h2>
 				<ul className="updates__container">
 					<li className="updates__item updates__item--warning">
 						<span className="updates__circle" />
 						<time className="updates__time">Warning</time>
 						<p>
-							This is a work in progress. Data loss may occur! Report bugs{" "}
+							This is a work in progress. Report bugs{" "}
 							<a target="_blank" href="https://github.com/ccmdi/mma/issues">
 								here
 							</a>
@@ -934,6 +1002,7 @@ export function MapList() {
 							for a guide to every feature.
 						</p>
 					</li>
+					<WhatsNew />
 				</ul>
 			</section>
 
