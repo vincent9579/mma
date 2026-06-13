@@ -77,6 +77,10 @@ export function useLatLngAnchor() {
 	return useSyncExternalStore(aStore.subscribe, aSnap);
 }
 
+export function getLatLngAnchor() {
+	return anchor;
+}
+
 // --- Context menu target ---
 
 export interface ContextMenuTarget {

@@ -33,6 +33,7 @@ import { CellManager } from "@/lib/render/CellManager";
 import {
 	useMeasure,
 	useLatLngAnchor,
+	getLatLngAnchor,
 	useScoreMaxError,
 	openContextMenuLatLng,
 	openContextMenuLocation,
@@ -41,11 +42,13 @@ import { MeasurementBar } from "@/components/primitives/MeasurementBar";
 import { MapContextMenuContent } from "@/components/editor/map/MapContextMenu";
 import {
 	useCurrentMap,
+	getCurrentMap,
 	useMapVersion,
 	useSelectedLocationIds,
 	useSelectedTagIds,
 	useSelections,
 	useActiveLocation,
+	getActiveLocation,
 	toggleManualSelection,
 	selectPolygon,
 	setActiveLocation,
@@ -66,13 +69,11 @@ import { loadOpenSV, google } from "@/lib/sv/opensv";
 import { useTrailVersion, getTrail } from "@/lib/sv/svTrail";
 import {
 	setGoogleMap as setGoogleMapInstance,
-	getGoogleMap as getGoogleMapInstance,
 	tryInterceptClick,
 	tryInterceptDraw,
 } from "@/lib/map/mapState";
-import { useHotkey, parseHotkey, matchesKey, isEditableElement } from "@/lib/hooks/useHotkey";
-import { useBinding, getBinding } from "@/lib/util/hotkeys";
-import { useSettings } from "@/store/settings";
+import { useHotkey } from "@/lib/hooks/useHotkey";
+import { useBinding } from "@/lib/util/hotkeys";
 import { useLocalStorage } from "@/lib/hooks/useLocalStorage";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { PolygonTools } from "@/components/editor/PolygonTools";
@@ -103,138 +104,10 @@ import {
 	type MarkerStyle,
 } from "@/components/editor/map/MapSettingsPanel";
 import type { SvColor, MapTypeKey } from "@/components/editor/map/mapSettingsTypes";
-import { useMapSetting } from "@/components/editor/map/useMapSetting";
-
-const DARK_MODE_STYLES: MapStyle[] = [
-	{ elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-	{ elementType: "geometry.stroke", stylers: [{ color: "#cccccc" }] },
-	{ elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-	{ elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-	{
-		featureType: "administrative.locality",
-		elementType: "labels.text.fill",
-		stylers: [{ color: "#d59563" }],
-	},
-	{
-		featureType: "poi",
-		elementType: "labels.text.fill",
-		stylers: [{ color: "#d59563" }],
-	},
-	{
-		featureType: "poi.park",
-		elementType: "geometry",
-		stylers: [{ color: "#263c3f" }],
-	},
-	{
-		featureType: "poi.park",
-		elementType: "labels.text.fill",
-		stylers: [{ color: "#6b9a76" }],
-	},
-	{
-		featureType: "road",
-		elementType: "geometry",
-		stylers: [{ color: "#38414e" }],
-	},
-	{
-		featureType: "road",
-		elementType: "geometry.stroke",
-		stylers: [{ color: "#212a37" }],
-	},
-	{
-		featureType: "road",
-		elementType: "labels.text.fill",
-		stylers: [{ color: "#9ca5b3" }],
-	},
-	{
-		featureType: "road.highway",
-		elementType: "geometry",
-		stylers: [{ color: "#746855" }],
-	},
-	{
-		featureType: "road.highway",
-		elementType: "geometry.stroke",
-		stylers: [{ color: "#1f2835" }],
-	},
-	{
-		featureType: "road.highway",
-		elementType: "labels.text.fill",
-		stylers: [{ color: "#f3d19c" }],
-	},
-	{
-		featureType: "transit",
-		elementType: "geometry",
-		stylers: [{ color: "#2f3948" }],
-	},
-	{
-		featureType: "transit.station",
-		elementType: "labels.text.fill",
-		stylers: [{ color: "#d59563" }],
-	},
-	{
-		featureType: "water",
-		elementType: "geometry",
-		stylers: [{ color: "#17263c" }],
-	},
-	{
-		featureType: "water",
-		elementType: "labels.text.fill",
-		stylers: [{ color: "#515c6d" }],
-	},
-	{
-		featureType: "water",
-		elementType: "labels.text.stroke",
-		stylers: [{ color: "#17263c" }],
-	},
-];
-
-function waitForTileLoad(el: Element): Promise<void> {
-	return new Promise((resolve) => {
-		google.maps.event.addListenerOnce(el, "load", resolve);
-	});
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- runtime-created class
-let StackedMapType: any = null;
-
-function initStackedMapType() {
-	if (StackedMapType) return;
-	StackedMapType = class extends google.maps.ImageMapType {
-		layers: google.maps.ImageMapType[];
-		constructor(layers: google.maps.ImageMapType[], opts: google.maps.ImageMapTypeOptions) {
-			super({ ...opts, getTileUrl: () => null });
-			this.layers = layers;
-		}
-		getTile(coord: google.maps.Point | null, zoom: number, doc: Document | null) {
-			if (!coord || !doc) return null;
-			const tiles = this.layers.map((l) => l.getTile(coord, zoom, doc)!);
-			const div = doc.createElement("div");
-			div.append(...tiles.filter(Boolean));
-			Promise.all(tiles.filter((t): t is Element => t != null).map(waitForTileLoad)).then(() => {
-				google.maps.event.trigger(div, "load");
-			});
-			return div;
-		}
-		releaseTile(el: HTMLElement) {
-			let i = 0;
-			for (let j = 0; j < el.children.length; j++) {
-				const child = el.children[j];
-				if (child instanceof HTMLElement) {
-					this.layers[i]?.releaseTile(child);
-					i++;
-				}
-			}
-		}
-	};
-}
-
-function createCompositeMapType(layers: google.maps.ImageMapType[]): google.maps.ImageMapType {
-	initStackedMapType();
-	return new StackedMapType(layers, {
-		tileSize: new google.maps.Size(256, 256),
-		minZoom: 0,
-		maxZoom: 20,
-	});
-}
+import { DARK_MODE_STYLES } from "@/lib/geo/mapStyles";
+import { createCompositeMapType } from "@/lib/geo/stackedMapType";
+import { FpsCounter } from "@/components/editor/map/FpsCounter";
+import { useMapKeyboardNav } from "@/lib/hooks/useMapKeyboardNav";
 
 const LOCATION_LAYER_ID = "locations";
 const isLocationLayer = (id?: string) =>
@@ -284,45 +157,6 @@ const DEFAULT_PREFS: MapEmbedPrefs = {
 	selectOnly: false,
 };
 
-function FpsCounter() {
-	const ref = useRef<HTMLDivElement>(null);
-	useEffect(() => {
-		let frames = 0;
-		let last = performance.now();
-		let rafId = 0;
-		const tick = () => {
-			frames++;
-			const now = performance.now();
-			if (now - last >= 1000) {
-				if (ref.current) ref.current.textContent = `${frames} fps`;
-				frames = 0;
-				last = now;
-			}
-			rafId = requestAnimationFrame(tick);
-		};
-		rafId = requestAnimationFrame(tick);
-		return () => cancelAnimationFrame(rafId);
-	}, []);
-	return (
-		<div
-			ref={ref}
-			style={{
-				position: "absolute",
-				top: 8,
-				right: 8,
-				zIndex: 999,
-				background: "rgba(0,0,0,0.7)",
-				color: "#0f0",
-				padding: "2px 6px",
-				fontSize: 12,
-				fontFamily: "monospace",
-				borderRadius: 3,
-				pointerEvents: "none",
-			}}
-		/>
-	);
-}
-
 export function MapEmbed() {
 	const map = useCurrentMap();
 	const mapVer = useMapVersion();
@@ -339,26 +173,9 @@ export function MapEmbed() {
 	const [renderTick, setRenderTick] = useState(0);
 	const gMapRef = useRef<google.maps.Map>(null);
 	const overlayRef = useRef<GoogleMapsOverlay | null>(null);
-	const selectedRef = useRef(selected);
-	selectedRef.current = selected;
-	const selectedTagsRef = useRef(selectedTags);
-	selectedTagsRef.current = selectedTags;
-	const activeLocRef = useRef(activeLocation);
-	activeLocRef.current = activeLocation;
 	const prevActiveRef = useRef<number | null>(null);
-	const mapDataRef = useRef(map);
-	mapDataRef.current = map;
 
 	const gRef = useRef<Google>(null);
-	const svSettingsRef = useRef({
-		preferOfficial: false,
-		onlyOfficial: false,
-		pointAlongRoad: true,
-		preferDirection: null as string | null,
-		defaultPanoId: false,
-		preferHigherQuality: false,
-		minRadius: undefined as number | undefined,
-	});
 	const [prefs, setPrefs] = useLocalStorage<MapEmbedPrefs>("mapEmbedPrefs", DEFAULT_PREFS);
 	const pref =
 		<K extends keyof MapEmbedPrefs>(k: K) =>
@@ -400,6 +217,8 @@ export function MapEmbed() {
 	const setShowPerfectScoreCircle = pref("showPerfectScoreCircle");
 	const setShowPreviews = pref("showPreviews");
 	const setSelectOnly = pref("selectOnly");
+	// The one genuinely-local mirror: selectOnly lives in component prefs state
+	// (no store getter), but handleClick must read the live value.
 	const selectOnlyRef = useRef(selectOnly);
 	selectOnlyRef.current = selectOnly;
 	const coordDisplayRef = useRef<HTMLSpanElement>(null);
@@ -408,13 +227,6 @@ export function MapEmbed() {
 	const activeLocationColor = useSetting("activeLocationColor");
 	const importPreviewColor = useSetting("importPreviewColor");
 
-	const [pointAlongRoad] = useMapSetting("pointAlongRoad");
-	const [preferDirection] = useMapSetting("preferDirection");
-	const [preferOfficial] = useMapSetting("preferOfficial");
-	const [onlyOfficial] = useMapSetting("onlyOfficial");
-	const [preferHigherQuality] = useMapSetting("preferHigherQuality");
-	const [defaultPanoId] = useMapSetting("defaultPanoId");
-	const [searchRadius] = useMapSetting("searchRadius");
 	const [customStyles, setCustomStyles] = useState<{ name: string; style: MapStyle[] }[]>(() => {
 		try {
 			return JSON.parse(localStorage.getItem("mma_custom_styles") ?? "[]");
@@ -435,17 +247,6 @@ export function MapEmbed() {
 	const contextTriggerRef = useRef<HTMLSpanElement>(null);
 	const { isMeasuring } = useMeasure();
 	const latLngAnchor = useLatLngAnchor();
-	const latLngAnchorRef = useRef(latLngAnchor);
-	latLngAnchorRef.current = latLngAnchor;
-	svSettingsRef.current = {
-		preferOfficial,
-		onlyOfficial,
-		pointAlongRoad,
-		preferDirection,
-		defaultPanoId,
-		preferHigherQuality,
-		minRadius: searchRadius ?? undefined,
-	};
 
 	// Earcut tessellation of selection polygons is expensive and runs on every
 	// buildLayers call if the data reference changes. Cache the normalized fill/stroke
@@ -456,7 +257,7 @@ export function MapEmbed() {
 	);
 
 	const buildLayers = useCallback(() => {
-		const m = mapDataRef.current;
+		const m = getCurrentMap();
 		if (!m) {
 			return [];
 		}
@@ -530,7 +331,7 @@ export function MapEmbed() {
 		}
 
 		const cm = cellMgrRef.current;
-		const activeId = activeLocRef.current?.id ?? null;
+		const activeId = getActiveLocation()?.id ?? null;
 		// Sync bridge: restore old active's visibility while Rust's state catches up.
 		// store_set_active keeps Rust in sync (fire-and-forget), no full re-render.
 		if (prevActiveRef.current != null && prevActiveRef.current !== activeId) {
@@ -647,7 +448,7 @@ export function MapEmbed() {
 						radiusUnits: "pixels",
 						radiusMinPixels: 3,
 						// Selection overlay is drawn on top of the cell markers, so it must also be pickable on
-						// top — otherwise clicks fall through to the cell layer where selected markers have no
+						// top ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â otherwise clicks fall through to the cell layer where selected markers have no
 						// z-priority, and an overlapping neighbor gets picked instead of the marker on top.
 						pickable: true,
 						updateTriggers: {
@@ -701,8 +502,8 @@ export function MapEmbed() {
 			}
 		}
 
-		if (activeLocRef.current && cm.totalCount > 0) {
-			const activeLoc = activeLocRef.current;
+		const activeLoc = getActiveLocation();
+		if (activeLoc && cm.totalCount > 0) {
 			const activeColor: [number, number, number, number] = [
 				activeLocationColor.r,
 				activeLocationColor.g,
@@ -753,8 +554,9 @@ export function MapEmbed() {
 			}
 		}
 
-		if (showPerfectScoreCircle && activeLocRef.current && cm.totalCount > 0) {
-			const loc = activeLocRef.current;
+		const scoreLoc = getActiveLocation();
+		if (showPerfectScoreCircle && scoreLoc && cm.totalCount > 0) {
+			const loc = scoreLoc;
 			const trail = getTrail();
 			const last = trail.length ? trail[trail.length - 1] : null;
 			const center = last ? { lng: last[0], lat: last[1] } : { lat: loc.lat, lng: loc.lng };
@@ -792,7 +594,7 @@ export function MapEmbed() {
 			);
 		}
 
-		const anchor = latLngAnchorRef.current;
+		const anchor = getLatLngAnchor();
 		if (anchor) {
 			layers.push(
 				new LineLayer({
@@ -988,7 +790,17 @@ export function MapEmbed() {
 				if (!g) return;
 				const currentZoom = gMapRef.current?.getZoom() ?? 2;
 				const t = trace("add");
-				const loc = await lookupStreetView(lat, lng, currentZoom, svSettingsRef.current);
+				// Rust materializes complete per-map settings whenever a map is open.
+				const ms = getCurrentMap()?.meta.settings;
+				const loc = await lookupStreetView(lat, lng, currentZoom, {
+					preferOfficial: ms?.preferOfficial,
+					onlyOfficial: ms?.onlyOfficial,
+					pointAlongRoad: ms?.pointAlongRoad,
+					preferDirection: ms?.preferDirection,
+					defaultPanoId: ms?.defaultPanoId,
+					preferHigherQuality: ms?.preferHigherQuality,
+					minRadius: ms?.searchRadius ?? undefined,
+				});
 				if (!loc) {
 					if (containerRef.current) {
 						showToast(containerRef.current, "No coverage found at this location.");
@@ -1240,7 +1052,7 @@ export function MapEmbed() {
 				gMapRef.current.addListener("mousemove", (e: google.maps.MapMouseEvent) => {
 					if (e.latLng) {
 						if (coordDisplayRef.current) {
-							coordDisplayRef.current.textContent = `${e.latLng.lat().toFixed(6)}° ${e.latLng.lng().toFixed(6)}°`;
+							coordDisplayRef.current.textContent = `${e.latLng.lat().toFixed(6)}Ãƒâ€šÃ‚Â° ${e.latLng.lng().toFixed(6)}Ãƒâ€šÃ‚Â°`;
 						}
 					}
 				});
@@ -1317,7 +1129,7 @@ export function MapEmbed() {
 	const [fullResetCounter, setFullResetCounter] = useState(0);
 
 	// Fetch render buffer from Rust ONLY when data changes (not on viewport pan).
-	// deck.gl handles camera transforms on the GPU — cached buffer stays valid during pan.
+	// deck.gl handles camera transforms on the GPU ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â cached buffer stays valid during pan.
 	useEffect(() => {
 		if (!mapReady) {
 			cellMgrRef.current.clear();
@@ -1371,7 +1183,7 @@ export function MapEmbed() {
 			const t = trace("delta", { summary: true });
 			const cm = cellMgrRef.current;
 			const affected = cm.applyDelta(delta);
-			const aid = activeLocRef.current?.id ?? null;
+			const aid = getActiveLocation()?.id ?? null;
 			if (aid != null) {
 				for (const cb of cm.cells.values()) {
 					const idx = cb.idToIndex.get(aid);
@@ -1563,16 +1375,7 @@ export function MapEmbed() {
 
 	const showFps = useSetting("showFps");
 
-	const mapNavRef = useRef({
-		held: new Set<string>(),
-		zoom: null as number | null,
-		rafId: 0,
-		alt: false,
-		lastTime: 0,
-	});
-	const appSettings = useSettings();
-	const mapNavSettingsRef = useRef(appSettings);
-	mapNavSettingsRef.current = appSettings;
+	useMapKeyboardNav();
 
 	useHotkey(useBinding("mapZoomReset"), () => {
 		const gm = gMapRef.current;
@@ -1606,117 +1409,7 @@ export function MapEmbed() {
 		});
 	});
 
-	useEffect(() => {
-		const nav = mapNavRef.current;
-		const actions = ["panLeft", "panRight", "panUp", "panDown", "mapZoomIn", "mapZoomOut"] as const;
 
-		function tick() {
-			const map = getGoogleMapInstance();
-			if (!map || nav.held.size === 0) {
-				nav.rafId = 0;
-				nav.lastTime = 0;
-				return;
-			}
-
-			const now = performance.now();
-			const dt = nav.lastTime ? (now - nav.lastTime) / 16.667 : 1;
-			nav.lastTime = now;
-
-			const proj = map.getProjection();
-			const center = map.getCenter();
-			if (!proj || !center) {
-				nav.rafId = 0;
-				nav.lastTime = 0;
-				return;
-			}
-
-			if (nav.zoom === null) nav.zoom = map.getZoom() ?? 2;
-
-			const s = mapNavSettingsRef.current;
-			const slow = nav.alt ? s.slowModifier : 1;
-			let dx = 0,
-				dy = 0;
-			if (nav.held.has("panLeft")) dx -= (s.mapPanSpeed * dt) / slow;
-			if (nav.held.has("panRight")) dx += (s.mapPanSpeed * dt) / slow;
-			if (nav.held.has("panUp")) dy -= (s.mapPanSpeed * dt) / slow;
-			if (nav.held.has("panDown")) dy += (s.mapPanSpeed * dt) / slow;
-
-			const zoomStep = (0.02 * dt) / slow;
-			if (nav.held.has("mapZoomIn")) nav.zoom += zoomStep;
-			if (nav.held.has("mapZoomOut")) nav.zoom = Math.max(1, nav.zoom - zoomStep);
-
-			const scale = Math.pow(2, nav.zoom);
-			const worldPoint = proj.fromLatLngToPoint(center)!;
-			worldPoint.x += dx / scale;
-			worldPoint.y += dy / scale;
-
-			map.moveCamera({
-				center: proj.fromPointToLatLng(worldPoint)!,
-				zoom: nav.zoom,
-			});
-			nav.rafId = requestAnimationFrame(tick);
-		}
-
-		const bindings = actions.map((a) => ({
-			action: a,
-			parsed: parseHotkey(getBinding(a)),
-		}));
-
-		function onKeyDown(e: KeyboardEvent) {
-			nav.alt = e.altKey;
-			if (e.key === "Alt") {
-				e.preventDefault();
-				return;
-			}
-			if (e.defaultPrevented || e.repeat) return;
-			if (isEditableElement(e.target)) return;
-			for (const { action, parsed } of bindings) {
-				for (const alt of parsed) {
-					if (alt.length === 1 && matchesKey(e, alt[0], { ignoreAlt: true })) {
-						nav.held.add(action);
-						if (!nav.rafId) nav.rafId = requestAnimationFrame(tick);
-						return;
-					}
-				}
-			}
-		}
-
-		function onKeyUp(e: KeyboardEvent) {
-			nav.alt = e.altKey;
-			if (nav.held.size === 0) return;
-			const key = e.key.toLowerCase();
-			for (const { action, parsed } of bindings) {
-				for (const alt of parsed) {
-					if (alt.length === 1 && alt[0].key === key) {
-						nav.held.delete(action);
-					}
-				}
-			}
-		}
-
-		const gmap = getGoogleMapInstance();
-		let zoomListener: google.maps.MapsEventListener | undefined;
-		if (gmap) {
-			zoomListener = gmap.addListener("zoom_changed", () => {
-				if (nav.held.size === 0) nav.zoom = null;
-			});
-		}
-
-		function onBlur() {
-			nav.held.clear();
-		}
-
-		document.addEventListener("keydown", onKeyDown, true);
-		document.addEventListener("keyup", onKeyUp, true);
-		window.addEventListener("blur", onBlur);
-		return () => {
-			document.removeEventListener("keydown", onKeyDown, true);
-			document.removeEventListener("keyup", onKeyUp, true);
-			window.removeEventListener("blur", onBlur);
-			if (nav.rafId) cancelAnimationFrame(nav.rafId);
-			if (zoomListener) google.maps.event.removeListener(zoomListener);
-		};
-	}, []);
 
 	return (
 		<ContextMenu.Root modal={false}>
@@ -1864,7 +1557,7 @@ export function MapEmbed() {
 				<MeasurementBar />
 				<div className="embed-controls__control" style={{ bottom: 0, left: 0 }}>
 					<div className="map-control coordinate-control">
-						<span ref={coordDisplayRef} /> · zoom {mapZoom}
+						<span ref={coordDisplayRef} /> Ãƒâ€šÃ‚Â· zoom {mapZoom}
 					</div>
 				</div>
 			</div>
