@@ -21,7 +21,8 @@ pub fn run_server() {
         .invoke_handler(crate::specta_builder().invoke_handler())
         .plugin(tauri_plugin_webserve::init())
         .setup(|app| {
-            storage::run_migrations(app.handle())?;
+            storage::init_paths(app.handle())?;
+            storage::run_migrations()?;
             register_web_schemes();
             let handle = app.handle().clone();
             WebviewWindowBuilder::new(
