@@ -30,3 +30,15 @@ fn hex_to_rgb_invalid_length() {
 fn hex_to_rgb_invalid_chars() {
     assert_eq!(hex_to_rgb("#gggggg"), None);
 }
+
+#[test]
+fn tag_meta_roundtrips_color_and_order() {
+    let (tag_defs, _) = parse_tag_defs(
+        r##"{"1": {"name": "red", "color": "#ff0000", "order": 3}, "2": {"name": "blue", "color": "#0000ff"}}"##,
+    );
+    let meta = tag_color_meta(&tag_defs);
+    assert_eq!(meta["red"]["color"], serde_json::json!([255, 0, 0]));
+    assert_eq!(meta["red"]["order"], serde_json::json!(3));
+    assert_eq!(meta["blue"]["color"], serde_json::json!([0, 0, 255]));
+    assert!(meta["blue"].get("order").is_none());
+}

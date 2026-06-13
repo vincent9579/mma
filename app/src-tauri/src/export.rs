@@ -56,7 +56,7 @@ fn parse_tag_defs(tags_json: &str) -> (
     (tag_defs, id_to_name)
 }
 
-/// Convert tag defs to the export metadata shape `{name: {color: [r,g,b]}}`.
+/// Convert tag defs to the export metadata shape `{name: {color: [r,g,b], order}}`.
 fn tag_color_meta(
     tag_defs: &std::collections::HashMap<String, serde_json::Value>,
 ) -> serde_json::Map<String, serde_json::Value> {
@@ -66,6 +66,9 @@ fn tag_color_meta(
             let mut entry = serde_json::Map::new();
             if let Some(rgb) = hex_to_rgb(color) {
                 entry.insert("color".into(), serde_json::json!([rgb[0], rgb[1], rgb[2]]));
+            }
+            if let Some(order) = v.get("order").and_then(|o| o.as_u64()) {
+                entry.insert("order".into(), serde_json::json!(order));
             }
             converted.insert(name.to_string(), serde_json::Value::Object(entry));
         }
