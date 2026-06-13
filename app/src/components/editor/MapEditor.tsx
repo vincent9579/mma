@@ -338,7 +338,7 @@ export function MapEditor() {
 			</header>
 			<div className="side-header"></div>
 			<section className="map-embed" style={{ background: "#e5e3df" }}>
-				<MapEmbed />
+				<MapEmbed onAddLocation={(p) => addParsedLocations([p])} />
 				{showMapCursor && <div className="map-cursor-crosshair" />}
 			</section>
 			<section className="map-meta">

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { SuggestInput } from "@/components/primitives/SuggestInput";
+import { parseMapsUrl, parseCoordinates, type ParsedLocation } from "@/lib/data/importExport";
 
 interface PlaceResult {
 	name: string;
@@ -9,8 +10,10 @@ interface PlaceResult {
 
 export function SearchControl({
 	onResult,
+	onAddLocation,
 }: {
 	onResult: (lat: number, lng: number, name: string) => void;
+	onAddLocation: (parsed: ParsedLocation) => void | Promise<void>;
 }) {
 	const [query, setQuery] = useState("");
 	const [results, setResults] = useState<PlaceResult[]>([]);
@@ -43,6 +46,22 @@ export function SearchControl({
 		}, 300);
 	}, []);
 
+	// a Maps URL or coordinate resolves to a location, otherwise default geocode
+	const resolveOrSearch = useCallback(
+		async (q: string) => {
+			const parsed = (await parseMapsUrl(q)) ?? parseCoordinates(q);
+			if (parsed) {
+				clearTimeout(timerRef.current);
+				setResults([]);
+				setQuery("");
+				await onAddLocation(parsed);
+				return;
+			}
+			search(q);
+		},
+		[search, onAddLocation],
+	);
+
 	const primaryOf = (name: string) => name.split(",")[0].trim();
 
 	return (
@@ -53,7 +72,7 @@ export function SearchControl({
 			value={query}
 			onChange={(v) => {
 				setQuery(v);
-				search(v);
+				void resolveOrSearch(v);
 			}}
 			suggestions={results}
 			getKey={(r) => `${r.lat},${r.lng},${r.name}`}

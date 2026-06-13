@@ -96,6 +96,7 @@ import {
 import type { Location } from "@/types";
 import { isVirtualLocation } from "@/types";
 import { SearchControl } from "@/components/editor/map/SearchControl";
+import type { ParsedLocation } from "@/lib/data/importExport";
 import {
 	MapTypeDropdown,
 	MapSettingsDropdown,
@@ -157,7 +158,7 @@ const DEFAULT_PREFS: MapEmbedPrefs = {
 	selectOnly: false,
 };
 
-export function MapEmbed() {
+export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLocation) => void | Promise<void> }) {
 	const map = useCurrentMap();
 	const mapVer = useMapVersion();
 
@@ -1434,7 +1435,7 @@ export function MapEmbed() {
 							onManageStyles: () => setShowStylesDialog(true),
 						}}
 					/>
-					<SearchControl onResult={handleSearchResult} />
+					<SearchControl onResult={handleSearchResult} onAddLocation={onAddLocation} />
 				</div>
 				{/* LeftTop: polygon/rectangle drawing tools */}
 				{mapReady && (
