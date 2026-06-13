@@ -19,6 +19,8 @@ export function SuggestInput<T>({
 	itemClassName = "search-result",
 	listStyle,
 	autoFocus,
+	disabled,
+	pickOnEnter = true,
 }: {
 	value: string;
 	onChange: (v: string) => void;
@@ -33,6 +35,9 @@ export function SuggestInput<T>({
 	itemClassName?: string;
 	listStyle?: CSSProperties;
 	autoFocus?: boolean;
+	disabled?: boolean;
+	/** When false, Enter closes the dropdown and falls through (e.g. to a form submit). */
+	pickOnEnter?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -66,15 +71,20 @@ export function SuggestInput<T>({
 				placeholder={placeholder}
 				value={value}
 				autoFocus={autoFocus}
+				disabled={disabled}
 				onChange={(e) => {
 					onChange(e.target.value);
 					setOpen(true);
 				}}
 				onFocus={() => suggestions.length > 0 && setOpen(true)}
 				onKeyDown={(e) => {
-					if (e.key === "Enter" && open && suggestions.length > 0) {
-						e.preventDefault();
-						pick(suggestions[0]);
+					if (e.key === "Enter" && open) {
+						if (pickOnEnter && suggestions.length > 0) {
+							e.preventDefault();
+							pick(suggestions[0]);
+						} else {
+							setOpen(false);
+						}
 					}
 					if (e.key === "Escape" && open) {
 						e.stopPropagation();

@@ -2272,6 +2272,16 @@ summary.button {
 .tag-input__value:focus {
 	outline: none;
 }
+.tag-input__suggest {
+	display: inline-block;
+	vertical-align: top;
+}
+.tag-input .search-results {
+	box-shadow: var(--shadow-1);
+}
+.tag-input .search-result {
+	color: #000;
+}
 .compass {
 	--heading: 0deg;
 	--compass-size: 40px;

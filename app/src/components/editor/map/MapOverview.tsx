@@ -26,6 +26,7 @@ import {
 	removeChildFromSelection,
 	updateTags,
 	getVisibleTags,
+	getTagCounts,
 	useKnownFieldKeys,
 	toggleGhostSelection,
 	useGhostedSelections,
@@ -33,13 +34,15 @@ import {
 	pruneDuplicates,
 } from "@/store/useMapStore";
 import { toast } from "@/lib/util/toast";
+import { sortTagsByMode } from "@/lib/util/util";
+import { SuggestInput } from "@/components/primitives/SuggestInput";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { groupByField, projectionsForType, pickPeriodEnd, hasTimeOfDay, stepFilterWindow, dateParts, partsToEpoch } from "@/lib/data/fieldOps";
 import { useSetting } from "@/store/settings";
 import { cmd } from "@/lib/commands";
 
 import { RgbColorPicker } from "react-colorful";
-import type { Selection, FilterOp, ExtraFieldDef } from "@/bindings.gen";
+import type { Selection, FilterOp, ExtraFieldDef, Tag } from "@/bindings.gen";
 import { selectionDisplayName, OP_LABELS } from "@/store/selections";
 import { TagManager } from "@/components/editor/TagManager";
 import { MergeDuplicatesModal } from "@/components/dialogs/MergeDuplicatesModal";
@@ -1359,6 +1362,7 @@ export function MapOverview() {
 	const selected = useSelectedLocationIds();
 	const selections = useSelections();
 	const [bulkTagInput, setBulkTagInput] = useState("");
+	const tagSortMode = useSetting("tagSortMode");
 	const [selectionsCollapsed, setSelectionsCollapsed] = useState(false);
 	const [dupDistance, setDupDistance] = useState(1);
 	const [showTagFindReplace, setShowTagFindReplace] = useState(false);
@@ -1386,6 +1390,18 @@ export function MapOverview() {
 		if (!name || selected.size === 0) return;
 		const [resolved] = await createTags([name]);
 		addTagToLocations(resolved.id, [...selected]);
+		setBulkTagInput("");
+	};
+
+	const bulkSuggestions = (() => {
+		const all = sortTagsByMode(getVisibleTags(), tagSortMode, getTagCounts());
+		const q = bulkTagInput.trim().toLowerCase();
+		return (q ? all.filter((t) => t.name.toLowerCase().includes(q)) : all).slice(0, 15);
+	})();
+
+	const handleBulkPick = (t: Tag) => {
+		if (selected.size === 0) return;
+		addTagToLocations(t.id, [...selected]);
 		setBulkTagInput("");
 	};
 
@@ -1565,13 +1581,19 @@ export function MapOverview() {
 							>
 								+
 							</button>
-							<input
-								className="tag-input__value"
-								type="text"
+							<SuggestInput
+								containerClassName="tag-input__suggest"
+								inputClassName="tag-input__value"
 								placeholder="Bulk-add a tag..."
 								disabled={selected.size === 0}
 								value={bulkTagInput}
-								onChange={(e) => setBulkTagInput(e.target.value)}
+								onChange={setBulkTagInput}
+								suggestions={bulkSuggestions}
+								getKey={(t) => t.id}
+								onPick={handleBulkPick}
+								renderItem={(t) => t.name}
+								pickOnEnter={false}
+								listStyle={{ top: "100%", left: 0, zIndex: 10 }}
 							/>
 						</span>
 					</form>
