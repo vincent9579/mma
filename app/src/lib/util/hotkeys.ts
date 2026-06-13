@@ -2,10 +2,11 @@ import { useSyncExternalStore } from "react";
 import { getCommands, getCommand } from "@/store/commands";
 import { createSyncStore } from "@/lib/util/syncStore";
 
-type QuicktagSlot = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+const QUICKTAG_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+type QuicktagSlot = (typeof QUICKTAG_SLOTS)[number];
 
-/** Derived from the def table: command-level actions (bindings live in the
- *  command registry), the raw UI defs below, and the generated quicktag slots. */
+/** Derived from the def table: the raw UI defs below plus the generated
+ *  quicktag slots. Command-level bindings are keyed by registry id (string). */
 export type HotkeyAction =
 	| (typeof STATIC_HOTKEY_DEFS)[number]["action"]
 	| `quicktag${QuicktagSlot}`;
@@ -266,11 +267,11 @@ const STATIC_HOTKEY_DEFS = [
 
 const RAW_HOTKEY_DEFS: HotkeyDef[] = [
 	...STATIC_HOTKEY_DEFS,
-	...Array.from({ length: 9 }, (_, i): HotkeyDef => ({
-		action: `quicktag${(i + 1) as QuicktagSlot}`,
-		label: `Quick-tag slot ${i + 1}`,
+	...QUICKTAG_SLOTS.map((n): HotkeyDef => ({
+		action: `quicktag${n}`,
+		label: `Quick-tag slot ${n}`,
 		group: "Quicktag",
-		defaultBinding: String(i + 1),
+		defaultBinding: String(n),
 	})),
 ];
 
@@ -284,9 +285,6 @@ export function getAllBindings(): HotkeyDef[] {
 	}));
 	return [...commandDefs, ...RAW_HOTKEY_DEFS];
 }
-
-// Legacy export — consumers that iterated HOTKEY_DEFS should use getAllBindings() instead.
-export const HOTKEY_DEFS = RAW_HOTKEY_DEFS;
 
 const STORAGE_KEY = "hotkeyOverrides";
 
