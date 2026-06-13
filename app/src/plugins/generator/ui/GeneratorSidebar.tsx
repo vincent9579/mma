@@ -187,10 +187,6 @@ export function GeneratorSidebar({ onClose }: { onClose: () => void }) {
 	}, []);
 
 	const handleClose = useCallback(() => {
-		engineRef.current?.stop();
-		sessionEngine = null;
-		sessionRunning = false;
-		sessionPaused = false;
 		onClose();
 	}, [onClose]);
 
