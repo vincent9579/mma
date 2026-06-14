@@ -2077,16 +2077,7 @@ pub async fn store_save_dirty(
         if !store.overlay.dirty && !store.tags.dirty {
             return Ok(SaveResult { saved_chunks: 0 });
         }
-        let delta_data = if store.overlay.dirty {
-            let overlay = DeltaOverlay {
-                adds: store.overlay.adds.clone(),
-                dead_ids: store.overlay.dead.iter().cloned().collect(),
-                patches: store.overlay.patches.values().cloned().collect(),
-            };
-            Some(rmp_serde::to_vec_named(&overlay)?)
-        } else {
-            None
-        };
+        let delta_data = store.overlay.dirty.then(|| overlay_delta_bytes(store)).transpose()?;
         let tags_json = if store.tags.dirty {
             store.tags.dirty = false;
             Some(serialize_tags_json(&store.tags.all))
