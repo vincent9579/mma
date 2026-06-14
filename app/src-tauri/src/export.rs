@@ -76,6 +76,63 @@ fn tag_color_meta(
     converted
 }
 
+/// Toggles for rendering a `Location` into a map-making JSON coordinate object.
+struct CoordOpts {
+    export_zoom: bool,
+    export_unpanned: bool,
+    export_extras: bool,
+}
+
+/// Convert one location to a `{lat, lng, heading, ...}` coordinate object.
+/// Single source of truth for the export wire shape shared by JSON and bulk ZIP.
+/// `countryCode`/`stateCode` are always hoisted to the top level; all other
+/// `extra` fields nest under `extra`.
+fn location_to_coord(
+    loc: &crate::types::Location,
+    id_to_name: &std::collections::HashMap<u32, String>,
+    opts: &CoordOpts,
+) -> serde_json::Value {
+    use serde_json::{json, Value};
+    let pinned = loc.flags.contains(LocationFlags::LOAD_AS_PANO_ID);
+    let mut c = serde_json::Map::new();
+
+    c.insert("lat".into(), json!(loc.lat));
+    c.insert("lng".into(), json!(loc.lng));
+    let heading = if opts.export_unpanned && loc.heading == 0.0 { 0.001 } else { loc.heading };
+    c.insert("heading".into(), json!(heading));
+    c.insert("pitch".into(), json!(loc.pitch));
+    c.insert("zoom".into(), json!(if opts.export_zoom { loc.zoom } else { 0.0 }));
+    c.insert("panoId".into(), if pinned { json!(loc.pano_id) } else { Value::Null });
+
+    for k in ["countryCode", "stateCode"] {
+        c.insert(k.into(), loc.extra.as_ref().and_then(|e| e.get(k).cloned()).unwrap_or(Value::Null));
+    }
+
+    if opts.export_extras {
+        let mut extra = serde_json::Map::new();
+        if let Some(ref e) = loc.extra {
+            for (k, v) in e {
+                if k == "countryCode" || k == "stateCode" { continue; }
+                extra.insert(k.clone(), v.clone());
+            }
+        }
+        if !loc.tags.is_empty() {
+            let names: Vec<Value> = loc.tags.iter()
+                .map(|id| json!(id_to_name.get(id).cloned().unwrap_or_else(|| id.to_string())))
+                .collect();
+            extra.insert("tags".into(), json!(names));
+        }
+        if !pinned && loc.pano_id.is_some() {
+            extra.insert("panoId".into(), json!(loc.pano_id));
+        }
+        if !extra.is_empty() {
+            c.insert("extra".into(), Value::Object(extra));
+        }
+    }
+
+    Value::Object(c)
+}
+
 /// Export locations as a JSON file.
 ///
 /// Produces `{name, customCoordinates: [...]}` with optional `extra` block
@@ -93,43 +150,13 @@ pub fn store_export_json(
         let (tag_defs, id_to_name) = parse_tag_defs(&opts.tags_json);
         let locs = store.collect_scoped(opts.scope.as_deref());
 
-        let mut coords = Vec::with_capacity(locs.len());
-        for loc in &locs {
-            let pinned = loc.flags.contains(LocationFlags::LOAD_AS_PANO_ID);
-            let mut c = serde_json::Map::new();
-            c.insert("lat".into(), serde_json::json!(loc.lat));
-            c.insert("lng".into(), serde_json::json!(loc.lng));
-            let heading = if opts.export_unpanned && loc.heading == 0.0 { 0.001 } else { loc.heading };
-            c.insert("heading".into(), serde_json::json!(heading));
-            c.insert("pitch".into(), serde_json::json!(loc.pitch));
-            c.insert("zoom".into(), serde_json::json!(if opts.export_zoom { loc.zoom } else { 0.0 }));
-            c.insert("panoId".into(), if pinned { serde_json::json!(loc.pano_id) } else { serde_json::Value::Null });
-            c.insert("countryCode".into(), loc.extra.as_ref().and_then(|e| e.get("countryCode").cloned()).unwrap_or(serde_json::Value::Null));
-            c.insert("stateCode".into(), loc.extra.as_ref().and_then(|e| e.get("stateCode").cloned()).unwrap_or(serde_json::Value::Null));
-
-            if opts.export_extras {
-                let mut extra = serde_json::Map::new();
-                if let Some(ref e) = loc.extra {
-                    for (k, v) in e {
-                        if k == "countryCode" || k == "stateCode" { continue; }
-                        extra.insert(k.clone(), v.clone());
-                    }
-                }
-                if !loc.tags.is_empty() {
-                    let names: Vec<serde_json::Value> = loc.tags.iter()
-                        .map(|id| serde_json::json!(id_to_name.get(id).cloned().unwrap_or_else(|| id.to_string())))
-                        .collect();
-                    extra.insert("tags".into(), serde_json::json!(names));
-                }
-                if !pinned && loc.pano_id.is_some() {
-                    extra.insert("panoId".into(), serde_json::json!(loc.pano_id));
-                }
-                if !extra.is_empty() {
-                    c.insert("extra".into(), serde_json::Value::Object(extra));
-                }
-            }
-            coords.push(serde_json::Value::Object(c));
-        }
+        let co = CoordOpts {
+            export_zoom: opts.export_zoom,
+            export_unpanned: opts.export_unpanned,
+            export_extras: opts.export_extras,
+        };
+        let coords: Vec<serde_json::Value> =
+            locs.iter().map(|loc| location_to_coord(loc, &id_to_name, &co)).collect();
 
         let mut parts = serde_json::Map::new();
         if !opts.map_name.is_empty() {
@@ -273,32 +300,13 @@ pub async fn store_export_bulk_zip() -> AppResult<String> {
 
                 let (tag_defs, id_to_name) = parse_tag_defs(tags_json);
 
-                let coords: Vec<serde_json::Value> = locs.iter().map(|loc| {
-                    let pinned = loc.flags.contains(LocationFlags::LOAD_AS_PANO_ID);
-                    let mut c = serde_json::Map::new();
-                    if let Some(ref e) = loc.extra {
-                        for (k, v) in e { c.insert(k.clone(), v.clone()); }
-                    }
-                    c.insert("lat".into(), serde_json::json!(loc.lat));
-                    c.insert("lng".into(), serde_json::json!(loc.lng));
-                    c.insert("heading".into(), serde_json::json!(loc.heading));
-                    c.insert("pitch".into(), serde_json::json!(loc.pitch));
-                    c.insert("zoom".into(), serde_json::json!(loc.zoom));
-                    c.insert("panoId".into(), if pinned { serde_json::json!(loc.pano_id) } else { serde_json::Value::Null });
-
-                    let mut extra = serde_json::Map::new();
-                    if !loc.tags.is_empty() {
-                        let names: Vec<&str> = loc.tags.iter()
-                            .filter_map(|id| id_to_name.get(id).map(|s| s.as_str()))
-                            .collect();
-                        extra.insert("tags".into(), serde_json::json!(names));
-                    }
-                    if !pinned && loc.pano_id.is_some() {
-                        extra.insert("panoId".into(), serde_json::json!(loc.pano_id));
-                    }
-                    if !extra.is_empty() { c.insert("extra".into(), serde_json::Value::Object(extra)); }
-                    serde_json::Value::Object(c)
-                }).collect();
+                let co = CoordOpts {
+                    export_zoom: true,
+                    export_unpanned: false,
+                    export_extras: true,
+                };
+                let coords: Vec<serde_json::Value> =
+                    locs.iter().map(|loc| location_to_coord(loc, &id_to_name, &co)).collect();
 
                 let mut entry = serde_json::Map::new();
                 entry.insert("name".into(), serde_json::json!(name));
