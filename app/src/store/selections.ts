@@ -152,6 +152,14 @@ export function removeSelection(current: Selection[], key: string): Selection[] 
 	});
 }
 
+/** Split selections into [matching the keys, everything else]. */
+function partitionByKeys(current: Selection[], keys: string[]): [Selection[], Selection[]] {
+	const targets: Selection[] = [];
+	const others: Selection[] = [];
+	for (const s of current) (keys.includes(s.key) ? targets : others).push(s);
+	return [targets, others];
+}
+
 /** Merge targeted selections into a single composite, flattening nested groups of the same type. */
 function composeSelectionGroup(
 	current: Selection[],
@@ -159,10 +167,7 @@ function composeSelectionGroup(
 	type: "Intersection" | "Union",
 ): Selection[] {
 	if (current.length < 2) return current;
-	const targetKeys = keys ?? current.map((s) => s.key);
-	const targets: Selection[] = [];
-	const others: Selection[] = [];
-	for (const s of current) (targetKeys.includes(s.key) ? targets : others).push(s);
+	const [targets, others] = partitionByKeys(current, keys ?? current.map((s) => s.key));
 	const flat = targets.flatMap((s) => (s.props.type === type ? s.props.selections : [s]));
 	return [...others, buildSelection({ type, selections: dedupe(flat) })];
 }
@@ -188,9 +193,7 @@ export function invertSelections(
 			return buildSelection({ type: "Invert", selections: [s] });
 		});
 	}
-	const targets: Selection[] = [];
-	const others: Selection[] = [];
-	for (const s of current) (targetKeys.includes(s.key) ? targets : others).push(s);
+	const [targets, others] = partitionByKeys(current, targetKeys);
 	const flat = targets.flatMap((s) => (s.props.type === "Union" ? s.props.selections : [s]));
 	const inner =
 		flat.length === 1 ? flat[0] : buildSelection({ type: "Union", selections: flat });
