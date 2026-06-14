@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { previewDuplicateGroups, mergeDuplicates } from "@/store/useMapStore";
 import { toast } from "@/lib/util/toast";
 import { fmt } from "@/lib/util/format";
 import { log } from "@/lib/util/log";
+import { useAsync } from "@/lib/hooks/useAsync";
 
 interface Props {
 	open: boolean;
@@ -18,31 +19,19 @@ interface Preview {
 }
 
 export function MergeDuplicatesModal({ open, onOpenChange, distance }: Props) {
-	const [preview, setPreview] = useState<Preview | null>(null);
-	const [loading, setLoading] = useState(false);
 	const [merging, setMerging] = useState(false);
 
-	useEffect(() => {
-		if (!open) return;
-		let cancelled = false;
-		setPreview(null);
-		setLoading(true);
-		previewDuplicateGroups(distance)
-			.then((groups) => {
-				if (cancelled) return;
-				const total = groups.reduce((n, g) => n + g.length, 0);
-				const largest = groups.reduce((m, g) => Math.max(m, g.length), 0);
-				setPreview({ groups: groups.length, mergedAway: total - groups.length, largest });
-			})
-			.catch((e) => {
-				if (!cancelled) log.error("[merge] preview failed:", e);
-			})
-			.finally(() => {
-				if (!cancelled) setLoading(false);
-			});
-		return () => {
-			cancelled = true;
-		};
+	const { data: preview, loading } = useAsync<Preview | null>(async () => {
+		if (!open) return null;
+		try {
+			const groups = await previewDuplicateGroups(distance);
+			const total = groups.reduce((n, g) => n + g.length, 0);
+			const largest = groups.reduce((m, g) => Math.max(m, g.length), 0);
+			return { groups: groups.length, mergedAway: total - groups.length, largest };
+		} catch (e) {
+			log.error("[merge] preview failed:", e);
+			return null;
+		}
 	}, [open, distance]);
 
 	const handleMerge = useCallback(async () => {

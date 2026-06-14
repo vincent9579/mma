@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { cmd } from "@/lib/commands";
 import { getSettings } from "@/store/settings";
 import { log } from "@/lib/util/log";
+import { useAsync } from "@/lib/hooks/useAsync";
 
 interface GeoResult {
 	text: string;
@@ -41,20 +41,14 @@ async function geocodeNominatim(lat: number, lng: number): Promise<GeoResult | n
 }
 
 export function useReverseGeocode(lat: number, lng: number): GeoResult | null {
-	const [result, setResult] = useState<GeoResult | null>(null);
-	useEffect(() => {
-		setResult(null);
-		let cancelled = false;
+	return useAsync(async () => {
 		const provider = getSettings().geocodeProvider;
 		const fn = provider === "nominatim" ? geocodeNominatim : geocodeLocal;
-		fn(lat, lng)
-			.then((r) => {
-				if (!cancelled) setResult(r);
-			})
-			.catch((e) => log.warn("[geocode] reverse geocode failed:", e));
-		return () => {
-			cancelled = true;
-		};
-	}, [lat, lng]);
-	return result;
+		try {
+			return await fn(lat, lng);
+		} catch (e) {
+			log.warn("[geocode] reverse geocode failed:", e);
+			return null;
+		}
+	}, [lat, lng]).data;
 }
