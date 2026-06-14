@@ -118,6 +118,15 @@ const isLocationLayer = (id?: string) =>
 	id === "import-preview";
 const PERFECT_SCORE_LAYER_ID = "perfect-score";
 
+type MarkerBuf = { positions: Float32Array; colors: Uint8Array; angles: Float32Array };
+
+// Per-style layer class + shape constants. `idSuffix` keeps deck.gl layer ids stable across styles.
+const MARKER_STYLE = {
+	circle: { Layer: ScatterplotLayer, idSuffix: "s", angle: false, base: { getRadius: 6, radiusUnits: "pixels", radiusMinPixels: 3 } },
+	arrow: { Layer: SDFMarkerLayer, idSuffix: "d", angle: true, base: { shape: "arrow", radiusPixels: 12 } },
+	pin: { Layer: SDFMarkerLayer, idSuffix: "d", angle: false, base: { shape: "pin", radiusPixels: 16 } },
+} as const;
+
 interface MapEmbedPrefs {
 	svOpacity: number;
 	svColor: SvColor;
@@ -338,150 +347,58 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 				}
 			}
 		}
+		// Build one cell/overlay marker layer for the active style. Selection overlay must also be
+		// pickable on top — otherwise clicks fall through to the cell layer where selected markers
+		// have no z-priority, and an overlapping neighbor gets picked instead of the marker on top.
+		const markerLayer = (
+			idBase: string,
+			count: number,
+			buf: MarkerBuf,
+			colorVer: number,
+			posVer: number,
+			opacity?: number,
+		): Layer => {
+			const s = MARKER_STYLE[markerStyle];
+			const attributes: Record<string, unknown> = {
+				getPosition: { value: buf.positions, size: 2 },
+				getFillColor: { value: buf.colors, size: 4 },
+			};
+			if (s.angle) attributes.getAngle = { value: buf.angles, size: 1 };
+			const LayerClass = s.Layer as new (props: Record<string, unknown>) => Layer;
+			return new LayerClass({
+				id: `${idBase}:${s.idSuffix}`,
+				data: { length: count, attributes },
+				...s.base,
+				pickable: true,
+				...(opacity != null ? { opacity } : {}),
+				updateTriggers: {
+					...(opacity != null ? { opacity: [opacity] } : {}),
+					getFillColor: [colorVer],
+					getPosition: [posVer],
+					...(s.angle ? { getAngle: [posVer] } : {}),
+				},
+			});
+		};
+
 		if (markerOpacity > 0 && cm.totalCount > 0) {
 			for (const [cellKey, cell] of cm.cells) {
 				if (cell.count === 0) continue;
-				if (markerStyle === "circle") {
-					layers.push(
-						new ScatterplotLayer({
-							id: `cell:${cellKey}:s`,
-							data: {
-								length: cell.count,
-								attributes: {
-									getPosition: { value: cell.positions, size: 2 },
-									getFillColor: { value: cell.colors, size: 4 },
-								},
-							},
-							getRadius: 6,
-							radiusUnits: "pixels",
-							radiusMinPixels: 3,
-							opacity: markerOpacity,
-							pickable: true,
-							updateTriggers: {
-								opacity: [markerOpacity],
-								getFillColor: [cell.colorVersion],
-								getPosition: [cell.positionVersion],
-							},
-						}),
-					);
-				} else if (markerStyle === "arrow") {
-					layers.push(
-						new SDFMarkerLayer({
-							id: `cell:${cellKey}:d`,
-							data: {
-								length: cell.count,
-								attributes: {
-									getPosition: { value: cell.positions, size: 2 },
-									getFillColor: { value: cell.colors, size: 4 },
-									getAngle: { value: cell.angles, size: 1 },
-								},
-							},
-							shape: "arrow",
-							radiusPixels: 12,
-							opacity: markerOpacity,
-							pickable: true,
-							updateTriggers: {
-								opacity: [markerOpacity],
-								getFillColor: [cell.colorVersion],
-								getPosition: [cell.positionVersion],
-								getAngle: [cell.positionVersion],
-							},
-						}),
-					);
-				} else {
-					layers.push(
-						new SDFMarkerLayer({
-							id: `cell:${cellKey}:d`,
-							data: {
-								length: cell.count,
-								attributes: {
-									getPosition: { value: cell.positions, size: 2 },
-									getFillColor: { value: cell.colors, size: 4 },
-								},
-							},
-							shape: "pin",
-							radiusPixels: 16,
-							opacity: markerOpacity,
-							pickable: true,
-							updateTriggers: {
-								opacity: [markerOpacity],
-								getFillColor: [cell.colorVersion],
-								getPosition: [cell.positionVersion],
-							},
-						}),
-					);
-				}
+				layers.push(
+					markerLayer(`cell:${cellKey}`, cell.count, cell, cell.colorVersion, cell.positionVersion, markerOpacity),
+				);
 			}
 		}
 
 		if (cm.selOverlayCount > 0) {
-			if (markerStyle === "circle") {
-				layers.push(
-					new ScatterplotLayer({
-						id: "sel-overlay:s",
-						data: {
-							length: cm.selOverlayCount,
-							attributes: {
-								getPosition: { value: cm.selOverlayPositions, size: 2 },
-								getFillColor: { value: cm.selOverlayColors, size: 4 },
-							},
-						},
-						getRadius: 6,
-						radiusUnits: "pixels",
-						radiusMinPixels: 3,
-						// Selection overlay is drawn on top of the cell markers, so it must also be pickable on
-						// top — otherwise clicks fall through to the cell layer where selected markers have no
-						// z-priority, and an overlapping neighbor gets picked instead of the marker on top.
-						pickable: true,
-						updateTriggers: {
-							getFillColor: [cm.selOverlayVersion],
-							getPosition: [cm.selOverlayVersion],
-						},
-					}),
-				);
-			} else if (markerStyle === "arrow") {
-				layers.push(
-					new SDFMarkerLayer({
-						id: "sel-overlay:d",
-						data: {
-							length: cm.selOverlayCount,
-							attributes: {
-								getPosition: { value: cm.selOverlayPositions, size: 2 },
-								getFillColor: { value: cm.selOverlayColors, size: 4 },
-								getAngle: { value: cm.selOverlayAngles, size: 1 },
-							},
-						},
-						shape: "arrow",
-						radiusPixels: 12,
-						pickable: true,
-						updateTriggers: {
-							getFillColor: [cm.selOverlayVersion],
-							getPosition: [cm.selOverlayVersion],
-							getAngle: [cm.selOverlayVersion],
-						},
-					}),
-				);
-			} else {
-				layers.push(
-					new SDFMarkerLayer({
-						id: "sel-overlay:d",
-						data: {
-							length: cm.selOverlayCount,
-							attributes: {
-								getPosition: { value: cm.selOverlayPositions, size: 2 },
-								getFillColor: { value: cm.selOverlayColors, size: 4 },
-							},
-						},
-						shape: "pin",
-						radiusPixels: 16,
-						pickable: true,
-						updateTriggers: {
-							getFillColor: [cm.selOverlayVersion],
-							getPosition: [cm.selOverlayVersion],
-						},
-					}),
-				);
-			}
+			layers.push(
+				markerLayer(
+					"sel-overlay",
+					cm.selOverlayCount,
+					{ positions: cm.selOverlayPositions, colors: cm.selOverlayColors, angles: cm.selOverlayAngles },
+					cm.selOverlayVersion,
+					cm.selOverlayVersion,
+				),
+			);
 		}
 
 		const activeLoc = getActiveLocation();
