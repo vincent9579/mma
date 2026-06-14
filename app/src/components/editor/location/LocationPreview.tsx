@@ -1473,9 +1473,9 @@ function LocationPreviewInner() {
 								onReturnToSpawn={handleReturnToSpawn}
 							/>
 						)}
-						{lockInfo && (
+						{lockInfo && !appSettings.hidePanoUI && (
 							<div className="viewport-lock-badge">
-								LOCK h {lockInfo.relHeading.toFixed(1)} p {lockInfo.relPitch.toFixed(1)} z{" "}
+								VIEWPORT LOCK h {lockInfo.relHeading.toFixed(1)} p {lockInfo.relPitch.toFixed(1)} z{" "}
 								{lockInfo.lockedZoom.toFixed(1)}
 							</div>
 						)}
