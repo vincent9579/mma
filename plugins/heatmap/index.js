@@ -931,17 +931,23 @@ var DEFAULT_SETTINGS = {
   threshold: 0.05,
   gradientIndex: 0
 };
-var STORAGE_KEY = "mma_heatmap_settings";
-function loadSettings() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-  } catch {
+var store = MMA.storage("heatmap");
+var oldKey = "mma_heatmap_settings";
+var old = localStorage.getItem(oldKey);
+if (old) {
+  if (store.get("settings") === void 0) {
+    try {
+      store.set("settings", JSON.parse(old));
+    } catch {
+    }
   }
-  return { ...DEFAULT_SETTINGS };
+  localStorage.removeItem(oldKey);
+}
+function loadSettings() {
+  return { ...DEFAULT_SETTINGS, ...store.get("settings") ?? {} };
 }
 function saveSettings(s) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  store.set("settings", s);
 }
 var GRADIENTS = [
   // deck.gl's built-in default colorRange (6-step ColorBrewer YlOrRd) — the original look.

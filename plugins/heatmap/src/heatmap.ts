@@ -20,20 +20,28 @@ export const DEFAULT_SETTINGS: HeatmapSettings = {
 	gradientIndex: 0,
 };
 
-const STORAGE_KEY = "mma_heatmap_settings";
+const store = MMA.storage("heatmap");
+
+// One-time migration off the old standalone key into the namespaced plugin store.
+const oldKey = "mma_heatmap_settings";
+const old = localStorage.getItem(oldKey);
+if (old) {
+	if (store.get("settings") === undefined) {
+		try {
+			store.set("settings", JSON.parse(old));
+		} catch {
+			// ignored
+		}
+	}
+	localStorage.removeItem(oldKey);
+}
 
 function loadSettings(): HeatmapSettings {
-	try {
-		const saved = localStorage.getItem(STORAGE_KEY);
-		if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-	} catch {
-		// ignored
-	}
-	return { ...DEFAULT_SETTINGS };
+	return { ...DEFAULT_SETTINGS, ...(store.get<Partial<HeatmapSettings>>("settings") ?? {}) };
 }
 
 function saveSettings(s: HeatmapSettings) {
-	localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+	store.set("settings", s);
 }
 
 type RGB = [number, number, number];
