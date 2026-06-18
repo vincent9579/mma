@@ -19,6 +19,14 @@ Local-first desktop clone of [map-making.app](https://map-making.app).
 ### User
 Open [the releases menu](https://github.com/ccmdi/mma/releases) and download the respective installation for your system.
 
+#### MacOS/Linux
+If you are on MacOS, you will likely need to run
+```zsh
+xattr -dr com.apple.quarantine "/Applications/Map Making App.app"
+```
+
+On both Mac & Linux, framerate and rendering stability can be an issue. If you encounter these problems, you can [try running the app in a browser](###run-in-a-browser). The web version will eventually be a first-class launch option, but is only available from source for now.
+
 ### From source
 
 ```bash
