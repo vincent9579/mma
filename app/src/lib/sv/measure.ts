@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- ambient module decl must be referenced so dts-bundle-generator pulls it into plugin type-gen
 /// <reference path="../../types/measuretool.d.ts" />
 import { useSyncExternalStore, useEffect, useState, useCallback } from "react";
 import MeasureToolClass from "measuretool-googlemaps-v3";
