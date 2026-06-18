@@ -1714,6 +1714,7 @@ declare const mma: {
 	_test: {
 		openMap: (id: string) => Promise<void>;
 		closeMap: () => Promise<void>;
+		deleteMap: (id: string) => Promise<void>;
 		importPaste: (text: string) => Promise<EditorImportResult_Serialize[]>;
 		importFile: (droppedFields: string[], tagName?: string) => Promise<EditorImportResult_Serialize>;
 	};
@@ -1757,6 +1758,7 @@ declare const mma: {
 	mapOpenMark(phase: string): void;
 	openMap(id: string): Promise<void>;
 	closeMap(): Promise<void>;
+	discardOpenMap(): void;
 	refreshFromExternalMutation(): Promise<void>;
 	getCurrentMapId(): string | null;
 	getCurrentMap(): MapData | null;
@@ -1903,6 +1905,7 @@ declare const mma: {
 			number
 		][], cellEntries: SelCellEntry[], setIds: (ids: SelectedIds) => void) => void;
 	};
+	subscribeStore: (fn: () => void) => () => void;
 	useMapList: () => MapMeta[];
 	useTagCounts: () => Record<number, number>;
 	useCurrentMap: () => MapData | null;
