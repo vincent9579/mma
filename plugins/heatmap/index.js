@@ -932,17 +932,6 @@ var DEFAULT_SETTINGS = {
   gradientIndex: 0
 };
 var store = MMA.storage("heatmap");
-var oldKey = "mma_heatmap_settings";
-var old = localStorage.getItem(oldKey);
-if (old) {
-  if (store.get("settings") === void 0) {
-    try {
-      store.set("settings", JSON.parse(old));
-    } catch {
-    }
-  }
-  localStorage.removeItem(oldKey);
-}
 function loadSettings() {
   return { ...DEFAULT_SETTINGS, ...store.get("settings") ?? {} };
 }
