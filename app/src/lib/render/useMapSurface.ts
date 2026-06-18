@@ -24,19 +24,13 @@ import { useHotkey } from "@/lib/hooks/useHotkey";
 import { useBinding } from "@/lib/util/hotkeys";
 import { useMapKeyboardNav } from "@/lib/hooks/useMapKeyboardNav";
 import { useTrailVersion } from "@/lib/sv/svTrail";
-import type { MarkerStyle } from "@/components/editor/map/mapSettingsTypes";
+import type { MapEmbedPrefs } from "@/components/editor/map/mapEmbedPrefs";
 
 type OverlayEvent = { srcEvent?: { domEvent?: Event } };
 
 export interface MapSurfaceOpts {
-	markerStyle: MarkerStyle;
-	markerOpacity: number;
-	svPanoramas: boolean;
-	showPerfectScoreCircle: boolean;
-	// Click capabilities (behavior only — UI lives in the consumer). Omitted => off.
-	selectOnly?: boolean;
+	prefs: MapEmbedPrefs;
 	measuring?: boolean;
-	container?: HTMLElement | null;
 	onContextMenu?: (clientX: number, clientY: number) => void;
 	// In-progress freehand selection path, read live on every rebuild (the editor map only).
 	freehandPathRef?: RefObject<number[][] | null>;
@@ -59,7 +53,7 @@ export function useMapSurface(
 ): { requestUpdate: () => void } {
 	const overlayRef = useRef<GoogleMapsOverlay | null>(null);
 	const polygonGeomCache = useRef(new Map<string, PolyGeom>());
-	const panoDots = usePanoDots(map, opts.svPanoramas);
+	const panoDots = usePanoDots(map, opts.prefs.svPanoramas);
 	const activeLocationColor = useSetting("activeLocationColor");
 	const importPreviewColor = useSetting("importPreviewColor");
 	const scoreMaxError = useScoreMaxError();
@@ -82,17 +76,17 @@ export function useMapSurface(
 			handleMapClick(info, event, {
 				cm: getScene(),
 				zoom: map?.getZoom() ?? 2,
-				container: opts.container,
-				selectOnly: opts.selectOnly,
+				container: map?.getDiv() ?? null,
+				selectOnly: opts.prefs.selectOnly,
 				measuring: opts.measuring,
 				onContextMenu: opts.onContextMenu,
 			})) as GoogleMapsOverlayProps["onClick"];
 		const layers = buildSceneLayers(getScene(), {
-			markerStyle: opts.markerStyle,
-			markerOpacity: opts.markerOpacity,
-			showPerfectScoreCircle: opts.showPerfectScoreCircle,
+			markerStyle: opts.prefs.markerStyle,
+			markerOpacity: opts.prefs.markerOpacity,
+			showPerfectScoreCircle: opts.prefs.showPerfectScoreCircle,
 			scoreMaxError,
-			svPanoramas: opts.svPanoramas,
+			svPanoramas: opts.prefs.svPanoramas,
 			panoDots,
 			activeLocationColor,
 			importPreviewColor,
@@ -111,12 +105,11 @@ export function useMapSurface(
 		scoreMaxError,
 		activeLocationColor,
 		importPreviewColor,
-		opts.markerStyle,
-		opts.markerOpacity,
-		opts.showPerfectScoreCircle,
-		opts.svPanoramas,
-		opts.container,
-		opts.selectOnly,
+		opts.prefs.markerStyle,
+		opts.prefs.markerOpacity,
+		opts.prefs.showPerfectScoreCircle,
+		opts.prefs.svPanoramas,
+		opts.prefs.selectOnly,
 		opts.measuring,
 		opts.onContextMenu,
 		opts.onError,

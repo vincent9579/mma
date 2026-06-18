@@ -48,7 +48,7 @@ export function FullscreenMiniMap({
 	const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
 
 	useMapSurface(mapInstance, {
-		...prefs,
+		prefs,
 		followActive: true,
 	});
 
