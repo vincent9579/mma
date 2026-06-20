@@ -5,10 +5,12 @@ import type { HotkeyAction } from "@/lib/util/hotkeys";
 import { parseHotkey, matchesKey, isEditableElement } from "@/lib/hooks/useHotkey";
 
 /** Hold a single-key hotkey to arm a crosshair, then a map click runs `onClick`
- *  (consuming the click so it never falls through to the default map handler). */
+ *  (consuming the click so it never falls through to the default map handler).
+ *  `shiftKey` reflects whether Shift was held at click time, so a held key can fork
+ *  behavior by modifier (e.g. country vs subdivision). */
 export function useHeldHotkeyClick(
 	action: HotkeyAction,
-	onClick: (lat: number, lng: number) => void,
+	onClick: (lat: number, lng: number, shiftKey: boolean) => void,
 	cursor = "crosshair",
 ) {
 	const handlerRef = useRef(onClick);
@@ -50,9 +52,9 @@ export function useHeldHotkeyClick(
 			}
 		};
 
-		const dispose = addClickInterceptor((lat, lng) => {
+		const dispose = addClickInterceptor((lat, lng, shiftKey) => {
 			if (!held) return false;
-			handlerRef.current(lat, lng);
+			handlerRef.current(lat, lng, shiftKey);
 			return true;
 		});
 

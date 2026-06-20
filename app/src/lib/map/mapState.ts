@@ -37,7 +37,7 @@ export function fitMapToBounds(bounds: [number, number, number, number] | null |
 	gm.fitBounds({ west, south, east, north }, padding);
 }
 
-type ClickInterceptor = (lat: number, lng: number) => boolean;
+type ClickInterceptor = (lat: number, lng: number, shiftKey: boolean) => boolean;
 const clickInterceptors = new Set<ClickInterceptor>();
 
 export function addClickInterceptor(fn: ClickInterceptor): () => void {
@@ -45,9 +45,9 @@ export function addClickInterceptor(fn: ClickInterceptor): () => void {
 	return () => clickInterceptors.delete(fn);
 }
 
-export function tryInterceptClick(lat: number, lng: number): boolean {
+export function tryInterceptClick(lat: number, lng: number, shiftKey = false): boolean {
 	for (const fn of clickInterceptors) {
-		if (fn(lat, lng)) return true;
+		if (fn(lat, lng, shiftKey)) return true;
 	}
 	return false;
 }

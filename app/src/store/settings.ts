@@ -39,6 +39,10 @@ export const BORDER_DETAILS = {
 	medium: "High (~10MB)",
 	heavy: "Ultra (~46MB)",
 } as const;
+export const SUBDIVISION_DETAILS = {
+	off: "Off",
+	adm1: "States / provinces",
+} as const;
 export const PREVIEW_ASPECT_RATIOS = {
 	"4 / 3": "4:3",
 	"16 / 10": "16:10",
@@ -56,6 +60,7 @@ export type MapListField = keyof typeof MAP_LIST_FIELDS;
 export type GeocodeProvider = keyof typeof GEOCODE_PROVIDERS;
 export type TagViewMode = keyof typeof TAG_VIEW_MODES;
 export type BorderDetail = keyof typeof BORDER_DETAILS;
+export type SubdivisionDetail = keyof typeof SUBDIVISION_DETAILS;
 export type PreviewAspectRatio = keyof typeof PREVIEW_ASPECT_RATIOS;
 
 const DEFAULTS = {
@@ -104,6 +109,7 @@ const DEFAULTS = {
 	tagViewMode: "flat" as TagViewMode,
 	tagSortMode: "default" as TagSortMode,
 	borderDetail: "light" as BorderDetail,
+	subdivisionDetail: "off" as SubdivisionDetail,
 	previewAspectRatio: "16 / 9" as PreviewAspectRatio,
 	savedSelections: [] as SavedSelection[],
 };

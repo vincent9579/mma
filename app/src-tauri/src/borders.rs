@@ -381,7 +381,7 @@ fn load_dataset(level: &str) -> AppResult<()> {
 // --- IPC commands ---
 
 fn validate_border_level(level: &str) -> AppResult<()> {
-    if !matches!(level, "light" | "medium" | "heavy") {
+    if !matches!(level, "light" | "medium" | "heavy" | "adm1") {
         return Err(AppError(format!("Invalid border level: {level}")));
     }
     Ok(())

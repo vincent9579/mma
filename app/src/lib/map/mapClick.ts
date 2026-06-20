@@ -127,7 +127,15 @@ export async function handleMapClick(
 
 	if (domEvent instanceof MouseEvent && domEvent.button !== 0) return;
 
-	if (info.coordinate && tryInterceptClick(info.coordinate[1], info.coordinate[0])) return;
+	if (
+		info.coordinate &&
+		tryInterceptClick(
+			info.coordinate[1],
+			info.coordinate[0],
+			domEvent instanceof MouseEvent && domEvent.shiftKey,
+		)
+	)
+		return;
 
 	if (isLocationLayer(info.layer?.id)) {
 		const loc = await resolvePickedLocation();
