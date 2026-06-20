@@ -33,6 +33,7 @@ import {
 	MAP_LIST_FIELDS,
 	GEOCODE_PROVIDERS,
 	TAG_VIEW_MODES,
+	TAG_SUGGESTION_LIMITS,
 	BORDER_DETAILS,
 	SUBDIVISION_DETAILS,
 	PREVIEW_ASPECT_RATIOS,
@@ -798,6 +799,8 @@ function GeocodingSection() {
 }
 
 function TagsSection() {
+	const s = useSettings();
+	const limitIndex = Math.max(0, (TAG_SUGGESTION_LIMITS as readonly number[]).indexOf(s.tagSuggestionLimit));
 	return (
 		<fieldset className="fieldset">
 			<legend className="fieldset__header">
@@ -806,6 +809,24 @@ function TagsSection() {
 			<label className="settings-popup__item">
 				View mode
 				<SettingSelect setting="tagViewMode" options={TAG_VIEW_MODES} />
+			</label>
+			<label
+				className="settings-popup__item"
+				style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+			>
+				Suggestions shown
+				<input
+					type="range"
+					min={0}
+					max={TAG_SUGGESTION_LIMITS.length - 1}
+					step={1}
+					value={limitIndex}
+					onChange={(e) => setSetting("tagSuggestionLimit", TAG_SUGGESTION_LIMITS[Number(e.target.value)])}
+					style={{ flex: 1 }}
+				/>
+				<span style={{ minWidth: "2rem", textAlign: "right", fontSize: "0.85rem" }}>
+					{s.tagSuggestionLimit === 0 ? "All" : s.tagSuggestionLimit}
+				</span>
 			</label>
 		</fieldset>
 	);

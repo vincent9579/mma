@@ -1065,11 +1065,12 @@ function LocationPreviewInner() {
 	const allTags = sortTagsByMode(getVisibleTags(), tagSortMode, getTagCounts());
 	const suggestions = (() => {
 		const available = allTags.filter((t) => !pendingTags.includes(t.id));
+		const cap = appSettings.tagSuggestionLimit || available.length;
 		if (tagInput.trim()) {
 			const lower = tagInput.toLowerCase();
-			return available.filter((t) => t.name.toLowerCase().includes(lower)).slice(0, 15);
+			return available.filter((t) => t.name.toLowerCase().includes(lower)).slice(0, cap);
 		}
-		return available.slice(0, 15);
+		return available.slice(0, cap);
 	})();
 
 	const handleAddTag = async (e: React.FormEvent) => {
@@ -1252,7 +1253,7 @@ function LocationPreviewInner() {
 							</li>
 						</ul>
 						{suggestions.length > 0 && (
-							<div style={{ paddingTop: "0.5rem" }}>
+							<div style={{ paddingTop: "0.5rem", maxHeight: "40vh", overflowY: "auto" }}>
 								<ol className="tag-list">
 									{suggestions.map((t) => (
 										<li

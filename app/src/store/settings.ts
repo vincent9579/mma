@@ -43,6 +43,8 @@ export const SUBDIVISION_DETAILS = {
 	off: "Off",
 	adm1: "States / provinces",
 } as const;
+/** Tag-suggestion list cap stops (slider indices); 0 = unlimited ("All"). */
+export const TAG_SUGGESTION_LIMITS = [5, 10, 25, 50, 0] as const;
 export const PREVIEW_ASPECT_RATIOS = {
 	"4 / 3": "4:3",
 	"16 / 10": "16:10",
@@ -111,6 +113,7 @@ const DEFAULTS = {
 	borderDetail: "light" as BorderDetail,
 	subdivisionDetail: "off" as SubdivisionDetail,
 	previewAspectRatio: "16 / 9" as PreviewAspectRatio,
+	tagSuggestionLimit: 0 as number,
 	savedSelections: [] as SavedSelection[],
 };
 export type AppSettings = typeof DEFAULTS;
