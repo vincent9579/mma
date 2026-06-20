@@ -57,6 +57,10 @@ export function formatBinding(binding: string): string {
 		.replace(/ArrowDown/g, "Down");
 }
 
+// Number-row physical key. e.key here is shift-dependent (Shift+0 -> ")"), so we key
+// off e.code to speak in base digits and keep Shift explicit in the combo.
+const DIGIT_CODE = /^Digit([0-9])$/;
+
 /** Canonical combo string for a captured keydown, or null for a bare modifier. */
 export function buildComboString(e: KeyboardEvent): string | null {
 	const key = e.key;
@@ -70,8 +74,10 @@ export function buildComboString(e: KeyboardEvent): string | null {
 	if (e.altKey) parts.push("Alt");
 	if (e.shiftKey) parts.push("Shift");
 
+	const digit = e.code?.match(DIGIT_CODE);
 	let keyName = key;
-	if (key === " ") keyName = "space";
+	if (digit) keyName = digit[1];
+	else if (key === " ") keyName = "space";
 	else if (key === "=" && !e.shiftKey) keyName = "+";
 	else if (key.length === 1) keyName = key.toLowerCase();
 
@@ -97,11 +103,15 @@ export function matchesKey(
 	const alt = e.altKey;
 	const meta = e.metaKey;
 	const shift = e.shiftKey;
+	const digit = e.code?.match(DIGIT_CODE);
 	let key = e.key.toLowerCase();
-	if (key === " ") key = "space";
-	if (key === "=") key = "+";
+	if (digit) key = digit[1];
+	else if (key === " ") key = "space";
+	else if (key === "=") key = "+";
 
-	const shiftImplied = SHIFTED_CHARS.has(pk.key) || SHIFTED_CHARS.has(e.key);
+	// Digit row keeps Shift explicit (key is normalized via e.code), so the implied-shift
+	// relaxation must not apply or Shift+1 would also match a bare "1" binding.
+	const shiftImplied = !digit && (SHIFTED_CHARS.has(pk.key) || SHIFTED_CHARS.has(e.key));
 
 	return (
 		ctrl === pk.ctrl &&

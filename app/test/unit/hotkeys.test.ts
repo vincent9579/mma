@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from "vitest";
-import { parseHotkey, matchesKey } from "@/lib/hooks/useHotkey";
+import { parseHotkey, matchesKey, buildComboString } from "@/lib/hooks/useHotkey";
 import {
 	getAltSlowConflict,
 	getConflicts,
@@ -107,6 +107,41 @@ describe("matchesKey", () => {
 	it("shifted chars imply shift", () => {
 		const [combo] = parseHotkey("?")[0];
 		expect(matchesKey(mockEvent({ key: "?", shiftKey: true }), combo)).toBe(true);
+	});
+
+	// Shift+digit swaps e.key to a symbol (Shift+0 -> ")"); matching keys off e.code.
+	it("matches Shift+<digit> via e.code despite the symbol key", () => {
+		const [combo] = parseHotkey("Shift+0")[0];
+		expect(matchesKey(mockEvent({ key: ")", code: "Digit0", shiftKey: true }), combo)).toBe(true);
+		expect(matchesKey(mockEvent({ key: "0", code: "Digit0", shiftKey: false }), combo)).toBe(false);
+	});
+
+	it("does not let Shift+<digit> match a bare digit binding", () => {
+		const [combo] = parseHotkey("1")[0];
+		expect(matchesKey(mockEvent({ key: "!", code: "Digit1", shiftKey: true }), combo)).toBe(false);
+		expect(matchesKey(mockEvent({ key: "1", code: "Digit1", shiftKey: false }), combo)).toBe(true);
+	});
+});
+
+describe("buildComboString", () => {
+	function mockEvent(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
+		return {
+			key: "a",
+			code: "KeyA",
+			ctrlKey: false,
+			altKey: false,
+			metaKey: false,
+			shiftKey: false,
+			...overrides,
+		} as KeyboardEvent;
+	}
+
+	it("records Shift+<digit> in base-digit form, not the shifted symbol", () => {
+		expect(buildComboString(mockEvent({ key: ")", code: "Digit0", shiftKey: true }))).toBe("Shift+0");
+	});
+
+	it("records a plain digit as itself", () => {
+		expect(buildComboString(mockEvent({ key: "0", code: "Digit0" }))).toBe("0");
 	});
 });
 
