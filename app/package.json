@@ -7,6 +7,7 @@
 		"gen:plugin-types": "node ../plugins/types/generate.js",
 		"gen:plugin-registry": "node ../plugins/generate-registry.js",
 		"gen:image-dims": "node scripts/gen-image-dims.mjs",
+		"gen:bindings": "cargo run --manifest-path src-tauri/Cargo.toml -- --export-bindings",
 		"proto:gen": "pbf src/lib/sv/proto/getmetadata.proto > src/lib/sv/proto/getmetadata.gen.js",
 		"dev": "vite",
 		"build": "npm run gen:plugin-types && npm run gen:plugin-registry && npm run gen:image-dims && vite build",
