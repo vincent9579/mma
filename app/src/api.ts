@@ -158,12 +158,15 @@ const mma = {
 	// --- Test-only convenience ---
 	_test: {
 		openMap: async (id: string) => {
+			// Await the real store op for a deterministic completion signal, THEN sync the
+			// URL — by which point the router's reconcile is a no-op (state already matches),
+			// so no second fire-and-forget openMap can interleave with the next test step.
+			await store.openMap(id);
 			goToMap(id);
-			while (!store.getCurrentMap()) await new Promise((r) => setTimeout(r, 16));
 		},
-		closeMap: () => {
+		closeMap: async () => {
+			await store.closeMap();
 			goToList();
-			return store.closeMap();
 		},
 		deleteMap: (id: string) => store.deleteMap(id),
 		importPaste: async (text: string) => {

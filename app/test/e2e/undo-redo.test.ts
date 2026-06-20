@@ -209,9 +209,6 @@ describe("Undo/Redo persistence", () => {
 		await closeMap();
 		await openMap(mapId);
 
-		// Wait for edit history to load
-		await browser.pause(1000);
-
 		await withApi(async (api) => {
 			await api.undo();
 		});
@@ -229,7 +226,6 @@ describe("Undo/Redo persistence", () => {
 		await flushAndWait();
 		await closeMap();
 		await openMap(mapId);
-		await browser.pause(1000);
 
 		const before = await getLoc(uh1Id);
 		expect(before.flags).toBe(1);
