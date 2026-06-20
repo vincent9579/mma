@@ -168,7 +168,7 @@ export function buildSceneLayers(cm: CellManager, ctx: SceneContext): Layer[] {
 					shape: "arrow",
 					radiusPixels: 12,
 					getFillColor: activeColor,
-					getAngle: (d: Location) => 180 - d.heading,
+					getAngle: (d: Location) => -d.heading,
 					pickable: true,
 					updateTriggers: {
 						getAngle: [ctx.markerStyle],

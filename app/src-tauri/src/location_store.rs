@@ -455,7 +455,7 @@ impl Store {
             let ci = render_cell_idx(loc.lat, loc.lng);
             let (r, g, b, a) = self.base_color(loc.id);
             self.cell_add_render(ci, loc.id);
-            let angle = if self.render.arrow_style { 180.0 - loc.heading as f32 } else { 0.0 };
+            let angle = if self.render.arrow_style { -(loc.heading as f32) } else { 0.0 };
             delta.added.push(RenderEntry {
                 cell: cell_key_from_idx(ci), id: loc.id,
                 lng: loc.lng as f32, lat: loc.lat as f32, heading: angle,
@@ -475,7 +475,7 @@ impl Store {
                     }
                     let (r, g, b, a) = self.base_color(new.id);
                     self.cell_add_render(new_ci, new.id);
-                    let angle = if self.render.arrow_style { 180.0 - new.heading as f32 } else { 0.0 };
+                    let angle = if self.render.arrow_style { -(new.heading as f32) } else { 0.0 };
                     delta.added.push(RenderEntry {
                         cell: cell_key_from_idx(new_ci), id: new.id,
                         lng: new.lng as f32, lat: new.lat as f32, heading: angle,
@@ -486,7 +486,7 @@ impl Store {
             }
             if pos_changed || heading_changed {
                 if let Some((cell, ci)) = self.cell_lookup(new.id) {
-                    let angle = if self.render.arrow_style { 180.0 - new.heading as f32 } else { 0.0 };
+                    let angle = if self.render.arrow_style { -(new.heading as f32) } else { 0.0 };
                     delta.updated.push(RenderPatchEntry {
                         cell, cell_index: ci,
                         lng: if pos_changed { Some(new.lng as f32) } else { None },
@@ -2300,7 +2300,7 @@ fn build_cell_render_buffers(store: &mut Store, req: &RenderRequest) -> Vec<u8> 
         });
         out.positions.push(lng as f32);
         out.positions.push(lat as f32);
-        let angle = if arrow_style { 180.0 - heading as f32 } else { 0.0 };
+        let angle = if arrow_style { -(heading as f32) } else { 0.0 };
         let is_hidden = selected_set.contains(id) || active_id == Some(id);
         if is_hidden { out.colors.extend_from_slice(&[0, 0, 0, 0]); }
         else { out.colors.extend_from_slice(&[42, 42, 42, 255]); }
@@ -2324,7 +2324,7 @@ fn build_cell_render_buffers(store: &mut Store, req: &RenderRequest) -> Vec<u8> 
         let is_hidden = selected_set.contains(id) || active_id == Some(id);
         out.positions.push(loc.lng as f32);
         out.positions.push(loc.lat as f32);
-        let angle = if arrow_style { 180.0 - loc.heading as f32 } else { 0.0 };
+        let angle = if arrow_style { -(loc.heading as f32) } else { 0.0 };
         if is_hidden { out.colors.extend_from_slice(&[0, 0, 0, 0]); }
         else { out.colors.extend_from_slice(&[42, 42, 42, 255]); }
         out.angles.push(angle);
