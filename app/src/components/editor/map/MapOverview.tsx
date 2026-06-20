@@ -26,6 +26,7 @@ import {
 	getVisibleTags,
 	getTagCounts,
 	toggleGhostSelection,
+	isolateSelection,
 	useGhostedSelections,
 	updateFilterSelection,
 	pruneDuplicates,
@@ -486,7 +487,10 @@ function SelectionRow({
 							className="icon-button"
 							type="button"
 							aria-label={ghosted ? "Un-ghost selection" : "Ghost selection"}
-							onClick={() => toggleGhostSelection(selection.key)}
+							title="Ghost selection (Alt-click to isolate)"
+							onClick={(e) =>
+								e.altKey ? isolateSelection(selection.key) : toggleGhostSelection(selection.key)
+							}
 						>
 							<Icon path={ghosted ? mdiGhost : mdiGhostOutline} />
 						</button>

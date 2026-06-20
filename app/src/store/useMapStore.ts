@@ -77,6 +77,7 @@ import {
 	composeSiblings as composeSiblingsSel,
 	replaceSelection as replaceSel,
 	sampleIds,
+	isolateGhostKeys,
 } from "./selections";
 
 const storeBus = createBus<() => void>();
@@ -947,6 +948,19 @@ export function isSelectionGhosted(key: string): boolean {
 export function toggleGhostSelection(key: string) {
 	if (ghostedSelections.has(key)) ghostedSelections.delete(key);
 	else ghostedSelections.add(key);
+	return applySelectionUpdate((sels) => sels);
+}
+
+/** "Solo" a selection: ghost every other top-level selection, keep this one visible.
+ *  If it is already the only visible one, un-ghost everything (toggle back). */
+export function isolateSelection(key: string) {
+	const next = isolateGhostKeys(
+		selections.map((s) => s.key),
+		ghostedSelections,
+		key,
+	);
+	ghostedSelections.clear();
+	for (const k of next) ghostedSelections.add(k);
 	return applySelectionUpdate((sels) => sels);
 }
 

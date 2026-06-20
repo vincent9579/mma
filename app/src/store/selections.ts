@@ -56,6 +56,17 @@ function locationsKey(ids: number[]): string {
 	return ids.join(",");
 }
 
+/** Ghost keys that "solo" `key`: everything except it. Returns an empty set when `key`
+ *  is already the sole visible selection, so a repeat call un-isolates (clears all ghosts). */
+export function isolateGhostKeys(
+	keys: string[],
+	ghosted: ReadonlySet<string>,
+	key: string,
+): Set<string> {
+	const alreadyIsolated = !ghosted.has(key) && keys.every((k) => k === key || ghosted.has(k));
+	return alreadyIsolated ? new Set() : new Set(keys.filter((k) => k !== key));
+}
+
 /** Pick `n` distinct ids uniformly at random from `ids` using `Math.random`.
  *  `n` is floored and clamped to `[0, ids.length]` (so over-large counts return all ids).
  *  Uses a partial Fisher–Yates shuffle, so the result contains no duplicates and `ids` is not mutated. */

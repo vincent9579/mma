@@ -17,6 +17,7 @@ import {
 	replaceSelection,
 	sampleIds,
 	polygonSelectionsContaining,
+	isolateGhostKeys,
 	ValidationState,
 } from "@/store/selections";
 import { setUserFieldDefs, resetForMapChange } from "@/lib/data/fieldDefRegistry";
@@ -873,6 +874,33 @@ describe("sampleIds", () => {
 	it("is deterministic given a fixed RNG", () => {
 		vi.spyOn(Math, "random").mockReturnValue(0); // always pick the first remaining element
 		expect(sampleIds([10, 20, 30, 40], 2)).toEqual([10, 20]);
+	});
+});
+
+describe("isolateGhostKeys", () => {
+	const keys = ["a", "b", "c"];
+
+	it("ghosts every key except the isolated one", () => {
+		expect(isolateGhostKeys(keys, new Set(), "b")).toEqual(new Set(["a", "c"]));
+	});
+
+	it("un-isolates (empty set) when the key is already the sole visible one", () => {
+		const isolated = new Set(["a", "c"]); // b is the only non-ghosted key
+		expect(isolateGhostKeys(keys, isolated, "b")).toEqual(new Set());
+	});
+
+	it("re-isolates a different key when another is currently isolated", () => {
+		const isolated = new Set(["a", "c"]); // b soloed
+		expect(isolateGhostKeys(keys, isolated, "a")).toEqual(new Set(["b", "c"]));
+	});
+
+	it("makes a currently-ghosted key the visible one", () => {
+		const ghosted = new Set(["b"]);
+		expect(isolateGhostKeys(keys, ghosted, "b")).toEqual(new Set(["a", "c"]));
+	});
+
+	it("un-isolates a lone visible selection (no-op toward visible)", () => {
+		expect(isolateGhostKeys(["a"], new Set(), "a")).toEqual(new Set());
 	});
 });
 
