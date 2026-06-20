@@ -1,3 +1,21 @@
+## v0.6.2 — 2026-06-20
+
+- Select admin-1 subdivisions on the map
+- Customizable pano dot color and size
+- Filter locations by tag count
+- Alt-click to isolate a ghosted selection
+- Add partition primitives to gradient plugin, "apply metadata as tags"
+- Tag suggestion limit setting
+- Plugin update mechanism in the marketplace + slightly better marketplace UI
+- Fix map generator plugin UI
+- "What's new" panel marks versions you haven't updated to yet
+- Fixed arrows facing the wrong direction on the map
+- Fixed Shift-modified hotkeys not firing
+- Fixed date-based gradients and tag partitions ignoring time zone
+- Fixed the fullscreen tag bar losing focus
+- Fixed unsaved tags persisting when staging a location's tags
+- Fixed the weather plugin not reporting progress
+
 ## v0.6.1 — 2026-06-18
 
 - Minimap now mirrors the editor map
