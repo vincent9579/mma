@@ -1072,6 +1072,35 @@ fn render_buffer_format_matches_js_parser() {
 }
 
 #[test]
+fn arrow_render_angle_is_negated_heading() {
+    // marker_style "arrow" must write angle = -heading (regression guard for ab0c496,
+    // where arrows pointed the wrong way). The value is otherwise asserted nowhere.
+    let l1 = loc_with_heading(1, 48.8, 2.35, 90.0);
+    let mut store = setup_store_with(&[l1]);
+    store.bake_overlay();
+
+    let req = RenderRequest {
+        west: -180.0, south: -90.0, east: 180.0, north: 90.0,
+        selected_ids: None,
+        marker_style: "arrow".into(),
+    };
+    let buf = build_cell_render_buffers(&mut store, &req);
+
+    // Walk to the single cell's angles segment: [u32 cells][u8 char][u32 count][ids][positions][colors][angles]
+    let cell_count = u32::from_le_bytes(buf[0..4].try_into().unwrap());
+    assert_eq!(cell_count, 1);
+    let mut offset = 4usize;
+    let count = u32::from_le_bytes(buf[offset+1..offset+5].try_into().unwrap()) as usize;
+    assert_eq!(count, 1);
+    offset += 5;
+    offset += count * 4;     // ids
+    offset += count * 2 * 4; // positions
+    offset += count * 4;     // colors
+    let angle = f32::from_le_bytes(buf[offset..offset+4].try_into().unwrap());
+    assert_eq!(angle, -90.0, "arrow angle must be the negated heading");
+}
+
+#[test]
 fn cell_render_id_order_matches_after_swap_remove_sequence() {
     // This test verifies the Rust side of the critical invariant:
     // after a sequence of adds and removes, CellRender.id_order[i]

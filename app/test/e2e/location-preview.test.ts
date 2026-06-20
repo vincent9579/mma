@@ -637,13 +637,6 @@ describe("LocationPreview — location with tags", () => {
 		tagRedId = tagRed.id;
 		const tagBlue = await createTag("Blue");
 		tagBlueId = tagBlue.id;
-		await withApi(
-			async (api, trId, tbId) => {
-				return "ok";
-			},
-			tagRedId,
-			tagBlueId,
-		);
 		const ids = await addLocs([
 			loc({
 				lat: COORD_ONLY.lat,
@@ -1059,13 +1052,6 @@ describe("LocationPreview — tag management in preview", () => {
 		mgmtTagAId = tagA.id;
 		const tagB = await createTag("Beta");
 		mgmtTagBId = tagB.id;
-		await withApi(
-			async (api, aId, bId) => {
-				return "ok";
-			},
-			mgmtTagAId,
-			mgmtTagBId,
-		);
 		await addLocs([
 			loc({ lat: COORD_ONLY.lat + 1, lng: COORD_ONLY.lng + 1, tags: [mgmtTagAId] }),
 			loc({ lat: COORD_ONLY.lat + 2, lng: COORD_ONLY.lng + 2, tags: [mgmtTagBId] }),
@@ -1112,16 +1098,15 @@ describe("LocationPreview — tag management in preview", () => {
 		await browser.pause(300);
 
 		const addBtn = await browser.$(".location-preview__tags ol.tag-list .tag__button--add");
-		if (await addBtn.isExisting()) {
-			await addBtn.click();
-			await browser.pause(300);
-			const saveBtn = await browser.$("[data-qa='location-save']");
-			await saveBtn.click();
-			await browser.pause(500);
+		await addBtn.waitForExist({ timeout: 5000, timeoutMsg: "Alpha suggestion never appeared" });
+		await addBtn.click();
+		await browser.pause(300);
+		const saveBtn = await browser.$("[data-qa='location-save']");
+		await saveBtn.click();
+		await browser.pause(500);
 
-			const l = await readLocation(tagmgmt1Id);
-			expect(l.tags).toContain(mgmtTagAId);
-		}
+		const l = await readLocation(tagmgmt1Id);
+		expect(l.tags).toContain(mgmtTagAId);
 	});
 
 	it("tag removal button removes tag from location", async () => {
@@ -1130,17 +1115,17 @@ describe("LocationPreview — tag management in preview", () => {
 		await browser.pause(500);
 
 		const removeBtn = await browser.$(
-			".location-preview__tags .tag .tag__remove, .location-preview__tags .tag button",
+			".location-preview__tags .tag-list .tag .tag__button--delete",
 		);
-		if (await removeBtn.isExisting()) {
-			await removeBtn.click();
-			await browser.pause(300);
-			const saveBtn = await browser.$("[data-qa='location-save']");
-			await saveBtn.click();
-			await browser.pause(500);
-			const l = await readLocation(tagmgmt1Id);
-			expect(l.tags.length).toBeLessThan(2);
-		}
+		await removeBtn.waitForExist({ timeout: 5000, timeoutMsg: "No removable tag chip in preview" });
+		const before = (await readLocation(tagmgmt1Id)).tags.length;
+		await removeBtn.click();
+		await browser.pause(300);
+		const saveBtn = await browser.$("[data-qa='location-save']");
+		await saveBtn.click();
+		await browser.pause(500);
+		const l = await readLocation(tagmgmt1Id);
+		expect(l.tags.length).toBe(before - 1);
 	});
 
 	// Invariant: staged tags are a pure UI artifact. Typing a brand-new tag name

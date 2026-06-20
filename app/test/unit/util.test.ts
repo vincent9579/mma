@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { isFiniteNumber, fovToZoom, compareNatural, bucketize, binNumeric, sortTagsByMode } from "@/lib/util/util";
+import { isFiniteNumber, fovToZoom, compareNatural, bucketize, binNumeric, sortTagsByMode, tagChipStyle, appendTagName } from "@/lib/util/util";
+import { colorForName } from "@/lib/util/color";
 import { relativeTime } from "@/lib/util/format";
 import type { Tag } from "@/bindings.gen";
 
@@ -46,6 +47,35 @@ describe("sortTagsByMode", () => {
 	it("amount sorts by count descending, missing counts last", () => {
 		expect(sortTagsByMode(tags, "amount", {})).toEqual(tags);
 		expect(sortTagsByMode(tags, "amount", counts).map((t) => t.id)).toEqual([3, 1, 2]);
+	});
+});
+
+describe("tagChipStyle", () => {
+	const tags: Tag[] = [{ id: 1, name: "Red", color: "#ff0000" }];
+
+	it("uses an existing tag's stored color, matched case-insensitively", () => {
+		expect(tagChipStyle("red", tags).backgroundColor).toBe("#ff0000");
+	});
+
+	it("falls back to the deterministic colorForName for an unknown name", () => {
+		expect(tagChipStyle("Gamma", tags).backgroundColor).toBe(colorForName("Gamma"));
+	});
+});
+
+describe("appendTagName", () => {
+	const tags: Tag[] = [{ id: 1, name: "Urban", color: "#000" }];
+
+	it("appends a brand-new name as typed", () => {
+		expect(appendTagName([], "Coastal", tags)).toEqual(["Coastal"]);
+	});
+
+	it("normalizes to an existing tag's canonical casing", () => {
+		expect(appendTagName([], "urban", tags)).toEqual(["Urban"]);
+	});
+
+	it("dedups case-insensitively, returning the original array unchanged", () => {
+		const pending = ["Urban"];
+		expect(appendTagName(pending, "urban", tags)).toBe(pending);
 	});
 });
 

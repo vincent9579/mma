@@ -6,7 +6,6 @@ import {
 	flushAndWait,
 	openMap,
 	addLocs,
-	getLocCount,
 	createLocation,
 	withApi,
 } from "./helpers";
@@ -195,79 +194,6 @@ describe("Map metadata updates", () => {
 	});
 });
 
-// bulkImportMaps was removed in the Rust migration — bulk import now requires files on disk
-// via bulk_import_preview + bulk_import_confirm. Covered by bulk-import-rust.test.ts.
-/* eslint-disable @typescript-eslint/no-explicit-any */
-describe.skip("Bulk import", () => {
-	const importedIds: string[] = [];
-
-	before(async () => {
-		await waitForReady();
-	});
-
-	after(async () => {
-		await closeMap();
-		for (const id of importedIds) await deleteMap(id);
-	});
-
-	it("bulk import creates multiple maps", async () => {
-		await withApi(async (api) => {
-			const maps = await api.cmd.storeListMaps();
-			return maps.length;
-		});
-
-		await withApi(async (api) => {
-			await (api as any).bulkImportMaps([
-				{
-					name: "Bulk Map 1",
-					folder: "Imported",
-					locations: [api.createLocation({ lat: 10, lng: 20, zoom: 1 })],
-					tags: [],
-				},
-				{
-					name: "Bulk Map 2",
-					folder: "Imported",
-					locations: [
-						api.createLocation({ lat: 30, lng: 40, zoom: 1 }),
-						api.createLocation({ lat: 50, lng: 60, zoom: 1 }),
-					],
-					tags: [{ name: "Imported", color: "#ff0000", visible: true }],
-				},
-			]);
-		});
-
-		const maps = await withApi(async (api) => {
-			return await api.cmd.storeListMaps();
-		});
-
-		const bulkMaps = maps.filter((m: any) => m.name.startsWith("Bulk Map"));
-		expect(bulkMaps.length).toBe(2);
-		for (const m of bulkMaps) importedIds.push(m.id);
-
-		const m1 = bulkMaps.find((m: any) => m.name === "Bulk Map 1");
-		const m2 = bulkMaps.find((m: any) => m.name === "Bulk Map 2");
-		expect(m1!.folder).toBe("Imported");
-		expect(m2!.folder).toBe("Imported");
-	});
-
-	it("bulk imported maps have correct locations", async () => {
-		// Open Bulk Map 2 and check
-		const id = importedIds[1]; // second map
-		await openMap(id);
-
-		const count = await getLocCount();
-		expect(count).toBe(2);
-	});
-
-	it("bulk imported maps have tags", async () => {
-		const tags = await withApi(async (api) => {
-			return api.getCurrentMap()?.meta.tags;
-		});
-		expect(Object.keys(tags!).length).toBeGreaterThanOrEqual(1);
-		const tagValues = Object.values(tags!) as any[];
-		expect(tagValues.some((t: any) => t.name === "Imported")).toBe(true);
-	});
-});
 
 describe("Active location and work area", () => {
 	let mapId: string;

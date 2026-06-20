@@ -135,10 +135,10 @@ describe("Extra field auto-registration", () => {
 			}),
 		]);
 
-		const fields = await withApi(async (api) => api.getCurrentMap()!.meta.extra?.fields);
-		if (fields) {
-			const hasTemp = "temperature" in fields;
-			expect(hasTemp || !fields).toBeTruthy();
-		}
+		// Auto-registered defs land in the live field-def registry (and SQLite), not the
+		// in-memory meta.extra.fields, which is only the persisted seed loaded on open.
+		const defs = await withApi(async (api) => api.getAllFieldDefs());
+		expect("temperature" in defs).toBe(true);
+		expect("humidity" in defs).toBe(true);
 	});
 });
