@@ -104,6 +104,43 @@ describe("priority order", () => {
 	});
 });
 
+// Rust auto-registers a label-less placeholder into the user layer the first time a
+// plugin-owned key appears in data (it can't see the plugin layer). That placeholder
+// must not shadow the plugin's real label/comparison -- per-attribute fallthrough.
+describe("placeholder does not shadow plugin def", () => {
+	it("falls through to the plugin label/comparison when the user attr is null", () => {
+		registerPluginFieldDefs({
+			sunAzimuth: {
+				type: "number",
+				label: "Sun azimuth",
+				comparison: { type: "circular", period: 360 },
+			},
+		});
+		// Simulates Rust's inferred placeholder landing in the user layer on first write.
+		mergeUserFieldDefs({ sunAzimuth: { type: "number", label: null, comparison: null } });
+
+		const def = getFieldDef("sunAzimuth")!;
+		expect(def.label).toBe("Sun azimuth");
+		expect(def.comparison).toEqual({ type: "circular", period: 360 });
+	});
+
+	it("a real user label still wins over the plugin label", () => {
+		registerPluginFieldDefs({ sunAzimuth: { type: "number", label: "Sun azimuth" } });
+		mergeUserFieldDefs({ sunAzimuth: { type: "number", label: "Solar bearing" } });
+		expect(getFieldDef("sunAzimuth")!.label).toBe("Solar bearing");
+	});
+
+	it("getAllFieldDefs composes the same way", () => {
+		registerPluginFieldDefs({
+			sunAzimuth: { type: "number", label: "Sun azimuth", comparison: { type: "circular", period: 360 } },
+		});
+		mergeUserFieldDefs({ sunAzimuth: { type: "number", label: null, comparison: null } });
+		const all = getAllFieldDefs();
+		expect(all.sunAzimuth.label).toBe("Sun azimuth");
+		expect(all.sunAzimuth.comparison).toEqual({ type: "circular", period: 360 });
+	});
+});
+
 describe("mergeUserFieldDefs (auto-register merge)", () => {
 	it("adds new defs to the live user layer", () => {
 		mergeUserFieldDefs({ plumbus: { type: "number", label: "Plumbus" } });

@@ -12,8 +12,15 @@
  *   2. **Plugin defs** — declared by `EnrichmentProvider.fieldDefs` at
  *      registration time. Available as long as the plugin is active.
  *
- * `getFieldDef(key)` returns the highest-priority definition for a key,
- * or `undefined` if no metadata is declared (the UI falls back to the raw key name).
+ * `getFieldDef(key)` composes the layers **per-attribute**, not whole-object: the
+ * user layer wins for any attribute it actually has an opinion on, falling through
+ * to the plugin layer for null/absent ones. This matters because Rust auto-registers
+ * a label-less placeholder (`{ type, label: null, comparison: null, ... }`) into the
+ * user layer the first time a plugin-owned key appears in data — Rust can't see the
+ * plugin layer, so it must infer *something*. Whole-object precedence would let that
+ * placeholder shadow the plugin's real label and comparison; per-attribute fallthrough
+ * treats a null attribute as "no opinion, ask the next layer." Returns `undefined` if
+ * no layer declares the key (the UI falls back to the raw key name).
  */
 
 import type { ExtraFieldDef } from "@/bindings.gen";
@@ -51,12 +58,33 @@ export function resetForMapChange() {
 	userDefs = {};
 }
 
+/** Compose two layers per-attribute: the user value wins when present, falling
+ *  through to the plugin value for null/absent attributes (a label-less inferred
+ *  placeholder must not shadow the plugin's real label/comparison). */
+function mergeDef(
+	user: ExtraFieldDef | undefined,
+	plugin: ExtraFieldDef | undefined,
+): ExtraFieldDef | undefined {
+	if (!user) return plugin;
+	if (!plugin) return user;
+	return {
+		type: user.type,
+		label: user.label ?? plugin.label,
+		values: user.values ?? plugin.values,
+		labels: user.labels ?? plugin.labels,
+		comparison: user.comparison ?? plugin.comparison,
+	};
+}
+
 /** Look up metadata for a single field key. Returns `undefined` if no metadata exists. */
 export function getFieldDef(key: string): ExtraFieldDef | undefined {
-	return userDefs[key] ?? pluginDefs[key];
+	return mergeDef(userDefs[key], pluginDefs[key]);
 }
 
 /** Merged view of all field definitions across all layers. */
 export function getAllFieldDefs(): Record<string, ExtraFieldDef> {
-	return { ...pluginDefs, ...userDefs };
+	const out: Record<string, ExtraFieldDef> = {};
+	for (const key of new Set([...Object.keys(pluginDefs), ...Object.keys(userDefs)]))
+		out[key] = mergeDef(userDefs[key], pluginDefs[key])!;
+	return out;
 }
