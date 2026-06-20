@@ -3,9 +3,11 @@ import {
 	getFieldDef,
 	getAllFieldDefs,
 	registerPluginFieldDefs,
+	unregisterPluginFieldDefs,
 	setUserFieldDefs,
 	mergeUserFieldDefs,
 	resetForMapChange,
+	getFieldDefsVersion,
 } from "@/lib/data/fieldDefRegistry";
 
 beforeEach(() => {
@@ -138,6 +140,43 @@ describe("placeholder does not shadow plugin def", () => {
 		const all = getAllFieldDefs();
 		expect(all.sunAzimuth.label).toBe("Sun azimuth");
 		expect(all.sunAzimuth.comparison).toEqual({ type: "circular", period: 360 });
+	});
+});
+
+// Consumers (e.g. the filter field list) memo on the key set, which doesn't change on
+// a label rename. The version must bump on any def edit so those memos invalidate.
+describe("def-change version", () => {
+	it("bumps on every layer mutation", () => {
+		const v0 = getFieldDefsVersion();
+		setUserFieldDefs({ a: { type: "number", label: "A" } });
+		const v1 = getFieldDefsVersion();
+		expect(v1).toBeGreaterThan(v0);
+
+		// A label-only rename (same key set) must still bump.
+		setUserFieldDefs({ a: { type: "number", label: "A renamed" } });
+		expect(getFieldDefsVersion()).toBeGreaterThan(v1);
+
+		const v2 = getFieldDefsVersion();
+		mergeUserFieldDefs({ b: { type: "string", label: "B" } });
+		expect(getFieldDefsVersion()).toBeGreaterThan(v2);
+
+		const v3 = getFieldDefsVersion();
+		registerPluginFieldDefs({ p: { type: "number", label: "P" } });
+		expect(getFieldDefsVersion()).toBeGreaterThan(v3);
+
+		const v4 = getFieldDefsVersion();
+		unregisterPluginFieldDefs(["p"]);
+		expect(getFieldDefsVersion()).toBeGreaterThan(v4);
+
+		const v5 = getFieldDefsVersion();
+		resetForMapChange();
+		expect(getFieldDefsVersion()).toBeGreaterThan(v5);
+	});
+
+	it("does not bump when unregistering an empty key list", () => {
+		const v = getFieldDefsVersion();
+		unregisterPluginFieldDefs([]);
+		expect(getFieldDefsVersion()).toBe(v);
 	});
 });
 

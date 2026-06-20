@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import type { Selection, FilterOp, ExtraFieldDef } from "@/bindings.gen";
 import { cmd } from "@/lib/commands";
-import { getFieldDef } from "@/lib/data/fieldDefRegistry";
+import { getFieldDef, useFieldDefsVersion } from "@/lib/data/fieldDefRegistry";
 import { pickPeriodEnd, hasTimeOfDay, dateParts, partsToEpoch } from "@/lib/data/fieldOps";
 import { useKnownFieldKeys, selectFilter } from "@/store/useMapStore";
 import { useSetting } from "@/store/settings";
@@ -13,8 +13,6 @@ import { mdiArrowRight, mdiArrowLeft } from "@mdi/js";
 
 const ALL_OPS: FilterOp[] = ["eq", "neq", "gt", "lt", "gte", "lte", "between", "has", "nothas"];
 const EQUALITY_OPS: FilterOp[] = ["eq", "neq", "has", "nothas"];
-// Exact dates are second-precision timestamps: eq/neq at stored precision is a trap
-// (matches a single second). Day/minute queries are intervals -> the between family.
 const DATE_OPS: FilterOp[] = ["between", "gt", "lt", "gte", "lte", "has", "nothas"];
 const filterBuilderState = new Map<
 	string,
@@ -41,6 +39,7 @@ const VIRTUAL_FIELDS: FieldEntry[] = [
 
 export function useExtraFieldKeys(): FieldEntry[] {
 	const keys = useKnownFieldKeys();
+	const defsVersion = useFieldDefsVersion();
 	return useMemo(() => {
 		const entries: FieldEntry[] = [];
 		for (const key of keys) {
@@ -56,7 +55,7 @@ export function useExtraFieldKeys(): FieldEntry[] {
 			if (!keys.has(vf.key)) entries.push(vf);
 		}
 		return entries;
-	}, [keys]);
+	}, [keys, defsVersion]);
 }
 
 const TIMEZONE_VALUES = Intl.supportedValuesOf("timeZone");
