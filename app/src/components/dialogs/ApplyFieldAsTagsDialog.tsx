@@ -11,6 +11,7 @@ import {
 	batchUpdateLocations,
 } from "@/store/useMapStore";
 import { ScopeSelector } from "@/components/primitives/ScopeSelector";
+import { useSetting } from "@/store/settings";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 
 export function ApplyFieldAsTagsDialog({
@@ -20,10 +21,11 @@ export function ApplyFieldAsTagsDialog({
 	open: boolean;
 	onOpenChange: (v: boolean) => void;
 }) {
+	const tzDefault = useSetting("dateTimezone") === "location";
 	const [field, setField] = useState("");
 	const [projectionId, setProjectionId] = useState("");
 	const [width, setWidth] = useState("");
-	const [tzLocal, setTzLocal] = useState(false);
+	const [tzLocal, setTzLocal] = useState(tzDefault);
 	const scopeCtl = useScope();
 	const keys = useKnownFieldKeys();
 	const fields = useMemo(() => {
@@ -48,7 +50,7 @@ export function ApplyFieldAsTagsDialog({
 		const type = fields.find((f) => f.key === key)?.type ?? "string";
 		setProjectionId(projectionsForType(type)[0]?.id ?? "");
 		setWidth("");
-		setTzLocal(false);
+		setTzLocal(tzDefault);
 	};
 
 	const handleApply = async () => {
@@ -90,7 +92,7 @@ export function ApplyFieldAsTagsDialog({
 					setField("");
 					setProjectionId("");
 					setWidth("");
-					setTzLocal(false);
+					setTzLocal(tzDefault);
 				}
 			}}
 		>

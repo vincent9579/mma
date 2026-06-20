@@ -6,6 +6,7 @@ import { getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { partitionKeyOptions, RANGE_ID } from "@/lib/data/fieldOps";
 import { isNumericField, colorPartition } from "./gradientMath";
 import { partition, useScope } from "@/store/useMapStore";
+import { useSetting } from "@/store/settings";
 import "./gradient.css";
 
 interface GradientPreset {
@@ -78,6 +79,7 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 	const [bucketCount, setBucketCount] = useState(10);
 	const [applying, setApplying] = useState(false);
 	const scopeCtl = useScope();
+	const dateTimezone = useSetting("dateTimezone");
 
 	const map = MMA.getCurrentMap();
 
@@ -122,7 +124,7 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 					? { kind: "numericBin", binning: { by: "count", n: bucketCount } }
 					: projectionId === "value"
 						? { kind: "value" }
-						: { kind: "datePart", part: projectionId as DatePart, tzLocal: false };
+						: { kind: "datePart", part: projectionId as DatePart, tzLocal: dateTimezone === "location" };
 
 			const groups = await partition(fieldKey, key, scopeCtl.scope);
 			if (groups.length === 0) return;
@@ -143,7 +145,7 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 		} finally {
 			setApplying(false);
 		}
-	}, [fieldKey, fieldOpt, fieldType, projectionId, map, bucketCount, preset, scopeCtl.scope]);
+	}, [fieldKey, fieldOpt, fieldType, projectionId, map, bucketCount, preset, scopeCtl.scope, dateTimezone]);
 
 	return (
 		<Sidebar title="Gradient" onBack={onClose} className="gradient-sidebar">

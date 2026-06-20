@@ -1,6 +1,7 @@
 use super::*;
 use crate::types::Location;
 use crate::arrow_bridge::locations_to_batch;
+use chrono::TimeZone;
 
 fn loc(id: u32, lat: f64, lng: f64) -> Location {
     Location {
@@ -1053,9 +1054,9 @@ fn partition_date_tz_local_matches_js_golden() {
 }
 
 #[test]
-fn partition_date_local_frame_roundtrip() {
-    // Construct from local wall-clock digits and read them back — machine-tz agnostic.
-    let ts = Local.with_ymd_and_hms(2021, 3, 14, 9, 0, 0).single().unwrap().timestamp();
+fn partition_date_non_local_reads_utc() {
+    // tz_local=false reads the UTC frame (not device-local).
+    let ts = Utc.with_ymd_and_hms(2021, 3, 14, 9, 0, 0).unwrap().timestamp();
     let adds = vec![loc_extra(1, serde_json::json!({"t": ts}))];
     let (dead, patches) = (HashSet::new(), HashMap::new());
     let view = partition_view(&adds, &dead, &patches);

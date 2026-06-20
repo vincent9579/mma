@@ -7,9 +7,9 @@ import {
 	batchUpdateLocations,
 	useScope,
 	applyScope,
-	type Scope,
 	type ScopeController,
 } from "@/store/useMapStore";
+import type { Scope } from "@/bindings.gen";
 import { ScopeSelector } from "@/components/primitives/ScopeSelector";
 import type { Location } from "@/types";
 import { isPinnedToPano } from "@/types";

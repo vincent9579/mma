@@ -12,7 +12,7 @@ use arrow::array::{RecordBatch, StringArray, Float64Array, UInt32Array, ListArra
 use roaring::RoaringBitmap;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Datelike, Timelike, Utc, Local, TimeZone};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use crate::types::{Location, LocationFlags};
 use crate::util::{unix_to_month_day, unix_to_hour_min, tz_offset_seconds};
 
@@ -1253,9 +1253,9 @@ fn value_key(v: &serde_json::Value) -> Option<String> {
     }
 }
 
-/// Calendar component of a date/month field value, matching JS `calendarParts`. Month
-/// strings ("YYYY-MM") read y/mo with day=1, hour=0; everything else is epoch seconds,
-/// read in the pano's timezone (`tz_local`) or the viewer's local frame.
+/// Calendar component of a date/month field value. Month strings ("YYYY-MM") read y/mo with
+/// day=1, hour=0; everything else is epoch seconds, read in the pano's timezone (`tz_local`)
+/// or UTC.
 fn date_part_key(v: Option<&serde_json::Value>, part: DatePart, tz_local: bool, tz: Option<&str>) -> Option<String> {
     let v = v?;
     if let Some(s) = v.as_str() {
@@ -1268,7 +1268,7 @@ fn date_part_key(v: Option<&serde_json::Value>, part: DatePart, tz_local: bool, 
         let off = tz_offset_seconds(tz?, ts)?;
         utc_parts(ts + off as f64)
     } else {
-        local_parts(ts)
+        utc_parts(ts)
     };
     Some(parts_to_key(y, mo, d, h, part))
 }
@@ -1294,13 +1294,6 @@ fn parse_year_month(s: &str) -> Option<(i32, u32)> {
 fn utc_parts(ts: f64) -> (i32, u32, u32, u32) {
     let dt = DateTime::<Utc>::from_timestamp(ts as i64, 0).unwrap_or_default();
     (dt.year(), dt.month(), dt.day(), dt.hour())
-}
-
-fn local_parts(ts: f64) -> (i32, u32, u32, u32) {
-    match Local.timestamp_opt(ts as i64, 0).single() {
-        Some(dt) => (dt.year(), dt.month(), dt.day(), dt.hour()),
-        None => (1970, 1, 1, 0),
-    }
 }
 
 /// JS `String(number)`: integer-valued floats print without a decimal.
