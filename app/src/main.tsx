@@ -46,6 +46,8 @@ async function boot() {
 	});
 
 	const win = getCurrentWindow();
+	document.addEventListener("contextmenu", (e) => e.preventDefault());
+
 	document.addEventListener("keydown", (e) => {
 		if (e.key === "F11") {
 			e.preventDefault();
