@@ -11,6 +11,7 @@ import { runConcurrent } from "@/lib/util/concurrent";
 import { SV_SEARCH_RADIUS, SV_CONCURRENCY } from "@/lib/sv/constants";
 import type { LocationUpdate_Deserialize as LocationUpdate } from "@/bindings.gen";
 import { updateLocations } from "@/store/useMapStore";
+import { type RequireNonNull } from "@/types/util";
 
 /** A single historical panorama entry (pano ID + capture date). */
 export interface PanoReference {
@@ -82,7 +83,7 @@ export async function resolvePano(loc: Location): Promise<ResolvedPano> {
 }
 
 interface ResolvePanoResult {
-	resolved: { id: number; panoId: string }[];
+	resolved: RequireNonNull<Pick<Location, 'id' | 'panoId'>>[];
 	failed: number[];
 }
 

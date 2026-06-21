@@ -662,15 +662,15 @@ export type LocationPatch = {
 	modifiedAt: number | null,
 };
 
-/**  A location ID paired with a partial patch, sent from JS for batch updates. */
+/**  A location ID paired with a partial patch, sent from JS for updates. */
 
-/**  A location ID paired with a partial patch, sent from JS for batch updates. */
+/**  A location ID paired with a partial patch, sent from JS for updates. */
 export type LocationUpdate_Deserialize = {
 	id: number,
 	patch: LocationPatch_Deserialize,
 };
 
-/**  A location ID paired with a partial patch, sent from JS for batch updates. */
+/**  A location ID paired with a partial patch, sent from JS for updates. */
 export type LocationUpdate = {
 	id: number,
 	patch: LocationPatch,

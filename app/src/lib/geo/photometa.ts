@@ -1,11 +1,13 @@
 // Photometa API for fetching Street View panorama dots.
 
+import type { Location } from "@/bindings.gen";
 import type { LatLng } from "@/types";
+import type { RequireNonNull } from "@/types/util";
 
 const TILE_ZOOM = 17;
 const TILE_SIZE = 256;
 
-export type PanoDot = LatLng & { panoId: string }
+export type PanoDot = LatLng & RequireNonNull<Pick<Location, 'panoId'>>
 
 export function latLngToWorldCoord(lat: number, lng: number) {
 	let n = Math.sin((lat * Math.PI) / 180);

@@ -63,23 +63,24 @@ export type ColorPatchEntry = {
  *  A commit's delta, returned to the frontend for the per-commit diff viewer.
  *  An updated location appears in both `created` (new) and `removed` (old).
  */
-export type CommitDelta_Serialize = {
-	created: Location_Serialize[];
-	removed: Location_Serialize[];
+export type CommitDelta = {
+	created: Location$1[];
+	removed: Location$1[];
 };
-/**  Metadata for a single commit, returned to the frontend for the commit history UI. */
+export type CommitDiff = {
+	added: number;
+	removed: number;
+	modified: number;
+};
 export type CommitInfo = {
 	id: string;
 	mapId: string;
 	parentId: string | null;
 	message: string | null;
 	treeHash: string | null;
-	added: number;
-	removed: number;
-	modified: number;
 	locationCount: number;
 	createdAt: string;
-};
+} & CommitDiff;
 /**
  *  How a field's values are compared when measuring how strongly it separates
  *  groups (selection disambiguation). The only un-inferrable property a field can
@@ -146,12 +147,12 @@ export type EditorImportPreview = {
  *  Combined result of an editor import: the mutation delta (for render pipeline)
  *  plus import-specific metadata.
  */
-export type EditorImportResult_Serialize = {
+export type EditorImportResult = {
 	importedCount: number;
 	warnings: string[];
 	/**  True when the import was large enough to autocommit; the caller commits it. */
 	autoCommit: boolean;
-} & MutationResult_Serialize;
+} & MutationResult;
 /**
  *  Configuration for JSON export. Controls which fields are included and
  *  whether the export covers all locations or a specific selection.
@@ -250,61 +251,7 @@ export type KeySpec =
 	part: DatePart;
 	tzLocal: boolean;
 };
-/**
- *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
- *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
- */
-export type LocationPatch_Deserialize = {
-	lat?: number | null;
-	lng?: number | null;
-	heading?: number | null;
-	pitch?: number | null;
-	zoom?: number | null;
-	panoId?: string | null;
-	flags?: number | null;
-	tags?: number[] | null;
-	extra?: any | null;
-	createdAt?: number | null;
-	modifiedAt?: number | null;
-};
-/**
- *  A single Street View location on a map.
- *
- *  This is the atomic unit of data in the system. Locations are stored columnar
- *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
- *  within a map and assigned by the store's monotonic allocator.
- */
-export type Location_Deserialize = {
-	/**
-	 *  Monotonically increasing within a map. Zero is a sentinel meaning
-	 *  "not yet assigned" (used during import before IDs are allocated).
-	 */
-	id?: number;
-	lat: number;
-	lng: number;
-	heading: number;
-	pitch: number;
-	/**  Street View zoom level (0-5), not map zoom. */
-	zoom: number;
-	panoId: string | null;
-	/**  See [`LocationFlags`]. */
-	flags: number;
-	/**  Tag IDs applied to this location. References `Tag.id`. */
-	tags: number[];
-	/**  Arbitrary key-value metadata */
-	extra?: any | null;
-	/**  Unix timestamp (seconds) */
-	createdAt: number;
-	modifiedAt?: number | null;
-};
-/**
- *  A single Street View location on a map.
- *
- *  This is the atomic unit of data in the system. Locations are stored columnar
- *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
- *  within a map and assigned by the store's monotonic allocator.
- */
-export type Location_Serialize = {
+type Location$1 = {
 	/**
 	 *  Monotonically increasing within a map. Zero is a sentinel meaning
 	 *  "not yet assigned" (used during import before IDs are allocated).
@@ -322,10 +269,37 @@ export type Location_Serialize = {
 	/**  Tag IDs applied to this location. References `Tag.id`. */
 	tags: number[];
 	/**  Arbitrary key-value metadata */
-	extra?: any | null;
+	extra: any | null;
 	/**  Unix timestamp (seconds) */
 	createdAt: number;
+	modifiedAt: number | null;
+};
+/**
+ *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
+ *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+ */
+/**
+ *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
+ *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+ */
+export type LocationPatch_Deserialize = {
+	lat?: number | null;
+	lng?: number | null;
+	heading?: number | null;
+	pitch?: number | null;
+	zoom?: number | null;
+	panoId?: string | null;
+	flags?: number | null;
+	tags?: number[] | null;
+	extra?: any | null;
+	createdAt?: number | null;
 	modifiedAt?: number | null;
+};
+/**  A location ID paired with a partial patch, sent from JS for updates. */
+/**  A location ID paired with a partial patch, sent from JS for updates. */
+export type LocationUpdate_Deserialize = {
+	id: number;
+	patch: LocationPatch_Deserialize;
 };
 export type MapData = {
 	meta: MapMeta;
@@ -383,7 +357,6 @@ export type MapMeta = {
  *  Partial update for map metadata. Only non-`None` fields are written.
  *  `folder: Some(None)` explicitly unsets the folder (moves to root).
  */
-export type MapMetaPatch = MapMetaPatch_Serialize | MapMetaPatch_Deserialize;
 /**
  *  Partial update for map metadata. Only non-`None` fields are written.
  *  `folder: Some(None)` explicitly unsets the folder (moves to root).
@@ -399,22 +372,6 @@ export type MapMetaPatch_Deserialize = {
 		[key in string]: Tag;
 	} | null;
 	labels?: string[] | null;
-};
-/**
- *  Partial update for map metadata. Only non-`None` fields are written.
- *  `folder: Some(None)` explicitly unsets the folder (moves to root).
- */
-export type MapMetaPatch_Serialize = {
-	name: string | null;
-	description: string | null;
-	folder: string | null;
-	settings: MapSettings | null;
-	scoreBounds: ScoreBounds | null;
-	extra: MapExtra | null;
-	tags: {
-		[key in string]: Tag;
-	} | null;
-	labels: string[] | null;
 };
 /**
  *  Per-map editor preferences. Controls Street View lookup behavior (official vs
@@ -444,8 +401,8 @@ export type MapSettings = {
  *  discovered for the first time in this mutation. JS merges them straight into the
  *  field-def registry, so field metadata is live without a reload.
  */
-export type MutationResult_Serialize = {
-	delta: RenderDelta_Serialize;
+export type MutationResult = {
+	delta: RenderDelta;
 	selectionSync: SelectionSync | null;
 	newFieldDefs: {
 		[key in string]: ExtraFieldDef;
@@ -503,12 +460,12 @@ export type PolygonGeometry = {
  *  patches, swap-removals, and color patches (for selection overlay changes).
  *  `full_reset` signals JS to discard all cell data and re-fetch via `store_fill_render_file`.
  */
-export type RenderDelta_Serialize = {
+export type RenderDelta = {
 	added: RenderEntry[];
 	updated: RenderPatchEntry[];
 	removed: CellRemoval[];
 	colorPatches: ColorPatchEntry[];
-	fullReset?: boolean;
+	fullReset: boolean;
 };
 /**  A newly-added marker to a render cell: position, heading, and base color. */
 export type RenderEntry = {
@@ -805,17 +762,12 @@ export type Tag = {
 	 */
 	count?: number;
 };
-type Location$1 = Location_Serialize;
-export type ImportPreview = EditorImportPreview;
 export type LatLng = google.maps.LatLngLiteral;
 declare function createLocation(partial: Partial<Location$1> & LatLng): Location$1;
 export type TagSortMode = "default" | "name" | "amount";
 export type WorkArea = "overview" | "location" | "duplicates" | "import" | "plugin" | "diff";
 /** When a move target already holds a value, which field's value survives. */
 export type MergeWinner = "from" | "to";
-/** A group from Rust: key, its ids, and (numeric bins only) the `[lo, hi]` bounds. */
-export type PartitionGroup = PartitionBucket;
-export type RenderDelta = RenderDelta_Serialize;
 /** Per-cell, per-selection membership: a dense bitmask or a sparse selected-index list. */
 export type SelEntry = {
 	kind: "mask";
@@ -868,7 +820,7 @@ declare enum ValidationState {
 }
 /** Parsed-but-not-committed import shown while `workArea === "import"`. */
 export interface ImportStaging {
-	preview: ImportPreview;
+	preview: EditorImportPreview;
 	source: "file" | "paste";
 }
 /** Ephemeral commit-diff overlay shown while `workArea === "diff"`. Position arrays are
@@ -876,11 +828,7 @@ export interface ImportStaging {
 export interface CommitDiffPreview {
 	commitId: string;
 	hash: string;
-	counts: {
-		added: number;
-		removed: number;
-		modified: number;
-	};
+	counts: CommitDiff;
 	added: Float32Array;
 	removed: Float32Array;
 	modified: Float32Array;
@@ -1364,11 +1312,9 @@ export type OpenDialogReturn<T extends OpenDialogOptions> = T["directory"] exten
 declare function open$1<T extends OpenDialogOptions>(options?: T): Promise<OpenDialogReturn<T>>;
 declare function save(options?: SaveDialogOptions): Promise<string | null>;
 declare const EVENT_DEFS: {
-	"location:add": Location_Serialize[];
+	"location:add": Location$1[];
 	"location:remove": number[];
-	"location:update": Partial<Location_Serialize> & {
-		id: number;
-	};
+	"location:update": LocationUpdate_Deserialize;
 	"tag:add": Tag[];
 	"tag:remove": number[];
 	"tag:update": (Partial<Tag> & {
@@ -1873,15 +1819,12 @@ declare const mma: {
 		storeRenameFolder: (from: string, to: string) => Promise<null>;
 		storeDeleteFolder: (name: string) => Promise<null>;
 		storeDbTableInfo: () => Promise<DbTableInfo[]>;
-		storeAddLocations: (locations: Location_Deserialize[]) => Promise<MutationResult_Serialize>;
-		storeRemoveLocations: (ids: number[]) => Promise<MutationResult_Serialize>;
-		storeUpdateLocations: (updates: [
-			number,
-			LocationPatch_Deserialize
-		][], recordUndo: boolean | null) => Promise<MutationResult_Serialize>;
+		storeAddLocations: (locations: Location$1[]) => Promise<MutationResult>;
+		storeRemoveLocations: (ids: number[]) => Promise<MutationResult>;
+		storeUpdateLocations: (updates: LocationUpdate_Deserialize[], recordUndo: boolean | null) => Promise<MutationResult>;
 		storeSetActive: (id: number | null) => Promise<null>;
-		storeGetLocation: (id: number) => Promise<Location_Serialize | null>;
-		storeGetLocationsByIds: (ids: number[]) => Promise<Location_Serialize[]>;
+		storeGetLocation: (id: number) => Promise<Location$1 | null>;
+		storeGetLocationsByIds: (ids: number[]) => Promise<Location$1[]>;
 		storeGetAllLocations: () => Promise<string>;
 		storeCountryDistribution: (level: string) => Promise<[
 			string,
@@ -1894,14 +1837,14 @@ declare const mma: {
 			number,
 			number
 		] | null>;
-		storeFindNearby: (lat: number, lng: number, radiusM: number) => Promise<Location_Serialize[]>;
+		storeFindNearby: (lat: number, lng: number, radiusM: number) => Promise<Location$1[]>;
 		storeExtraFieldValues: (field: string) => Promise<string[]>;
-		storeCreateTags: (names: string[]) => Promise<MutationResult_Serialize>;
-		storeUpdateTag: (tagId: number, name: string | null, color: string | null) => Promise<MutationResult_Serialize>;
-		storeDeleteTags: (tagIds: number[]) => Promise<MutationResult_Serialize>;
-		storeReorderTags: (orderedIds: number[]) => Promise<MutationResult_Serialize>;
-		storeUndo: () => Promise<MutationResult_Serialize>;
-		storeRedo: () => Promise<MutationResult_Serialize>;
+		storeCreateTags: (names: string[]) => Promise<MutationResult>;
+		storeUpdateTag: (tagId: number, name: string | null, color: string | null) => Promise<MutationResult>;
+		storeDeleteTags: (tagIds: number[]) => Promise<MutationResult>;
+		storeReorderTags: (orderedIds: number[]) => Promise<MutationResult>;
+		storeUndo: () => Promise<MutationResult>;
+		storeRedo: () => Promise<MutationResult>;
 		storeResetUndo: () => Promise<null>;
 		storeCommitDiff: () => Promise<[
 			number,
@@ -1913,16 +1856,16 @@ declare const mma: {
 		storeResolveSelection: (props: SelectionProps) => Promise<number[]>;
 		storePartition: (field: string, key: KeySpec, scope: Scope) => Promise<PartitionBucket[]>;
 		storeDuplicateGroups: (distance: number) => Promise<number[][]>;
-		storeMergeDuplicates: (distance: number) => Promise<MutationResult_Serialize>;
-		storePruneDuplicates: (ids: number[], distance: number, keepTagIds: number[]) => Promise<MutationResult_Serialize>;
+		storeMergeDuplicates: (distance: number) => Promise<MutationResult>;
+		storePruneDuplicates: (ids: number[], distance: number, keepTagIds: number[]) => Promise<MutationResult>;
 		storeFillRenderFile: (req: RenderRequest) => Promise<string>;
 		storeResolvePick: (cell: string, cellIndex: number) => Promise<number | null>;
 		bulkImportPreview: (path: string) => Promise<ImportPreviewEntry[]>;
 		bulkImportConfirm: (path: string, selectedIndices: number[]) => Promise<ImportedMapInfo[]>;
 		storeImportPreview: (path: string) => Promise<EditorImportPreview>;
 		storeImportPastePreview: (text: string) => Promise<EditorImportPreview>;
-		storeImportStagedLocation: (index: number) => Promise<Location_Serialize>;
-		storeImportFile: (droppedFields: string[], tagName: string | null) => Promise<EditorImportResult_Serialize>;
+		storeImportStagedLocation: (index: number) => Promise<Location$1>;
+		storeImportFile: (droppedFields: string[], tagName: string | null) => Promise<EditorImportResult>;
 		storeExportJson: (opts: ExportOpts) => Promise<string>;
 		storeExportCsv: (scope: number[] | null) => Promise<string>;
 		storeExportGeojson: (scope: number[] | null, tagsJson: string) => Promise<string>;
@@ -1945,7 +1888,7 @@ declare const mma: {
 		storeCommitAndBake: (mapId: string, message: string | null) => Promise<string>;
 		storeListCommits: (mapId: string) => Promise<CommitInfo[]>;
 		storeCheckoutCommit: (mapId: string, commitId: string) => Promise<null>;
-		storeGetCommitDelta: (mapId: string, commitId: string) => Promise<CommitDelta_Serialize>;
+		storeGetCommitDelta: (mapId: string, commitId: string) => Promise<CommitDelta>;
 	};
 	invoke: typeof invoke;
 	shell: {
@@ -2055,8 +1998,8 @@ declare const mma: {
 		openMap: (id: string) => Promise<void>;
 		closeMap: () => Promise<void>;
 		deleteMap: (id: string) => Promise<void>;
-		importPaste: (text: string) => Promise<EditorImportResult_Serialize[]>;
-		importFile: (droppedFields: string[], tagName?: string) => Promise<EditorImportResult_Serialize>;
+		importPaste: (text: string) => Promise<EditorImportResult[]>;
+		importFile: (droppedFields: string[], tagName?: string) => Promise<EditorImportResult>;
 	};
 	pruneSession(s: ReviewSession, removed: Set<number>): PruneResult;
 	advance(s: ReviewSession): {
@@ -2115,7 +2058,7 @@ declare const mma: {
 	applyScope<T extends {
 		id: number;
 	}>(scope: Scope, pool: T[]): T[];
-	partition(field: string, key: KeySpec, scope: Scope): Promise<PartitionGroup[]>;
+	partition(field: string, key: KeySpec, scope: Scope): Promise<PartitionBucket[]>;
 	useScope(initial?: Scope): ScopeController;
 	createScope(initial?: Scope): ScopeHandle;
 	createMap(name: string, folder?: string | null): Promise<MapMeta>;
@@ -2125,21 +2068,18 @@ declare const mma: {
 	deleteFolder(name: string): Promise<void>;
 	renameMap(id: string, name: string): Promise<void>;
 	updateMapLabels(id: string, labels: string[]): Promise<void>;
-	updateMapMeta(patch: MapMetaPatch): Promise<void>;
+	updateMapMeta(patch: MapMetaPatch_Deserialize): Promise<void>;
 	setMapExtraFields(fields: Record<string, ExtraFieldDef>): Promise<void>;
 	emitBitmask(bytes: number[]): void;
-	mutate(p: Promise<MutationResult_Serialize>): Promise<MutationResult_Serialize>;
+	mutate(p: Promise<MutationResult>): Promise<MutationResult>;
 	addLocations(locs: Location$1[], opts?: {
 		hideInDelta?: boolean;
 	}): Promise<void>;
-	duplicateLocation(locId: number): Promise<number | null>;
-	updateLocationNoUndo(id: number, patch: Partial<Location$1>): Promise<null> | Promise<MutationResult_Serialize>;
+	duplicateLocation(id: number): Promise<number | null>;
 	removeLocations(ids: ReadonlyIdSet): Promise<void>;
-	updateLocation(loc: Location$1, patch: Partial<Location$1>): Promise<void>;
-	batchUpdateLocations(updates: {
-		id: number;
-		patch: Partial<Location$1>;
-	}[]): Promise<void | MutationResult_Serialize>;
+	updateLocations(updates: LocationUpdate_Deserialize[], opts?: {
+		undoable?: boolean;
+	}): Promise<void>;
 	renameField(from: string, to: string, winner?: MergeWinner): Promise<void>;
 	deleteField(key: string): Promise<void>;
 	patchLocationExtra(loc: Location$1, extraPatch: Record<string, unknown>, replace?: boolean): Promise<void>;
@@ -2205,7 +2145,7 @@ declare const mma: {
 	beginImportFromPath(path: string): Promise<void>;
 	beginImportFile(): Promise<void>;
 	beginImportPaste(text: string): Promise<void>;
-	confirmImport(droppedFields: string[], tagName?: string): Promise<EditorImportResult_Serialize | null>;
+	confirmImport(droppedFields: string[], tagName?: string): Promise<EditorImportResult | null>;
 	cancelImport(): void;
 	undo(): Promise<void>;
 	redo(): Promise<void>;
@@ -2250,8 +2190,8 @@ declare const mma: {
 	useCurrentMap: () => MapData | null;
 	useMapVersion: () => number;
 	useSelectedLocationIds: () => SelectedIds;
-	useActiveLocation: () => Location_Serialize | null;
-	useDuplicateLocations: () => Location_Serialize[];
+	useActiveLocation: () => Location$1 | null;
+	useDuplicateLocations: () => Location$1[];
 	useWorkArea: () => WorkArea;
 	useImportStaging: () => ImportStaging | null;
 	useImportMarkerVersion: () => number;
