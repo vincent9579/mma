@@ -902,7 +902,11 @@ impl Store {
         let in_batch = self.batch.as_ref().and_then(|b| batch_row_for_id(b, loc.id)).is_some();
         if in_batch {
             self.overlay.dead.remove(&loc.id);
-            self.overlay.patches.insert(loc.id, loc);
+            if self.base_loc_by_id(loc.id).as_ref() == Some(&loc) {
+                self.overlay.patches.remove(&loc.id);
+            } else {
+                self.overlay.patches.insert(loc.id, loc);
+            }
         } else {
             self.overlay.dead.remove(&loc.id);
             // Keep overlay_adds sorted by id (invariant asserted in bake_overlay). A normal add has a
@@ -947,9 +951,10 @@ impl Store {
         if let Some(ref v) = patch.extra { loc.extra = v.clone(); }
         if let Some(v) = patch.created_at { loc.created_at = v; }
         if let Some(v) = patch.modified_at { loc.modified_at = v; }
-        // If it's in overlay_adds, update in place
         if let Ok(pos) = self.overlay.adds.binary_search_by_key(&id, |l| l.id) {
             self.overlay.adds[pos] = loc;
+        } else if self.base_loc_by_id(id).as_ref() == Some(&loc) {
+            self.overlay.patches.remove(&id);
         } else {
             self.overlay.patches.insert(id, loc);
         }

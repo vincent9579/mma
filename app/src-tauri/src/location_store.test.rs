@@ -2102,3 +2102,36 @@ fn reconcile_tags_dedupes_same_name_within_batch() {
     assert_eq!(target_tags.len(), 1);
     assert_eq!(remap.get(&7), remap.get(&8));
 }
+
+// -----------------------------------------------------------------------
+// Bug regression: undo to base state should clear the overlay patch,
+// so the location no longer counts as "uncommitted".
+// -----------------------------------------------------------------------
+
+#[test]
+fn undo_to_base_clears_overlay_patch() {
+    let base = loc_with_heading(1, 10.0, 20.0, 0.0);
+    let mut store = setup_store_with(&[base.clone()]);
+    store.bake_overlay();
+
+    let edited = loc_with_heading(1, 10.0, 20.0, 90.0);
+    let entry = EditEntry { created: vec![edited], removed: vec![base] };
+    apply_edit_forward(&mut store, &entry);
+    assert!(store.overlay.patches.contains_key(&1), "edit should create a patch");
+
+    apply_edit_reverse(&mut store, &entry);
+    assert!(store.overlay.patches.is_empty(), "undo to base state should clear the patch");
+}
+
+#[test]
+fn overlay_update_back_to_base_clears_patch() {
+    let base = loc_with_heading(1, 10.0, 20.0, 0.0);
+    let mut store = setup_store_with(&[base]);
+    store.bake_overlay();
+
+    store.overlay_update(1, &LocationPatch { heading: Some(90.0), ..patch() });
+    assert!(store.overlay.patches.contains_key(&1));
+
+    store.overlay_update(1, &LocationPatch { heading: Some(0.0), ..patch() });
+    assert!(store.overlay.patches.is_empty(), "reverting to base values should clear patch");
+}
