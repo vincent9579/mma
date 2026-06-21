@@ -4390,6 +4390,104 @@ summary.button {
 	width: 38rem;
 	max-width: 95vw;
 }
+.review-sessions__tabs {
+	display: flex;
+	gap: 0.25rem;
+	margin-bottom: 0.75rem;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	padding-bottom: 0.75rem;
+}
+.review-sessions__tab {
+	background: none;
+	border: none;
+	color: rgba(255, 255, 255, 0.5);
+	cursor: pointer;
+	font-size: 0.875rem;
+	font-weight: 500;
+	padding: 0.375rem 0.75rem;
+	border-radius: 0.25rem;
+}
+.review-sessions__tab:hover {
+	color: rgba(255, 255, 255, 0.8);
+	background: rgba(255, 255, 255, 0.06);
+}
+.review-sessions__tab.is-active {
+	color: #fff;
+	background: rgba(255, 255, 255, 0.1);
+}
+.review-sessions__empty {
+	opacity: 0.5;
+	text-align: center;
+	padding: 2rem 0;
+	margin: 0;
+}
+.review-sessions__list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: grid;
+	gap: 0.5rem;
+}
+.review-sessions__card {
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 0.5rem;
+	padding: 0.75rem;
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	transition: border-color 0.15s;
+}
+.review-sessions__card:hover {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+.review-sessions__info {
+	flex: 1;
+	min-width: 0;
+}
+.review-sessions__name {
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	margin-bottom: 0.25rem;
+}
+.review-sessions__meta {
+	display: flex;
+	gap: 0.75rem;
+	font-size: 0.8rem;
+	color: rgba(255, 255, 255, 0.45);
+}
+.review-sessions__bar {
+	height: 4px;
+	border-radius: 2px;
+	background: rgba(255, 255, 255, 0.08);
+	overflow: hidden;
+	margin-top: 0.5rem;
+}
+.review-sessions__bar-fill {
+	height: 100%;
+	background: #3fb950;
+	border-radius: 2px;
+	transition: width 0.2s;
+}
+.review-sessions__actions {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+	flex-shrink: 0;
+}
+.review-sessions__resume {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	font-size: 0.8rem;
+}
+.review-sessions__delete {
+	color: rgba(255, 255, 255, 0.3);
+}
+.review-sessions__delete:hover {
+	color: #f85149;
+}
 .review-header {
 	background: var(--indigo-10);
 	border-radius: 0.25rem;

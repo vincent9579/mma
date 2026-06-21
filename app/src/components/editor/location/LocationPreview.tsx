@@ -724,7 +724,7 @@ function LocationPreviewInner() {
 		const obs = new ResizeObserver(() => {
 			clearTimeout(timer);
 			timer = setTimeout(() => {
-				if (google?.maps) google.maps.event.trigger(singletonPano, "resize");
+				if (singletonPano && google?.maps) google.maps.event.trigger(singletonPano, "resize");
 			}, 150);
 		});
 		obs.observe(el);

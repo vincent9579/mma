@@ -47,10 +47,12 @@ interface Props {
 function BulkSetup({
 	operation,
 	scopeCtl,
+	locs,
 	onStart,
 }: {
 	operation: BulkOperation;
 	scopeCtl: ScopeController;
+	locs: Location[];
 	onStart: (opts: {
 		force: boolean;
 		clearKeys?: string[];
@@ -60,13 +62,8 @@ function BulkSetup({
 	}) => void;
 }) {
 	const [force, setForce] = useState(false);
-	const [locs, setLocs] = useState<Location[]>([]);
 	const { scope } = scopeCtl;
 	const map = getCurrentMap();
-
-	useEffect(() => {
-		fetchAllLocations().then(setLocs);
-	}, []);
 
 	if (!map) return null;
 
@@ -87,7 +84,12 @@ function BulkSetup({
 		return (
 			<div className="bulk-operation">
 				<ScopeSelector ctl={scopeCtl} />
-				{total > 0 && (
+				{enabledFields.length === 0 && (
+					<div className="bulk-operation__status" style={{ opacity: 0.8 }}>
+						No enrichment fields are enabled. Enable them in Map Settings under the Enrichment tab.
+					</div>
+				)}
+				{total > 0 && enabledFields.length > 0 && (
 					<table className="bulk-operation__coverage">
 						<tbody>
 							{coverage.map((c) => {
@@ -126,7 +128,7 @@ function BulkSetup({
 						className="button button--primary"
 						type="button"
 						onClick={() => onStart({ force })}
-						disabled={!force && !needsAny}
+						disabled={enabledFields.length === 0 || (!force && !needsAny)}
 					>
 						Start
 					</button>
@@ -687,11 +689,18 @@ function BulkProgress({
 export function BulkOperationModal({ operation, onClose }: Props) {
 	const [started, setStarted] = useState(false);
 	const [force, setForce] = useState(false);
+	const [locs, setLocs] = useState<Location[] | null>(null);
 	const scopeCtl = useScope();
 	const [clearKeys, setClearKeys] = useState<string[]>([]);
 	const [setField, setSetField] = useState<Partial<Location> | undefined>(undefined);
 	const [setExpr, setSetExpr] = useState<{ key: string; src: string } | undefined>(undefined);
 	const [headingDirection, setHeadingDirection] = useState<RoadDirection | undefined>(undefined);
+
+	useEffect(() => {
+		fetchAllLocations().then(setLocs);
+	}, []);
+
+	if (locs === null) return null;
 
 	return (
 		<Dialog
@@ -705,6 +714,7 @@ export function BulkOperationModal({ operation, onClose }: Props) {
 					<BulkSetup
 						operation={operation}
 						scopeCtl={scopeCtl}
+						locs={locs}
 						onStart={(opts) => {
 							setForce(opts.force);
 							if (opts.clearKeys) setClearKeys(opts.clearKeys);

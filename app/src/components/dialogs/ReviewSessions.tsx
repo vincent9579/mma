@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { Icon } from "@/components/primitives/Icon";
-import { mdiCheckCircleOutline, mdiCircleOutline } from "@mdi/js";
+import { mdiCheckCircleOutline, mdiCircleOutline, mdiPlay, mdiDelete } from "@mdi/js";
 import {
 	listSessions,
 	resumeReview,
@@ -10,21 +10,21 @@ import {
 } from "@/lib/review/review";
 import type { ReviewSession } from "@/bindings.gen";
 
-function ProgressBar({ done, total }: { done: number; total: number }) {
-	const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-	return (
-		<div
-			style={{
-				height: 6,
-				borderRadius: 3,
-				background: "rgba(255,255,255,0.12)",
-				overflow: "hidden",
-				marginTop: 4,
-			}}
-		>
-			<div style={{ width: `${pct}%`, height: "100%", background: "#3fb950" }} />
-		</div>
-	);
+function formatDate(iso: string): string {
+	const d = new Date(iso);
+	return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatRelative(iso: string): string {
+	const diff = Date.now() - new Date(iso).getTime();
+	const mins = Math.floor(diff / 60_000);
+	if (mins < 1) return "just now";
+	if (mins < 60) return `${mins}m ago`;
+	const hrs = Math.floor(mins / 60);
+	if (hrs < 24) return `${hrs}h ago`;
+	const days = Math.floor(hrs / 24);
+	if (days < 30) return `${days}d ago`;
+	return formatDate(iso);
 }
 
 export function ReviewSessionsModal({
@@ -69,15 +69,15 @@ export function ReviewSessionsModal({
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent title="Review sessions" className="review-sessions-modal">
-				<div style={{ display: "flex", gap: ".5rem", marginBottom: ".75rem" }}>
+				<div className="review-sessions__tabs">
 					<button
-						className={`button ${filter === "active" ? "button--primary" : ""}`}
+						className={`review-sessions__tab${filter === "active" ? " is-active" : ""}`}
 						onClick={() => setFilter("active")}
 					>
 						In progress
 					</button>
 					<button
-						className={`button ${filter === "done" ? "button--primary" : ""}`}
+						className={`review-sessions__tab${filter === "done" ? " is-active" : ""}`}
 						onClick={() => setFilter("done")}
 					>
 						Completed
@@ -85,79 +85,79 @@ export function ReviewSessionsModal({
 				</div>
 
 				{loading ? (
-					<p>Loading...</p>
+					<p className="review-sessions__empty">Loading...</p>
 				) : sessions.length === 0 ? (
-					<p style={{ opacity: 0.7 }}>
+					<p className="review-sessions__empty">
 						{filter === "active" ? "No reviews in progress." : "No completed reviews."}
 					</p>
 				) : (
-					<ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: ".5rem" }}>
-						{sessions.map((s) => (
-							<li
-								key={s.id}
-								style={{
-									border: "1px solid rgba(255,255,255,0.12)",
-									borderRadius: 6,
-									padding: ".6rem .75rem",
-									display: "flex",
-									alignItems: "center",
-									gap: ".75rem",
-								}}
-							>
-								<div style={{ flex: 1, minWidth: 0 }}>
-									<div
-										style={{
-											fontWeight: 600,
-											whiteSpace: "nowrap",
-											overflow: "hidden",
-											textOverflow: "ellipsis",
-										}}
-									>
-										{s.name || "Review"}
+					<ul className="review-sessions__list">
+						{sessions.map((s) => {
+							const pct = s.order.length > 0 ? Math.round((s.reviewed.length / s.order.length) * 100) : 0;
+							return (
+								<li key={s.id} className="review-sessions__card">
+									<div className="review-sessions__info">
+										<div className="review-sessions__name">
+											{s.name || "Review"}
+										</div>
+										<div className="review-sessions__meta">
+											<span>{s.reviewed.length} / {s.order.length} reviewed ({pct}%)</span>
+											<span title={new Date(s.createdAt).toLocaleString()}>
+												Started {formatDate(s.createdAt)}
+											</span>
+											<span title={new Date(s.updatedAt).toLocaleString()}>
+												Updated {formatRelative(s.updatedAt)}
+											</span>
+										</div>
+										<div className="review-sessions__bar">
+											<div
+												className="review-sessions__bar-fill"
+												style={{ width: `${pct}%` }}
+											/>
+										</div>
 									</div>
-									<div style={{ fontSize: ".85em", opacity: 0.75 }}>
-										{s.reviewed.length} / {s.order.length} reviewed
+									<div className="review-sessions__actions">
+										<button
+											className="icon-button"
+											title="Select reviewed"
+											aria-label="Select reviewed"
+											onClick={() => handleSelect(s, "reviewed")}
+											data-qa="review-select-reviewed"
+										>
+											<Icon path={mdiCheckCircleOutline} size={18} />
+										</button>
+										<button
+											className="icon-button"
+											title="Select unreviewed"
+											aria-label="Select unreviewed"
+											onClick={() => handleSelect(s, "unreviewed")}
+											data-qa="review-select-unreviewed"
+										>
+											<Icon path={mdiCircleOutline} size={18} />
+										</button>
+										{filter === "active" && (
+											<button
+												className="button button--primary review-sessions__resume"
+												onClick={() => handleResume(s)}
+												data-qa="review-resume"
+											>
+												<Icon path={mdiPlay} size={16} />
+												Resume
+											</button>
+										)}
+										<button
+											className="icon-button review-sessions__delete"
+											title="Delete session"
+											aria-label="Delete session"
+											onClick={() => handleDelete(s.id)}
+											data-qa="review-session-delete"
+										>
+											<Icon path={mdiDelete} size={18} />
+										</button>
 									</div>
-									<ProgressBar done={s.reviewed.length} total={s.order.length} />
-								</div>
-								<button
-									className="icon-button"
-									style={{ color: "#666" }}
-									title="Select reviewed"
-									aria-label="Select reviewed"
-									onClick={() => handleSelect(s, "reviewed")}
-									data-qa="review-select-reviewed"
-								>
-									<Icon path={mdiCheckCircleOutline} size={20} />
-								</button>
-								<button
-									className="icon-button"
-									style={{ color: "#666" }}
-									title="Select unreviewed"
-									aria-label="Select unreviewed"
-									onClick={() => handleSelect(s, "unreviewed")}
-									data-qa="review-select-unreviewed"
-								>
-									<Icon path={mdiCircleOutline} size={20} />
-								</button>
-								{filter === "active" && (
-									<button
-										className="button button--primary"
-										onClick={() => handleResume(s)}
-										data-qa="review-resume"
-									>
-										Resume
-									</button>
-								)}
-								<button
-									className="button button--destructive"
-									onClick={() => handleDelete(s.id)}
-									data-qa="review-session-delete"
-								>
-									Delete
-								</button>
-							</li>
-						))}
+								</li>
+							);
+						})}
 					</ul>
 				)}
 			</DialogContent>

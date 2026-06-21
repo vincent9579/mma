@@ -9,6 +9,8 @@ import { getCommands, togglePinnedCommand, type CommandGroup } from "@/store/com
 import { useSetting } from "@/store/settings";
 import { useHotkey } from "@/lib/hooks/useHotkey";
 import { getBinding, useBinding } from "@/lib/util/hotkeys";
+import { useMapList, getCurrentMapId } from "@/store/useMapStore";
+import { goToMap } from "@/store/router";
 
 interface PaletteContext {
 	close: () => void;
@@ -131,6 +133,35 @@ function MainCommands() {
 	);
 }
 
+function MapSwitcher() {
+	const ctx = useContext(Ctx);
+	const maps = useMapList();
+	const currentId = getCurrentMapId();
+	const others = maps.filter((m) => m.id !== currentId);
+
+	return (
+		<Command.Group heading="Switch map">
+			<PaletteItem
+				label="Back"
+				onSelect={() => ctx.setPage(null)}
+				icon={<UndoIcon />}
+				closeOnSelect={false}
+			/>
+			{others.length === 0 ? (
+				<Command.Empty>No other maps.</Command.Empty>
+			) : (
+				others.map((m) => (
+					<PaletteItem
+						key={m.id}
+						label={m.name}
+						onSelect={() => goToMap(m.id)}
+					/>
+				))
+			)}
+		</Command.Group>
+	);
+}
+
 function PaletteContent({ onChangeOpen }: { onChangeOpen: (v: boolean) => void }) {
 	const [inputValue, setInputValue] = useState("");
 	const [page, setPage] = useState<string | null>(null);
@@ -167,20 +198,7 @@ function PaletteContent({ onChangeOpen }: { onChangeOpen: (v: boolean) => void }
 				/>
 				<Command.List className="command-palette__scroll">
 					{page === null && <MainCommands />}
-					{page === "maps" && (
-						<Command.Group heading="Maps">
-							<PaletteItem
-								label="Back"
-								onSelect={() => {
-									setPage(null);
-									setInputValue("");
-								}}
-								icon={<UndoIcon />}
-								closeOnSelect={false}
-							/>
-							<Command.Empty>No maps found.</Command.Empty>
-						</Command.Group>
-					)}
+					{page === "maps" && <MapSwitcher />}
 				</Command.List>
 				<p className="command-palette__footer" style={{ margin: 0, padding: ".5rem 1.375rem" }} />
 			</Command>
