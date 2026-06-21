@@ -3,6 +3,7 @@ import { getSettings } from "@/store/settings";
 import { parseHotkey, matchesKey, isEditableElement } from "@/lib/hooks/useHotkey";
 import { getBinding } from "@/lib/util/hotkeys";
 import { google } from "@/lib/sv/opensv";
+import { FRAME_MS } from "@/lib/sv/constants";
 
 /** Held-key map panning/zooming (pan*, mapZoomIn/Out) via an RAF tick loop, scoped to the
  *  given map. Bindings are resolved once on mount; speeds read live from app settings. */
@@ -29,7 +30,7 @@ export function useMapKeyboardNav(map: google.maps.Map | null) {
 			}
 
 			const now = performance.now();
-			const dt = nav.lastTime ? (now - nav.lastTime) / 16.667 : 1;
+			const dt = nav.lastTime ? (now - nav.lastTime) / FRAME_MS : 1;
 			nav.lastTime = now;
 
 			const proj = gmap.getProjection();

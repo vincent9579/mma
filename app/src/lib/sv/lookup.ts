@@ -1,5 +1,5 @@
 import { distMeters } from "@/lib/geo/geo";
-import { fetchPanoDotsWithIds } from "@/lib/geo/photometa";
+import { fetchPanoDotsWithIds, latLngToWorldCoord } from "@/lib/geo/photometa";
 import { google } from "@/lib/sv/opensv";
 import { cameraTypeFromHeight, fetchSvMetadata } from "@/lib/sv/svMeta";
 import { LocationFlag, hasLoadAsPanoId, createLocation } from "@/types";
@@ -8,7 +8,7 @@ import { toast } from "@/lib/util/toast";
 import { runConcurrent } from "@/lib/util/concurrent";
 import { batchUpdateLocations } from "@/store/useMapStore";
 
-export const SV_SEARCH_RADIUS = 50;
+import { SV_SEARCH_RADIUS, SV_CONCURRENCY } from "@/lib/sv/constants";
 
 /** A single historical panorama entry (pano ID + capture date). */
 export interface PanoReference {
@@ -93,7 +93,7 @@ export async function resolvePanoIds(
 		onProgress?: (done: number, total: number) => void;
 	} = {},
 ): Promise<ResolvePanoResult> {
-	const { concurrency = 128, batchSize = 200, signal, onProgress } = opts;
+	const { concurrency = SV_CONCURRENCY, batchSize = 200, signal, onProgress } = opts;
 	const result: ResolvePanoResult = { resolved: [], failed: [] };
 	if (!google) return result;
 
@@ -213,13 +213,7 @@ export async function photometaSnap(
 	radius: number
 ): Promise<google.maps.StreetViewResolvedPanoramaData | null> {
 	try {
-		const wc = (() => {
-			const n = Math.min(Math.max(Math.sin((click.lat * Math.PI) / 180), -0.9999), 0.9999);
-			return {
-				x: 256 * (0.5 + click.lng / 360),
-				y: 256 * (0.5 - Math.log((1 + n) / (1 - n)) / (4 * Math.PI)),
-			};
-		})();
+		const wc = latLngToWorldCoord(click.lat, click.lng);
 		const tile = { x: Math.floor((wc.x * 2 ** 17) / 256), y: Math.floor((wc.y * 2 ** 17) / 256) };
 		const dots = await fetchPanoDotsWithIds(tile);
 		if (!dots.length) return null;
@@ -256,7 +250,7 @@ export async function lookupStreetView(
 		minRadius?: number;
 	},
 ): Promise<Location | null> {
-	const radius = opts.radius ?? Math.max(opts.minRadius ?? 50, Math.round(svSearchRadius(lat, zoom)));
+	const radius = opts.radius ?? Math.max(opts.minRadius ?? SV_SEARCH_RADIUS, Math.round(svSearchRadius(lat, zoom)));
 	const click = { lat, lng };
 	const userUploaded: "ignore" | "avoid" | "allow" = opts.onlyOfficial
 		? "ignore"
@@ -348,7 +342,7 @@ export async function lookupStreetView(
 	const chosen = filtered[0];
 	if (!chosen) return null;
 
-	const verify = await fetchPanoData({ location: panoLatLng(chosen), radius: 50 });
+	const verify = await fetchPanoData({ location: panoLatLng(chosen), radius: SV_SEARCH_RADIUS });
 	const isDefault = verify !== null && samePano(chosen, verify);
 
 	const pos = chosen.location.latLng;

@@ -3,11 +3,11 @@ import { google } from "@/lib/sv/opensv";
 import { resolveStackForPrefs, CUSTOM_STYLES_KEY, type CustomStyle } from "@/lib/geo/mapStack";
 import { useMapSurface } from "@/lib/render/useMapSurface";
 import { useSetting, setSetting } from "@/store/settings";
+import { range, clamp } from "@/types/util";
 import { useLocalStorage, getLocal } from "@/lib/hooks/useLocalStorage";
 import { type MapEmbedPrefs, DEFAULT_PREFS } from "@/components/editor/map/mapEmbedPrefs";
 
-const MINIMAP_SCALE_MIN = 0.5;
-const MINIMAP_SCALE_MAX = 2;
+const MINIMAP_SCALE = range([0.5, 2]);
 const MINIMAP_SCALE_STEP = 0.5;
 const MINIMAP_BASE_W = 800;
 const MINIMAP_BASE_H = 600;
@@ -33,7 +33,7 @@ export function FullscreenMiniMap({
 	});
 
 	const setScale = (next: number) => {
-		const clamped = Math.min(MINIMAP_SCALE_MAX, Math.max(MINIMAP_SCALE_MIN, next));
+		const clamped = clamp(next, MINIMAP_SCALE);
 		setSetting("fullscreenMinimapScale", Math.round(clamped * 100) / 100);
 	};
 
@@ -103,7 +103,7 @@ export function FullscreenMiniMap({
 					type="button"
 					className="fullscreen-minimap__size-btn"
 					aria-label="Smaller minimap"
-					disabled={scale <= MINIMAP_SCALE_MIN}
+					disabled={scale <= MINIMAP_SCALE.min}
 					onClick={() => setScale(scale - MINIMAP_SCALE_STEP)}
 				>
 					<svg height="16" width="16" viewBox="0 0 24 24" fill="currentColor">
@@ -114,7 +114,7 @@ export function FullscreenMiniMap({
 					type="button"
 					className="fullscreen-minimap__size-btn"
 					aria-label="Larger minimap"
-					disabled={scale >= MINIMAP_SCALE_MAX}
+					disabled={scale >= MINIMAP_SCALE.max}
 					onClick={() => setScale(scale + MINIMAP_SCALE_STEP)}
 				>
 					<svg height="16" width="16" viewBox="0 0 24 24" fill="currentColor">

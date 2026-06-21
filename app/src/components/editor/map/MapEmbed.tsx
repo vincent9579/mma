@@ -13,6 +13,7 @@ import { MeasurementBar } from "@/components/primitives/MeasurementBar";
 import { MapContextMenuContent } from "@/components/editor/map/MapContextMenu";
 import { useCurrentMap, selectPolygon, mapOpenMark } from "@/store/useMapStore";
 import { loadOpenSV, google } from "@/lib/sv/opensv";
+import { BLOBBY_ZOOM_THRESHOLD } from "@/lib/sv/constants";
 import { setGoogleMap as setGoogleMapInstance, tryInterceptDraw } from "@/lib/map/mapState";
 import { useHotkey } from "@/lib/hooks/useHotkey";
 import { useBinding } from "@/lib/util/hotkeys";
@@ -165,7 +166,7 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 
 	useEffect(() => {
 		if (!svLayerRef.current) return;
-		const blobbySingleType = svBlobby && mapZoom <= 13 && svCoverageType !== "default";
+		const blobbySingleType = svBlobby && mapZoom <= BLOBBY_ZOOM_THRESHOLD && svCoverageType !== "default";
 		svLayerRef.current.setOpacity(blobbySingleType ? svOpacity * 0.6 : svOpacity);
 	}, [svOpacity, svBlobby, mapZoom, svCoverageType]);
 
@@ -244,7 +245,7 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 		};
 	}, [showPreviews]);
 
-	const useBlobby = svBlobby && mapZoom <= 13;
+	const useBlobby = svBlobby && mapZoom <= BLOBBY_ZOOM_THRESHOLD;
 
 	useEffect(() => {
 		if (!gMapRef.current) return;

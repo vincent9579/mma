@@ -44,6 +44,7 @@ import { log } from "@/lib/util/log"
 import { useCountrySelect } from "@/lib/map/useCountrySelect";
 import { useDeletePolygon } from "@/lib/map/useDeletePolygon";
 import { useMapKeyBindings } from "@/lib/map/mapKeyBindings";
+import { range, clamp } from "@/types/util"
 
 function zoomToPasted(bounds: [number, number, number, number] | null, padding = 0) {
 	if (!getSettings().panToImported) return;
@@ -137,6 +138,8 @@ function useFileDrop() {
 	return dragging;
 }
 
+const SPLITHANDLE_RANGE = range([15, 85]);
+
 function SplitHandle({ onSplitChange }: { onSplitChange: (v: number) => void }) {
 	const handleRef = useRef<HTMLDivElement>(null);
 
@@ -177,7 +180,7 @@ function SplitHandle({ onSplitChange }: { onSplitChange: (v: number) => void }) 
 				const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
 				const available = rect.width - gap;
 				const pct = ((ev.clientX - rect.left - gap / 2) / available) * 100;
-				const clamped = Math.min(85, Math.max(15, pct));
+				const clamped = clamp(pct, SPLITHANDLE_RANGE);
 				grid.style.gridTemplateColumns = `minmax(0, ${clamped}fr) minmax(0, ${100 - clamped}fr)`;
 				if (embedEl && panoEl) {
 					embedEl.style.width = `${panoEl.offsetWidth}px`;
@@ -195,7 +198,7 @@ function SplitHandle({ onSplitChange }: { onSplitChange: (v: number) => void }) 
 				const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
 				const available = rect.width - gap;
 				const pct = ((ev.clientX - rect.left - gap / 2) / available) * 100;
-				onSplitChange(Math.min(85, Math.max(15, pct)));
+				onSplitChange(clamp(pct, SPLITHANDLE_RANGE));
 			};
 			el.addEventListener("pointermove", onMove);
 			el.addEventListener("pointerup", onUp);

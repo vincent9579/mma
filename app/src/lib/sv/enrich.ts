@@ -11,6 +11,7 @@ import {
 	type EnrichmentProvider,
 } from "@/lib/data/fieldDefs";
 import { registerSvResolver, runResolvers, type SvResolver } from "@/lib/sv/svRunner";
+import { SV_CONCURRENCY } from "@/lib/sv/constants";
 import { log } from "@/lib/util/log";
 import type { Location } from "@/types";
 
@@ -144,8 +145,7 @@ export const exactDateProvider: EnrichmentProvider = {
 				ctx?.onUnit?.();
 			}
 		}
-		// ~128 saturates SingleImageSearch; beyond it throughput drops and latency balloons.
-		await Promise.all(Array.from({ length: Math.min(128, pending.length) }, () => worker()));
+		await Promise.all(Array.from({ length: Math.min(SV_CONCURRENCY, pending.length) }, () => worker()));
 		return out;
 	},
 };

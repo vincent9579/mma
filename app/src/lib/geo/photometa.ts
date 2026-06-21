@@ -9,7 +9,7 @@ export interface PanoDot {
 	panoId?: string;
 }
 
-function latLngToWorldCoord(lat: number, lng: number) {
+export function latLngToWorldCoord(lat: number, lng: number) {
 	let n = Math.sin((lat * Math.PI) / 180);
 	n = Math.min(Math.max(n, -0.9999), 0.9999);
 	return {

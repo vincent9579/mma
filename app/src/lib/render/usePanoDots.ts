@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { google } from "@/lib/sv/opensv";
 import { boundsToTiles, fetchPanoDots, type PanoDot } from "@/lib/geo/photometa";
+import { BLOBBY_ZOOM_THRESHOLD } from "@/lib/sv/constants";
 
 // Fetches discrete Street View pano dots for a map's current bounds, refetching on every idle.
 // Gated on a minimum zoom, then capped at MAX_TILES: a zoomed-out viewport spans an exploding
@@ -10,7 +11,7 @@ const MAX_TILES = 96;
 export function usePanoDots(
 	map: google.maps.Map | null,
 	enabled: boolean,
-	minZoom = 13,
+	minZoom = BLOBBY_ZOOM_THRESHOLD,
 ): PanoDot[] {
 	const [dots, setDots] = useState<PanoDot[]>([]);
 

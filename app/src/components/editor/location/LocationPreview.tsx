@@ -9,6 +9,8 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { LocationFlag, createLocation, isVirtualLocation } from "@/types";
+import { clamp } from "@/types/util";
+import { PANO_ZOOM, PANO_PITCH, FRAME_MS, SV_SEARCH_RADIUS } from "@/lib/sv/constants";
 import type { Location } from "@/types";
 import type { Tag } from "@/bindings.gen";
 import {
@@ -587,7 +589,7 @@ function LocationPreviewInner() {
 		if (!loc?.latLng) return;
 		const panoPos = { lat: loc.latLng.lat(), lng: loc.latLng.lng() };
 		const byPano = fetchPanoData({ pano: loc.pano });
-		const byLoc = fetchPanoData({ location: panoPos, radius: 50 });
+		const byLoc = fetchPanoData({ location: panoPos, radius: SV_SEARCH_RADIUS });
 
 		Promise.all([byPano, byLoc]).then(([panoData, locData]) => {
 			if (cancelled) return;
@@ -783,12 +785,12 @@ function LocationPreviewInner() {
 	});
 	useHotkey(useBinding("zoomIn"), () => {
 		if (singletonPano) {
-			singletonPano.setZoom(Math.min(4, singletonPano.getZoom() + 1));
+			singletonPano.setZoom(Math.min(PANO_ZOOM.max, singletonPano.getZoom() + 1));
 		}
 	});
 	useHotkey(useBinding("zoomOut"), () => {
 		if (singletonPano) {
-			singletonPano.setZoom(Math.max(0, singletonPano.getZoom() - 1));
+			singletonPano.setZoom(Math.max(PANO_ZOOM.min, singletonPano.getZoom() - 1));
 		}
 	});
 	useHotkey(useBinding("panoZoomReset"), () => {
@@ -963,7 +965,7 @@ function LocationPreviewInner() {
 			}
 
 			const now = performance.now();
-			const dt = nav.lastTime ? (now - nav.lastTime) / 16.667 : 1;
+			const dt = nav.lastTime ? (now - nav.lastTime) / FRAME_MS : 1;
 			nav.lastTime = now;
 
 			const s = appSettingsRef.current;
@@ -981,7 +983,7 @@ function LocationPreviewInner() {
 				singletonPano.setOptions({
 					pov: {
 						heading: (pov.heading + dh + 360) % 360,
-						pitch: Math.max(-90, Math.min(90, pov.pitch + dp)),
+						pitch: clamp(pov.pitch + dp, PANO_PITCH),
 					},
 				});
 			}

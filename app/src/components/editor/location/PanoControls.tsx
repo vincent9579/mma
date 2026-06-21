@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useRef, useState, useCallback } from "react";
 import { hasLoadAsPanoId, LocationFlag } from "@/types";
+import { PANO_ZOOM, SV_JUMP_RADIUS } from "@/lib/sv/constants";
 import type { Location } from "@/types";
 import { google } from "@/lib/sv/opensv";
 import { lookupStreetView } from "@/lib/sv/lookup";
@@ -259,11 +260,11 @@ export function PanoControls({
 	);
 
 	const zoomIn = useCallback(() => {
-		panorama.setZoom(Math.min(4, panorama.getZoom() + 1));
+		panorama.setZoom(Math.min(PANO_ZOOM.max, panorama.getZoom() + 1));
 	}, [panorama]);
 
 	const zoomOut = useCallback(() => {
-		panorama.setZoom(Math.max(0, panorama.getZoom() - 1));
+		panorama.setZoom(Math.max(PANO_ZOOM.min, panorama.getZoom() - 1));
 	}, [panorama]);
 
 	const resetZoom = useCallback(() => {
@@ -339,13 +340,13 @@ export function PanoControls({
 			if (!google?.maps?.geometry) return;
 			const target = google.maps.geometry.spherical.computeOffset(
 				pos,
-				100,
+				SV_JUMP_RADIUS,
 				panorama.getPov().heading + headingOffset,
 			);
 			try {
 				const loc = await lookupStreetView(target.lat(), target.lng(), 0, {
 					onlyOfficial: true,
-					radius: 100,
+					radius: SV_JUMP_RADIUS,
 				});
 				if (!loc?.panoId) return;
 				if (loc.flags & LocationFlag.LoadAsPanoId) {
