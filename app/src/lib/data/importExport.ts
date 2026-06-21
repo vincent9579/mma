@@ -1,6 +1,7 @@
 import { imageKeyToPanoId } from "@/lib/sv/svMeta";
 import { fovToZoom, schemeBase } from "@/lib/util/util";
-import { LocationFlag, type Location } from "@/types";
+import { LocationFlag } from "@/types";
+import type { Location } from "@/bindings.gen";
 
 /** A single location parsed out of a pasted Maps URL or a bare coordinate. */
 export type ParsedLocation = Pick<Location, "lat" | "lng" | "heading" | "pitch" | "zoom" | "panoId" | "flags"> & {

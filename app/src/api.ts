@@ -10,11 +10,10 @@
 
 import * as store from "@/store/useMapStore";
 import * as review from "@/lib/review/review";
-import { type Scope } from "@/bindings.gen"
+import type { Scope, Location } from "@/bindings.gen"
 import { cmd as commands } from "@/lib/commands";
 import { goToMap, goToList } from "@/store/router";
 import { createLocation } from "@/types";
-import type { Location } from "@/types";
 import { registerPlugin, createPluginStorage } from "@/plugins/registry";
 import { trackDisposable } from "@/plugins/scope";
 import { Sidebar, Section, Field, EmptyState, SegmentedControl } from "@/components/primitives/Sidebar";
@@ -60,9 +59,9 @@ async function createLocationStore(): Promise<LocationStore> {
 			for (const id of ids) locs.delete(id);
 			notify();
 		}),
-		subscribe("location:update", (p) => {
-			const existing = locs.get(p.id);
-			if (existing) locs.set(p.id, { ...existing, ...p });
+		subscribe("location:update", (u) => {
+			const existing = locs.get(u.id);
+			if (existing) locs.set(u.id, { ...existing, ...u.patch } as Location);
 			notify();
 		}),
 	];

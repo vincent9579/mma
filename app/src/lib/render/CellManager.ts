@@ -1,11 +1,9 @@
 import type {
-	RenderDelta_Serialize,
+	RenderDelta,
 	RenderEntry,
 	CellRemoval as _CellRemoval,
 	ColorPatchEntry,
 } from "@/bindings.gen";
-
-export type RenderDelta = RenderDelta_Serialize;
 
 /** Per-cell, per-selection membership: a dense bitmask or a sparse selected-index list. */
 export type SelEntry =

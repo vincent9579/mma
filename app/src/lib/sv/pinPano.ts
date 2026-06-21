@@ -1,5 +1,5 @@
 import { LocationFlag, isPinnedToPano } from "@/types";
-import type { Location } from "@/types";
+import type { Location } from "@/bindings.gen";
 import { registerSvResolver, runResolvers, type SvResolver } from "@/lib/sv/svRunner";
 
 /** Pin to pano ID: resolve the pano from coords, then set the LoadAsPanoId flag.

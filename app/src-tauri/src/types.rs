@@ -42,7 +42,6 @@ fn default_visible() -> bool {
 pub struct Location {
     /// Monotonically increasing within a map. Zero is a sentinel meaning
     /// "not yet assigned" (used during import before IDs are allocated).
-    #[serde(default)]
     pub id: u32,
     pub lat: f64,
     pub lng: f64,
@@ -56,12 +55,10 @@ pub struct Location {
     /// Tag IDs applied to this location. References `Tag.id`.
     pub tags: Vec<u32>,
     /// Arbitrary key-value metadata
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[specta(type = Option<specta_typescript::Any>)]
     pub extra: Option<serde_json::Map<String, serde_json::Value>>,
     /// Unix timestamp (seconds)
     pub created_at: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<u32>,
 }
 

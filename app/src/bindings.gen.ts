@@ -107,24 +107,24 @@ export const commands = {
 	 *  Add new locations. IDs are allocated server-side (monotonic). Records an undo entry
 	 *  and clears the redo stack.
 	 */
-	storeAddLocations: (locations: Location_Deserialize[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_add_locations", { locations: locations.map(i=>i) })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeAddLocations: (locations: Location[]) => typedError<MutationResult, string>(__TAURI_INVOKE("store_add_locations", { locations: locations.map(i=>i) })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**  Remove locations by ID. Snapshots the full location data for undo before deleting. */
-	storeRemoveLocations: (ids: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_remove_locations", { ids })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeRemoveLocations: (ids: number[]) => typedError<MutationResult, string>(__TAURI_INVOKE("store_remove_locations", { ids })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**
 	 *  Apply partial patches to existing locations. `record_undo` defaults to true;
 	 *  set to false for ephemeral updates (e.g., plugin-driven batch modifications
 	 *  that manage their own undo).
 	 */
-	storeUpdateLocations: (updates: ([number, LocationPatch_Deserialize])[], recordUndo: boolean | null) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_update_locations", { updates: updates.map(i=>([i[0],({...i[1],lat:i[1].lat==null?i[1].lat:i[1].lat,lng:i[1].lng==null?i[1].lng:i[1].lng,heading:i[1].heading==null?i[1].heading:i[1].heading,pitch:i[1].pitch==null?i[1].pitch:i[1].pitch,zoom:i[1].zoom==null?i[1].zoom:i[1].zoom})])), recordUndo })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeUpdateLocations: (updates: LocationUpdate_Deserialize[], recordUndo: boolean | null) => typedError<MutationResult, string>(__TAURI_INVOKE("store_update_locations", { updates: updates.map(i=>({...i,patch:({...i.patch,lat:i.patch.lat==null?i.patch.lat:i.patch.lat,lng:i.patch.lng==null?i.patch.lng:i.patch.lng,heading:i.patch.heading==null?i.patch.heading:i.patch.heading,pitch:i.patch.pitch==null?i.patch.pitch:i.patch.pitch,zoom:i.patch.zoom==null?i.patch.zoom:i.patch.zoom})})), recordUndo })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**
 	 *  Set (or clear) the active location. Fire-and-forget from JS; no re-render triggered.
 	 *  JS patches the cell buffer synchronously to hide/show the active marker.
 	 */
 	storeSetActive: (id: number | null) => typedError<null, string>(__TAURI_INVOKE("store_set_active", { id })),
 	/**  Fetch a single location by ID. Returns `None` if the ID is dead or doesn't exist. */
-	storeGetLocation: (id: number) => typedError<Location_Serialize | null, string>(__TAURI_INVOKE("store_get_location", { id })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:v.data } : v) as typeof v)),
+	storeGetLocation: (id: number) => typedError<Location | null, string>(__TAURI_INVOKE("store_get_location", { id })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:v.data } : v) as typeof v)),
 	/**  Fetch multiple locations by ID. Silently skips IDs that don't exist. */
-	storeGetLocationsByIds: (ids: number[]) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_get_locations_by_ids", { ids })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
+	storeGetLocationsByIds: (ids: number[]) => typedError<Location[], string>(__TAURI_INVOKE("store_get_locations_by_ids", { ids })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
 	/**
 	 *  Dump every alive location to a temp JSON file. Returns the file path.
 	 *  Used by export and plugins that need the full dataset.
@@ -151,7 +151,7 @@ export const commands = {
 	 *  that rejects 99.9%+ of points before haversine is called.
 	 *  At 1M locations this is sub-millisecond on a modern CPU.
 	 */
-	storeFindNearby: (lat: number, lng: number, radiusM: number) => typedError<Location_Serialize[], string>(__TAURI_INVOKE("store_find_nearby", { lat, lng, radiusM })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
+	storeFindNearby: (lat: number, lng: number, radiusM: number) => typedError<Location[], string>(__TAURI_INVOKE("store_find_nearby", { lat, lng, radiusM })).then((v) => ((v.status === "ok" ? { ...v, data: v.data.map(i=>i) } : v) as typeof v)),
 	/**
 	 *  Collect all distinct values for an `extra` field across all alive locations. O(N).
 	 *  Used by the filter UI to populate dropdown options.
@@ -161,27 +161,27 @@ export const commands = {
 	 *  Create tags by name. Deduplicates case-insensitively: if a tag with the same name
 	 *  already exists, it is made visible instead of creating a duplicate.
 	 */
-	storeCreateTags: (names: string[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_create_tags", { names })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeCreateTags: (names: string[]) => typedError<MutationResult, string>(__TAURI_INVOKE("store_create_tags", { names })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**
 	 *  Update a tag's name and/or color. If the new name collides with an existing
 	 *  tag (case-insensitive), merges: remaps all locations from `tag_id` to the
 	 *  existing tag, removes `tag_id`. Returns MutationResult with `tags` populated.
 	 */
-	storeUpdateTag: (tagId: number, name: string | null, color: string | null) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_update_tag", { tagId, name, color })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeUpdateTag: (tagId: number, name: string | null, color: string | null) => typedError<MutationResult, string>(__TAURI_INVOKE("store_update_tag", { tagId, name, color })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**
 	 *  Strip tags from all locations. Tags stay in `store.tags` with count=0 /
 	 *  visible=false so undo can revive them. Returns MutationResult with `tags`.
 	 */
-	storeDeleteTags: (tagIds: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_delete_tags", { tagIds })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeDeleteTags: (tagIds: number[]) => typedError<MutationResult, string>(__TAURI_INVOKE("store_delete_tags", { tagIds })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**
 	 *  Persist tag ordering. `ordered_ids` specifies the desired order; each tag's
 	 *  `order` field is set to its index in the list.
 	 */
-	storeReorderTags: (orderedIds: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_reorder_tags", { orderedIds })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeReorderTags: (orderedIds: number[]) => typedError<MutationResult, string>(__TAURI_INVOKE("store_reorder_tags", { orderedIds })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**  Pop the undo stack and reverse the last edit. Pushes the entry onto the redo stack. */
-	storeUndo: () => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_undo")).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeUndo: () => typedError<MutationResult, string>(__TAURI_INVOKE("store_undo")).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**  Pop the redo stack and replay the edit forward. Pushes the entry back onto undo. */
-	storeRedo: () => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_redo")).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeRedo: () => typedError<MutationResult, string>(__TAURI_INVOKE("store_redo")).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**  Clear both undo and redo stacks. Called after a commit to start fresh. */
 	storeResetUndo: () => typedError<null, string>(__TAURI_INVOKE("store_reset_undo")),
 	/**
@@ -220,14 +220,14 @@ export const commands = {
 	 *  set-unioned across the group; `extra` is merged with the survivor winning key conflicts;
 	 *  all other survivor fields are kept. Applied as a single undoable edit.
 	 */
-	storeMergeDuplicates: (distance: number) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_merge_duplicates", { distance })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeMergeDuplicates: (distance: number) => typedError<MutationResult, string>(__TAURI_INVOKE("store_merge_duplicates", { distance })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**
 	 *  Prune duplicates among `ids` (a resolved selection) within `distance` metres:
 	 *  <= 25m keeps the best-scored location per cluster (`keep_tag_ids` score +5, see
 	 *  selections::prune_score); > 25m thins greedily so no two survivors remain in
 	 *  range. Informational locations are never pruned. One undoable edit.
 	 */
-	storePruneDuplicates: (ids: number[], distance: number, keepTagIds: number[]) => typedError<MutationResult_Serialize, string>(__TAURI_INVOKE("store_prune_duplicates", { ids, distance, keepTagIds })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storePruneDuplicates: (ids: number[], distance: number, keepTagIds: number[]) => typedError<MutationResult, string>(__TAURI_INVOKE("store_prune_duplicates", { ids, distance, keepTagIds })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**
 	 *  Full render rebuild: single-pass over all alive locations, writes binary to a temp file.
 	 *  Returns the file path for JS to fetch via `mma-buf://`. Only called on map open or full reset.
@@ -265,14 +265,14 @@ export const commands = {
 	 *  Fetch one staged (not yet imported) location by its preview index, for read-only
 	 *  preview in the editor. Indexes follow the preview positions order.
 	 */
-	storeImportStagedLocation: (index: number) => typedError<Location_Serialize, string>(__TAURI_INVOKE("store_import_staged_location", { index })),
+	storeImportStagedLocation: (index: number) => typedError<Location, string>(__TAURI_INVOKE("store_import_staged_location", { index })),
 	/**
 	 *  Commit a previously previewed editor import, optionally dropping fields and/or
 	 *  applying a bulk tag to every imported location. Consumes the cached parse from
 	 *  `store_import_preview`/`store_import_paste_preview`. Fields in `dropped_fields`
 	 *  (e.g. `"heading"`, `"extra.countryCode"`) are zeroed/removed.
 	 */
-	storeImportFile: (droppedFields: string[], tagName: string | null) => typedError<EditorImportResult_Serialize, string>(__TAURI_INVOKE("store_import_file", { droppedFields, tagName })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
+	storeImportFile: (droppedFields: string[], tagName: string | null) => typedError<EditorImportResult, string>(__TAURI_INVOKE("store_import_file", { droppedFields, tagName })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,delta:({...v.data.delta,added:v.data.delta.added.map(i=>i),updated:v.data.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),newFieldDefs:v.data.newFieldDefs==null?v.data.newFieldDefs:Object.fromEntries(Object.entries(v.data.newFieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) } : v) as typeof v)),
 	/**
 	 *  Export locations as a JSON file.
 	 * 
@@ -375,7 +375,7 @@ export const commands = {
 	 */
 	storeCheckoutCommit: (mapId: string, commitId: string) => typedError<null, string>(__TAURI_INVOKE("store_checkout_commit", { mapId, commitId })),
 	/**  Read a single commit's delta (created/removed locations) for the diff viewer. */
-	storeGetCommitDelta: (mapId: string, commitId: string) => typedError<CommitDelta_Serialize, string>(__TAURI_INVOKE("store_get_commit_delta", { mapId, commitId })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,created:v.data.created.map(i=>i),removed:v.data.removed.map(i=>i)}) } : v) as typeof v)),
+	storeGetCommitDelta: (mapId: string, commitId: string) => typedError<CommitDelta, string>(__TAURI_INVOKE("store_get_commit_delta", { mapId, commitId })).then((v) => ((v.status === "ok" ? { ...v, data: ({...v.data,created:v.data.created.map(i=>i),removed:v.data.removed.map(i=>i)}) } : v) as typeof v)),
 };
 
 /* Types */
@@ -406,39 +406,26 @@ export type ColorPatchEntry = {
  *  A commit's delta, returned to the frontend for the per-commit diff viewer.
  *  An updated location appears in both `created` (new) and `removed` (old).
  */
-export type CommitDelta = CommitDelta_Serialize | CommitDelta_Deserialize;
-
-/**
- *  A commit's delta, returned to the frontend for the per-commit diff viewer.
- *  An updated location appears in both `created` (new) and `removed` (old).
- */
-export type CommitDelta_Deserialize = {
-	created: Location_Deserialize[],
-	removed: Location_Deserialize[],
+export type CommitDelta = {
+	created: Location[],
+	removed: Location[],
 };
 
-/**
- *  A commit's delta, returned to the frontend for the per-commit diff viewer.
- *  An updated location appears in both `created` (new) and `removed` (old).
- */
-export type CommitDelta_Serialize = {
-	created: Location_Serialize[],
-	removed: Location_Serialize[],
+export type CommitDiff = {
+	added: number,
+	removed: number,
+	modified: number,
 };
 
-/**  Metadata for a single commit, returned to the frontend for the commit history UI. */
 export type CommitInfo = {
 	id: string,
 	mapId: string,
 	parentId: string | null,
 	message: string | null,
 	treeHash: string | null,
-	added: number,
-	removed: number,
-	modified: number,
 	locationCount: number,
 	createdAt: string,
-};
+} & CommitDiff;
 
 /**
  *  How a field's values are compared when measuring how strongly it separates
@@ -500,29 +487,12 @@ export type EditorImportPreview = {
  *  Combined result of an editor import: the mutation delta (for render pipeline)
  *  plus import-specific metadata.
  */
-export type EditorImportResult = EditorImportResult_Serialize | EditorImportResult_Deserialize;
-
-/**
- *  Combined result of an editor import: the mutation delta (for render pipeline)
- *  plus import-specific metadata.
- */
-export type EditorImportResult_Deserialize = {
+export type EditorImportResult = {
 	importedCount: number,
 	warnings: string[],
 	/**  True when the import was large enough to autocommit; the caller commits it. */
 	autoCommit: boolean,
-} & MutationResult_Deserialize;
-
-/**
- *  Combined result of an editor import: the mutation delta (for render pipeline)
- *  plus import-specific metadata.
- */
-export type EditorImportResult_Serialize = {
-	importedCount: number,
-	warnings: string[],
-	/**  True when the import was large enough to autocommit; the caller commits it. */
-	autoCommit: boolean,
-} & MutationResult_Serialize;
+} & MutationResult;
 
 /**
  *  Configuration for JSON export. Controls which fields are included and
@@ -627,13 +597,34 @@ export type KeySpec =
  *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
  *  within a map and assigned by the store's monotonic allocator.
  */
-export type Location = Location_Serialize | Location_Deserialize;
+export type Location = {
+	/**
+	 *  Monotonically increasing within a map. Zero is a sentinel meaning
+	 *  "not yet assigned" (used during import before IDs are allocated).
+	 */
+	id: number,
+	lat: number,
+	lng: number,
+	heading: number,
+	pitch: number,
+	/**  Street View zoom level (0-5), not map zoom. */
+	zoom: number,
+	panoId: string | null,
+	/**  See [`LocationFlags`]. */
+	flags: number,
+	/**  Tag IDs applied to this location. References `Tag.id`. */
+	tags: number[],
+	/**  Arbitrary key-value metadata */
+	extra: any | null,
+	/**  Unix timestamp (seconds) */
+	createdAt: number,
+	modifiedAt: number | null,
+};
 
 /**
  *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
  */
-export type LocationPatch = LocationPatch_Serialize | LocationPatch_Deserialize;
 
 /**
  *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
@@ -657,7 +648,7 @@ export type LocationPatch_Deserialize = {
  *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
  */
-export type LocationPatch_Serialize = {
+export type LocationPatch = {
 	lat: number | null,
 	lng: number | null,
 	heading: number | null,
@@ -671,66 +662,18 @@ export type LocationPatch_Serialize = {
 	modifiedAt: number | null,
 };
 
-/**
- *  A single Street View location on a map.
- * 
- *  This is the atomic unit of data in the system. Locations are stored columnar
- *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
- *  within a map and assigned by the store's monotonic allocator.
- */
-export type Location_Deserialize = {
-	/**
-	 *  Monotonically increasing within a map. Zero is a sentinel meaning
-	 *  "not yet assigned" (used during import before IDs are allocated).
-	 */
-	id?: number,
-	lat: number,
-	lng: number,
-	heading: number,
-	pitch: number,
-	/**  Street View zoom level (0-5), not map zoom. */
-	zoom: number,
-	panoId: string | null,
-	/**  See [`LocationFlags`]. */
-	flags: number,
-	/**  Tag IDs applied to this location. References `Tag.id`. */
-	tags: number[],
-	/**  Arbitrary key-value metadata */
-	extra?: any | null,
-	/**  Unix timestamp (seconds) */
-	createdAt: number,
-	modifiedAt?: number | null,
+/**  A location ID paired with a partial patch, sent from JS for batch updates. */
+
+/**  A location ID paired with a partial patch, sent from JS for batch updates. */
+export type LocationUpdate_Deserialize = {
+	id: number,
+	patch: LocationPatch_Deserialize,
 };
 
-/**
- *  A single Street View location on a map.
- * 
- *  This is the atomic unit of data in the system. Locations are stored columnar
- *  in Arrow IPC on disk and addressed by `id` everywhere. The `id` is unique
- *  within a map and assigned by the store's monotonic allocator.
- */
-export type Location_Serialize = {
-	/**
-	 *  Monotonically increasing within a map. Zero is a sentinel meaning
-	 *  "not yet assigned" (used during import before IDs are allocated).
-	 */
+/**  A location ID paired with a partial patch, sent from JS for batch updates. */
+export type LocationUpdate = {
 	id: number,
-	lat: number,
-	lng: number,
-	heading: number,
-	pitch: number,
-	/**  Street View zoom level (0-5), not map zoom. */
-	zoom: number,
-	panoId: string | null,
-	/**  See [`LocationFlags`]. */
-	flags: number,
-	/**  Tag IDs applied to this location. References `Tag.id`. */
-	tags: number[],
-	/**  Arbitrary key-value metadata */
-	extra?: any | null,
-	/**  Unix timestamp (seconds) */
-	createdAt: number,
-	modifiedAt?: number | null,
+	patch: LocationPatch,
 };
 
 export type MapData = {
@@ -784,7 +727,6 @@ export type MapMeta = {
  *  Partial update for map metadata. Only non-`None` fields are written.
  *  `folder: Some(None)` explicitly unsets the folder (moves to root).
  */
-export type MapMetaPatch = MapMetaPatch_Serialize | MapMetaPatch_Deserialize;
 
 /**
  *  Partial update for map metadata. Only non-`None` fields are written.
@@ -805,7 +747,7 @@ export type MapMetaPatch_Deserialize = {
  *  Partial update for map metadata. Only non-`None` fields are written.
  *  `folder: Some(None)` explicitly unsets the folder (moves to root).
  */
-export type MapMetaPatch_Serialize = {
+export type MapMetaPatch = {
 	name: string | null,
 	description: string | null,
 	folder: string | null,
@@ -845,33 +787,8 @@ export type MapSettings = {
  *  discovered for the first time in this mutation. JS merges them straight into the
  *  field-def registry, so field metadata is live without a reload.
  */
-export type MutationResult = MutationResult_Serialize | MutationResult_Deserialize;
-
-/**
- *  Unified response for every mutation IPC. Bundles the store status, render delta,
- *  optional selection sync, optional newly-discovered extra-field keys, and optional
- *  updated tags. JS applies all of these atomically to stay in sync with the Rust state.
- *  `new_field_defs` carries the inferred/known field definitions for extra-field keys
- *  discovered for the first time in this mutation. JS merges them straight into the
- *  field-def registry, so field metadata is live without a reload.
- */
-export type MutationResult_Deserialize = {
-	delta: RenderDelta_Deserialize,
-	selectionSync: SelectionSync | null,
-	newFieldDefs: { [key in string]: ExtraFieldDef } | null,
-	tags: { [key in number]: Tag } | null,
-} & StoreStatus;
-
-/**
- *  Unified response for every mutation IPC. Bundles the store status, render delta,
- *  optional selection sync, optional newly-discovered extra-field keys, and optional
- *  updated tags. JS applies all of these atomically to stay in sync with the Rust state.
- *  `new_field_defs` carries the inferred/known field definitions for extra-field keys
- *  discovered for the first time in this mutation. JS merges them straight into the
- *  field-def registry, so field metadata is live without a reload.
- */
-export type MutationResult_Serialize = {
-	delta: RenderDelta_Serialize,
+export type MutationResult = {
+	delta: RenderDelta,
 	selectionSync: SelectionSync | null,
 	newFieldDefs: { [key in string]: ExtraFieldDef } | null,
 	tags: { [key in number]: Tag } | null,
@@ -915,32 +832,12 @@ export type PolygonGeometry = {
  *  patches, swap-removals, and color patches (for selection overlay changes).
  *  `full_reset` signals JS to discard all cell data and re-fetch via `store_fill_render_file`.
  */
-export type RenderDelta = RenderDelta_Serialize | RenderDelta_Deserialize;
-
-/**
- *  Incremental render update sent to JS after a mutation. Contains adds, position/heading
- *  patches, swap-removals, and color patches (for selection overlay changes).
- *  `full_reset` signals JS to discard all cell data and re-fetch via `store_fill_render_file`.
- */
-export type RenderDelta_Deserialize = {
+export type RenderDelta = {
 	added: RenderEntry[],
 	updated: RenderPatchEntry[],
 	removed: CellRemoval[],
 	colorPatches: ColorPatchEntry[],
 	fullReset: boolean,
-};
-
-/**
- *  Incremental render update sent to JS after a mutation. Contains adds, position/heading
- *  patches, swap-removals, and color patches (for selection overlay changes).
- *  `full_reset` signals JS to discard all cell data and re-fetch via `store_fill_render_file`.
- */
-export type RenderDelta_Serialize = {
-	added: RenderEntry[],
-	updated: RenderPatchEntry[],
-	removed: CellRemoval[],
-	colorPatches: ColorPatchEntry[],
-	fullReset?: boolean,
 };
 
 /**  A newly-added marker to a render cell: position, heading, and base color. */

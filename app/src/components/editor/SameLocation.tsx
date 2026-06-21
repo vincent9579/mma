@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
-import type { Location } from "@/types";
+import type { Location } from "@/bindings.gen";
 import {
 	useDuplicateLocations,
 	useCurrentMap,

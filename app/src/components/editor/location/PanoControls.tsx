@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { hasLoadAsPanoId, LocationFlag } from "@/types";
 import { PANO_ZOOM, SV_JUMP_RADIUS } from "@/lib/sv/constants";
-import type { Location } from "@/types";
+import type { Location } from "@/bindings.gen";
 import { google } from "@/lib/sv/opensv";
 import { lookupStreetView } from "@/lib/sv/lookup";
 import { shortenMapsUrl } from "@/lib/sv/shortUrl";

@@ -11,12 +11,11 @@ import {
 import { LocationFlag, createLocation, isVirtualLocation } from "@/types";
 import { clamp } from "@/types/util";
 import { PANO_ZOOM, PANO_PITCH, FRAME_MS, SV_SEARCH_RADIUS } from "@/lib/sv/constants";
-import type { Location } from "@/types";
-import type { Tag } from "@/bindings.gen";
+import type { Location, Tag } from "@/bindings.gen";
 import {
 	useActiveLocation,
 	useCurrentMap,
-	updateLocation,
+	updateLocations,
 	patchLocationExtra,
 	getActiveLocation,
 	fetchLocation,
@@ -426,7 +425,7 @@ function LocationPreviewInner() {
 		setPendingTags(idsToNames(location?.tags ?? []));
 	}, [location?.id]);
 	useEffect(() => {
-		if (geoResult) seenUpdateGeo(geoResult.countryCode, geoResult.text);
+		if (geoResult) seenUpdateGeo(geoResult);
 	}, [geoResult]);
 	const appSettings = useSettings();
 	useSyncExternalStore(subscribeViewportLock, getViewportLockSnapshot);
@@ -506,16 +505,16 @@ function LocationPreviewInner() {
 				if (pos) {
 					pushTrail(pos.lng(), pos.lat());
 					const activeForSeen = getActiveLocation();
-					seenPanoChanged(
-						panoId,
-						pos.lat(),
-						pos.lng(),
-						// virtual locations have no persistent id to record against
-						activeForSeen && !isVirtualLocation(activeForSeen) ? activeForSeen.id : null,
-						(getActiveLocation()?.extra?.countryCode as string) ??
-							geoRef.current?.countryCode ??
-							null,
-						geoRef.current?.text ?? null,
+					seenPanoChanged({
+							locationId: activeForSeen && !isVirtualLocation(activeForSeen) ? activeForSeen.id : null,
+							panoId: panoId,
+							lat: pos.lat(),
+							lng: pos.lng(),
+						},
+						geoRef.current && {
+							address: geoRef.current.address,
+							countryCode: (activeForSeen?.extra?.countryCode) ?? geoRef.current.countryCode,
+						},
 						() => ({
 							heading: pano.getPov().heading,
 							pitch: pano.getPov().pitch,
@@ -627,23 +626,15 @@ function LocationPreviewInner() {
 		};
 	}, [location?.id, currentPano?.location?.pano]);
 
-	useEffect(() => {
-		if (isFullscreen) {
-			fullscreenContainerRef.current?.classList.add("is-fullscreen");
-		} else {
-			fullscreenContainerRef.current?.classList.remove("is-fullscreen");
-		}
-	}, [isFullscreen]);
-
 	const handleDateChange = useCallback(
 		(panoId: string | null) => {
 			if (!singletonPano || !location) return;
 			// updateLocation no-ops for staged (virtual) locations at the store level.
 			if (panoId == null) {
-				updateLocation(location, { flags: location.flags & ~LocationFlag.LoadAsPanoId });
+				updateLocations([{ id: location.id, patch: { flags: location.flags & ~LocationFlag.LoadAsPanoId }}]);
 				if (location.panoId) singletonPano.setPano(location.panoId);
 			} else {
-				updateLocation(location, { flags: location.flags | LocationFlag.LoadAsPanoId });
+				updateLocations([{ id: location.id, patch: { flags: location.flags | LocationFlag.LoadAsPanoId }}]);
 				singletonPano.setPano(panoId);
 			}
 		},
@@ -661,16 +652,19 @@ function LocationPreviewInner() {
 
 		const savedPanoId = selectedPanoId ?? pano ?? location.panoId;
 		const panoChanged = savedPanoId !== location.panoId;
-		updateLocation(location, {
-			heading: pov.heading,
-			pitch: pov.pitch,
-			zoom: zoom,
-			panoId: savedPanoId,
-			lat: pos?.lat() ?? location.lat,
-			lng: pos?.lng() ?? location.lng,
-			tags: (await createTags(pendingTags)).map((t) => t.id),
-			extra: panoChanged ? {} : location.extra,
-		});
+		updateLocations([{ 
+			id: location.id,
+			patch: {
+				heading: pov.heading,
+				pitch: pov.pitch,
+				zoom: zoom,
+				panoId: savedPanoId,
+				lat: pos?.lat() ?? location.lat,
+				lng: pos?.lng() ?? location.lng,
+				tags: (await createTags(pendingTags)).map((t) => t.id),
+				extra: panoChanged ? {} : location.extra,
+			}
+		}]);
 		if (isReviewMode && reviewSession?.cursorId === location.id) {
 			reviewNext();
 		} else {
@@ -705,7 +699,7 @@ function LocationPreviewInner() {
 		const result = await resolvePano(location);
 		applyResolved(singletonPano, result, location);
 		google.maps.event.trigger(singletonPano, "resize");
-		updateLocation(location, { flags: location.flags & ~LocationFlag.LoadAsPanoId });
+		updateLocations([{ id: location.id, patch: { flags: location.flags & ~LocationFlag.LoadAsPanoId } }]);
 	}, [location]);
 
 	const handleFullscreen = useCallback(() => {
@@ -1114,7 +1108,7 @@ function LocationPreviewInner() {
 			<ReviewBar />
 			<section className={`location-preview${appSettings.previewAspectRatio === "free" ? " free-resize" : ""}`}>
 				<div
-					className="location-preview__panorama"
+					className={`location-preview__panorama${isFullscreen ? " is-fullscreen" : ""}`}
 					ref={fullscreenContainerRef}
 					style={isFullscreen || appSettings.previewAspectRatio === "free" ? undefined : { aspectRatio: appSettings.previewAspectRatio }}
 				>
@@ -1166,9 +1160,9 @@ function LocationPreviewInner() {
 								/>
 							</span>
 						)}
-						{geoResult?.countryCode && geoResult.text && " "}
-						{geoResult?.text && <span>{geoResult.text}</span>}
-						{(geoResult?.text || geoResult?.countryCode) && <span className="location-preview__timestamp-sep"> · </span>}
+						{geoResult?.countryCode && geoResult.address && " "}
+						{geoResult?.address && <span>{geoResult.address}</span>}
+						{(geoResult?.address || geoResult?.countryCode) && <span className="location-preview__timestamp-sep"> · </span>}
 						<span className="location-preview__timestamps">
 							Created {relativeTime(location.createdAt)}
 							{location.modifiedAt != null && <>{" · "}Modified {relativeTime(location.modifiedAt)}</>}

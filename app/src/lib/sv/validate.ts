@@ -1,5 +1,5 @@
 import { hasLoadAsPanoId } from "@/types";
-import type { Location } from "@/types";
+import type { Location } from "@/bindings.gen";
 import { ValidationState } from "@/store/selections";
 import { fetchSvMetadata } from "./svMeta";
 import { isOfficialPano } from "./panoId";

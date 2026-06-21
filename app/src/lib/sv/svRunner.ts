@@ -9,13 +9,13 @@
  * "Street View" operation runs an arbitrary set of resolvers.
  */
 
-import type { Location } from "@/types";
-import type { ExtraFieldDef } from "@/bindings.gen";
-import { batchUpdateLocations, fetchLocationsByIds } from "@/store/useMapStore";
+import type { Location, ExtraFieldDef } from "@/bindings.gen";
+import { fetchLocationsByIds, updateLocations } from "@/store/useMapStore";
 import { fetchSvMetadata } from "@/lib/sv/svMeta";
 import { resolvePanoIds } from "@/lib/sv/lookup";
 import { getEnrichmentProviders, providerWaves } from "@/lib/data/fieldDefs";
 import { runConcurrent } from "@/lib/util/concurrent";
+import type { LocationUpdate_Deserialize as LocationUpdate } from "@/bindings.gen";
 
 // 200 is GetMetadata's hard per-request cap; concurrency saturates the endpoint ~48.
 const BATCH_SIZE = 200;
@@ -149,7 +149,7 @@ export async function runResolvers(
 			return;
 		}
 
-		const updates: { id: number; patch: Partial<Location> }[] = [];
+		const updates: LocationUpdate[] = [];
 		for (let j = 0; j < batch.length; j++) {
 			const loc = batch[j];
 			const data = datas[j];
@@ -167,7 +167,7 @@ export async function runResolvers(
 			const merged = mergePatches(loc, patches);
 			if (merged) updates.push({ id: loc.id, patch: merged });
 		}
-		if (updates.length > 0) batchUpdateLocations(updates);
+		if (updates.length > 0) updateLocations(updates);
 	}
 
 	if (metaPending.length > 0) onProgress?.(0, metaPending.length);
@@ -188,7 +188,7 @@ export async function runResolvers(
 
 	// --- Flag-only resolvers (pin to pano): patch off the prelude result. ---
 	if (flagResolvers.length > 0) {
-		const updates: { id: number; patch: Partial<Location> }[] = [];
+		const updates: LocationUpdate[] = [];
 		for (const loc of locations) {
 			const patches: Partial<Location>[] = [];
 			for (const { r, config } of flagResolvers) {
@@ -204,7 +204,7 @@ export async function runResolvers(
 			const merged = mergePatches(loc, patches);
 			if (merged) updates.push({ id: loc.id, patch: merged });
 		}
-		if (updates.length > 0) batchUpdateLocations(updates);
+		if (updates.length > 0) updateLocations(updates);
 	}
 
 	// --- Phase 2: enrichment providers (when an enrich-style resolver ran), in
@@ -244,7 +244,7 @@ export async function runResolvers(
 			});
 			// Write before honoring an abort, so partial provider results persist.
 			if (mergedById.size > 0) {
-				await batchUpdateLocations(
+				await updateLocations(
 					[...mergedById.entries()].map(([id, patch]) => ({
 						id,
 						patch: { extra: { ...byId.get(id)?.extra, ...patch } },

@@ -7,6 +7,24 @@
 use crate::types::{AppError, AppResult};
 use tauri::Manager;
 
+#[cfg(debug_assertions)]
+pub fn promote_serialize_bindings(path: &std::path::Path) {
+    let src = std::fs::read_to_string(path).expect("read bindings");
+    let mut out = String::with_capacity(src.len());
+    for line in src.lines() {
+        // Drop union alias lines: `export type Foo = Foo_Serialize | Foo_Deserialize;`
+        if line.starts_with("export type ")
+            && line.contains("_Serialize | ")
+            && line.contains("_Deserialize;")
+        {
+            continue;
+        }
+        out.push_str(&line.replace("_Serialize", ""));
+        out.push('\n');
+    }
+    std::fs::write(path, out.as_bytes()).expect("write bindings");
+}
+
 mod storage;
 mod iframe_theme;
 mod types;
@@ -542,7 +560,10 @@ pub fn run() {
                 let out = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.gen.ts");
                 eprintln!("[specta] exporting to {}", out.display());
                 match specta_builder.export(specta_typescript::Typescript::default(), &out) {
-                    Ok(()) => eprintln!("[specta] bindings exported OK"),
+                    Ok(()) => {
+                        promote_serialize_bindings(&out);
+                        eprintln!("[specta] bindings exported OK");
+                    }
                     Err(e) => {
                         eprintln!("[specta] export FAILED: {e}");
                         eprintln!("[specta] debug: {e:?}");

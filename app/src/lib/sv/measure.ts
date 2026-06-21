@@ -2,7 +2,8 @@
 /// <reference path="../../types/measuretool.d.ts" />
 import { useSyncExternalStore, useEffect, useState, useCallback } from "react";
 import MeasureToolClass from "measuretool-googlemaps-v3";
-import type { Location } from "@/types";
+import type { LatLng } from "@/types";
+import type { Location } from "@/bindings.gen";
 import { createSyncStore } from "@/lib/util/syncStore";
 import { useCurrentMap } from "@/store/useMapStore";
 import { cmd } from "@/lib/commands";
@@ -38,7 +39,7 @@ function createInstance(map: google.maps.Map) {
 	return mt;
 }
 
-export function startMeasure(map: google.maps.Map, latLng: { lat: number; lng: number }) {
+export function startMeasure(map: google.maps.Map, latLng: LatLng) {
 	let { instance } = mState;
 	if (!instance) {
 		instance = createInstance(map);
@@ -64,13 +65,13 @@ export function useMeasure() {
 
 // --- Lat/lng anchor state ---
 
-let anchor: { lat: number; lng: number } | null = null;
+let anchor: LatLng | null = null;
 const aStore = createSyncStore();
 function aSnap() {
 	return anchor;
 }
 
-export function setLatLngAnchor(v: { lat: number; lng: number } | null) {
+export function setLatLngAnchor(v: LatLng | null) {
 	anchor = v;
 	aStore.notify();
 }
@@ -87,12 +88,12 @@ export function getLatLngAnchor() {
 
 export interface ContextMenuTarget {
 	location: Location | null;
-	latLng: { lat: number; lng: number };
+	latLng: LatLng;
 }
 
 let cmTarget: ContextMenuTarget = { location: null, latLng: { lat: 0, lng: 0 } };
 
-export function openContextMenuLatLng(latLng: { lat: number; lng: number }) {
+export function openContextMenuLatLng(latLng: LatLng) {
 	cmTarget = { location: null, latLng };
 }
 
@@ -180,7 +181,7 @@ export function padBbox(bbox: [number, number, number, number]): [number, number
  * Returns `[minLng, minLat, maxLng, maxLat]`.
  */
 export function locationsBbox(
-	locations: { lat: number; lng: number }[],
+	locations: LatLng[],
 ): [number, number, number, number] {
 	const bbox: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
 	for (const l of locations) {
@@ -202,7 +203,7 @@ export function isWorldBounds(b: [number, number, number, number]): boolean {
 /** Resolved max-error for a map's score bounds. `"auto"` derives it from locations. */
 export function resolveScoreMaxError(
 	bounds: "auto" | [number, number, number, number],
-	locations: { lat: number; lng: number }[],
+	locations: LatLng[],
 ): number {
 	if (bounds === "auto") {
 		return locations.length > 1 ? bboxToMaxError(locationsBbox(locations)) : 25;

@@ -15,7 +15,8 @@ import {
 	setActiveLocation,
 	toggleManualSelection,
 } from "@/store/useMapStore";
-import { isVirtualLocation, type Location } from "@/types";
+import { isVirtualLocation } from "@/types";
+import type { Location } from "@/bindings.gen";
 
 type OverlayEvent = { srcEvent?: { domEvent?: Event } };
 

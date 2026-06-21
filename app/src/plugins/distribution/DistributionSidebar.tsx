@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Location } from "@/types";
+import type { Location } from "@/bindings.gen";
 import { Sidebar, SegmentedControl } from "@/components/primitives/Sidebar";
 import { cmd } from "@/lib/commands";
 import { getSettings } from "@/store/settings";

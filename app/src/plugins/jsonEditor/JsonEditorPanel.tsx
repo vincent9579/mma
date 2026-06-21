@@ -1,11 +1,19 @@
-import { useState, useEffect } from "react";
-import type { Location } from "@/types";
-import type { Tag } from "@/bindings.gen";
+import { useState, useRef } from "react";
+import type { Location, Tag } from "@/bindings.gen";
 import { createTags } from "@/store/useMapStore";
 import { locDate } from "@/lib/util/format";
 
 function tagIdsToNames(tagIds: number[], tags: Record<string, Tag>): string[] {
 	return tagIds.map((id) => tags[id]?.name ?? String(id));
+}
+
+function serializeActive(active: Location): string {
+	const { id: _id, createdAt: _createdAt, modifiedAt: _modifiedAt, ...editable } = active;
+	const map = MMA.getCurrentMap();
+	const display = map
+		? { ...editable, tags: tagIdsToNames(editable.tags, map.meta.tags) }
+		: editable;
+	return JSON.stringify(display, null, 2);
 }
 
 async function resolveTagNames(names: string[]): Promise<number[]> {
@@ -16,21 +24,17 @@ async function resolveTagNames(names: string[]): Promise<number[]> {
 
 export function JsonEditorPanel() {
 	const active = MMA.getActiveLocation();
-	const [text, setText] = useState("");
+	const prevIdRef = useRef(active?.id);
+	const [text, setText] = useState(() => active ? serializeActive(active) : "");
 	const [error, setError] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
 
-	useEffect(() => {
-		if (!active) return;
-		const { id: _id, createdAt: _createdAt, modifiedAt: _modifiedAt, ...editable } = active;
-		const map = MMA.getCurrentMap();
-		const display = map
-			? { ...editable, tags: tagIdsToNames(editable.tags, map.meta.tags) }
-			: editable;
-		setText(JSON.stringify(display, null, 2));
+	if (active && active.id !== prevIdRef.current) {
+		prevIdRef.current = active.id;
+		setText(serializeActive(active));
 		setError(null);
 		setSaved(false);
-	}, [active?.id]);
+	}
 
 	if (!active) return null;
 
@@ -41,7 +45,7 @@ export function JsonEditorPanel() {
 				parsed.tags = await resolveTagNames(parsed.tags as unknown as string[]);
 			}
 			setError(null);
-			MMA.updateLocation(active, parsed);
+			MMA.updateLocations([{ id: active.id, patch: parsed }]);
 			setSaved(true);
 		} catch (e: unknown) {
 			setError(e instanceof Error ? e.message : String(e));

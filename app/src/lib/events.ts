@@ -1,6 +1,5 @@
 import { log } from "@/lib/util/log";
-import type { Location } from "@/types";
-import type { MapData, Selection, Tag } from "@/bindings.gen";
+import type { Location, LocationUpdate_Deserialize, MapData, Selection, Tag } from "@/bindings.gen";
 
 /** Phantom helper: captures a payload type at the value level without a real value. */
 const event = <T>() => null as T;
@@ -8,7 +7,7 @@ const event = <T>() => null as T;
 const EVENT_DEFS = {
 	"location:add": event<Location[]>(),
 	"location:remove": event<number[]>(),
-	"location:update": event<Partial<Location> & { id: number }>(),
+	"location:update": event<LocationUpdate_Deserialize>(),
 	"tag:add": event<Tag[]>(),
 	"tag:remove": event<number[]>(),
 	"tag:update": event<(Partial<Tag> & { id: number })[]>(),

@@ -1,14 +1,10 @@
-import type { Location_Serialize, EditorImportResult_Serialize, EditorImportPreview } from "@/bindings.gen";
-// Relative (not "@/") so the e2e runner's tsx loader can resolve this runtime value import
-// when it pulls in this module via test helpers; the `@/` alias isn't applied there.
-import { nowUnix } from "../lib/util/format";
-
-export type Location = Location_Serialize;
-export type ImportResult = EditorImportResult_Serialize;
-export type ImportPreview = EditorImportPreview;
+import type { Location } from "@/bindings.gen";
+import { nowUnix } from "@/lib/util/format";
 
 /** Street View camera orientation (POV). */
 export type LocationPOV = Pick<Location, "heading" | "pitch" | "zoom">;
+
+export type LatLng = google.maps.LatLngLiteral;
 
 export const enum LocationFlag {
 	None = 0,
@@ -22,18 +18,6 @@ export const enum PanoType {
 	Unknown = 3,
 	UserUploaded = 10,
 }
-
-export const LOCATION_CORE_KEYS = new Set([
-	"lat",
-	"lng",
-	"heading",
-	"pitch",
-	"zoom",
-	"panoId",
-	"flags",
-	"tags",
-	"extra",
-]);
 
 export function hasLoadAsPanoId(loc: Location): boolean {
 	return (loc.flags & LocationFlag.LoadAsPanoId) !== 0;
@@ -65,7 +49,7 @@ export function virtualIdToStagedIndex(id: number): number {
 }
 
 export function createLocation(
-	partial: Partial<Location> & { lat: number; lng: number },
+	partial: Partial<Location> & LatLng,
 ): Location {
 	return {
 		id: 0, // placeholder; Rust assigns the real ID
@@ -75,7 +59,9 @@ export function createLocation(
 		panoId: null,
 		flags: LocationFlag.None,
 		tags: [],
+		extra: null,
 		createdAt: nowUnix(),
+		modifiedAt: null,
 		...partial,
 	};
 }
@@ -84,8 +70,3 @@ export type SortMode = "name" | "created" | "opened" | "amount";
 export type TagSortMode = "default" | "name" | "amount";
 
 export type WorkArea = "overview" | "location" | "duplicates" | "import" | "plugin" | "diff";
-
-export interface DuplicateGroup {
-	distance: number;
-	locations: Location[];
-}

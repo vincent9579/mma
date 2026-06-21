@@ -807,10 +807,8 @@ export type Tag = {
 };
 type Location$1 = Location_Serialize;
 export type ImportPreview = EditorImportPreview;
-declare function createLocation(partial: Partial<Location$1> & {
-	lat: number;
-	lng: number;
-}): Location$1;
+export type LatLng = google.maps.LatLngLiteral;
+declare function createLocation(partial: Partial<Location$1> & LatLng): Location$1;
 export type TagSortMode = "default" | "name" | "amount";
 export type WorkArea = "overview" | "location" | "duplicates" | "import" | "plugin" | "diff";
 /** When a move target already holds a value, which field's value survives. */
@@ -904,6 +902,15 @@ export interface ScopeHandle {
 	/** React view of this handle: re-renders on change, with live counts. */
 	use(): ScopeController;
 }
+declare function resetSelections(): Promise<void>;
+declare function selectEverything(): Promise<void>;
+declare function selectUntagged(): Promise<void>;
+declare function selectUnpanned(): Promise<void>;
+declare function selectPanoIds(): Promise<void>;
+declare function selectNotPanoIds(): Promise<void>;
+declare function selectUncommitted(): Promise<void>;
+declare function undo(): Promise<void>;
+declare function redo(): Promise<void>;
 export interface PruneResult {
 	session: ReviewSession | null;
 	cursorMoved: boolean;
@@ -1427,6 +1434,262 @@ export type SavedSelectionProps = {
 	type: "Invert";
 	selections: SavedSelectionProps[];
 };
+declare function loadGeoJSON(): Promise<void>;
+declare const COMMANDS: {
+	save: {
+		label: string;
+		icon: string;
+		group: "Map";
+		defaultBinding: string;
+		execute: () => Promise<string>;
+		enabled: () => boolean;
+	};
+	import: {
+		label: string;
+		icon: string;
+		group: "Map";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+	addLocationToMap: {
+		label: string;
+		icon: string;
+		group: "Map";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+	undo: {
+		label: string;
+		icon: string;
+		group: "Map";
+		defaultBinding: string;
+		execute: typeof undo;
+		enabled: () => boolean;
+	};
+	redo: {
+		label: string;
+		icon: string;
+		group: "Map";
+		defaultBinding: string;
+		execute: typeof redo;
+		enabled: () => boolean;
+	};
+	export: {
+		label: string;
+		icon: string;
+		group: "Map";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+	"open-history": {
+		label: string;
+		icon: string;
+		group: "Map";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+	"open-seen": {
+		label: string;
+		icon: string;
+		group: "Map";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+	selectAll: {
+		label: string;
+		group: "Selections";
+		defaultBinding: string;
+		execute: typeof selectEverything;
+	};
+	"select-untagged": {
+		label: string;
+		group: "Selections";
+		execute: typeof selectUntagged;
+	};
+	"select-unpanned": {
+		label: string;
+		group: "Selections";
+		execute: typeof selectUnpanned;
+	};
+	"select-panoid": {
+		label: string;
+		group: "Selections";
+		execute: typeof selectPanoIds;
+	};
+	"select-no-panoid": {
+		label: string;
+		group: "Selections";
+		execute: typeof selectNotPanoIds;
+	};
+	"select-uncommitted": {
+		label: string;
+		group: "Selections";
+		execute: typeof selectUncommitted;
+	};
+	"invert-selection": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => Promise<void>;
+	};
+	"intersect-selections": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => Promise<void>;
+	};
+	"union-selections": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => Promise<void>;
+	};
+	"load-geojson": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: typeof loadGeoJSON;
+	};
+	"download-polygon-geojson": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		enabled: () => boolean;
+		execute: () => void;
+	};
+	deselectAll: {
+		label: string;
+		icon: string;
+		group: "Selections";
+		defaultBinding: string;
+		execute: typeof resetSelections;
+		enabled: () => boolean;
+	};
+	"find-duplicates": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => boolean;
+	};
+	"merge-duplicates": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => boolean;
+	};
+	"filter-by-metadata": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => boolean;
+	};
+	"review-selected": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		enabled: () => boolean;
+		execute: () => boolean;
+	};
+	"select-random": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+	"ghost-selections": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => Promise<void>;
+		enabled: () => boolean;
+	};
+	"save-selections": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+	"apply-saved-selection": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => boolean;
+	};
+	"selection-delete-locations": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		enabled: () => boolean;
+		execute: () => void;
+	};
+	"bulk-validate": {
+		label: string;
+		icon: string;
+		group: "Bulk Operations";
+		execute: () => boolean;
+	};
+	"bulk-enrich": {
+		label: string;
+		icon: string;
+		group: "Bulk Operations";
+		execute: () => boolean;
+	};
+	"bulk-set-field": {
+		label: string;
+		icon: string;
+		group: "Bulk Operations";
+		execute: () => boolean;
+	};
+	"bulk-clear-fields": {
+		label: string;
+		icon: string;
+		group: "Bulk Operations";
+		execute: () => boolean;
+	};
+	"bulk-pin-pano": {
+		label: string;
+		icon: string;
+		group: "Bulk Operations";
+		execute: () => boolean;
+	};
+	"bulk-heading-road": {
+		label: string;
+		icon: string;
+		group: "Bulk Operations";
+		execute: () => boolean;
+	};
+	"delete-selected-tags": {
+		label: string;
+		icon: string;
+		group: "Tags";
+		execute: () => Promise<void>;
+		enabled: () => boolean;
+	};
+	"tag-download-csv": {
+		label: string;
+		icon: string;
+		group: "Tags";
+		execute: () => void;
+	};
+	"tag-find-replace": {
+		label: string;
+		icon: string;
+		group: "Tags";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+	"apply-field-as-tags": {
+		label: string;
+		icon: string;
+		group: "Tags";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+};
+export type CommandId = keyof typeof COMMANDS;
+export type PinnedEntry = CommandId | "---" | (string & {});
 declare const MOVEMENT_MODES: {
 	readonly moving: "Moving";
 	readonly "no-move": "No Move";
@@ -1473,6 +1736,7 @@ declare const PREVIEW_ASPECT_RATIOS: {
 	readonly "16 / 9": "16:9";
 	readonly "21 / 9": "21:9";
 	readonly "32 / 9": "32:9";
+	readonly free: "Free";
 };
 export type MovementMode = keyof typeof MOVEMENT_MODES;
 export type ExactDateFormat = keyof typeof EXACT_DATE_FORMATS;
@@ -1546,7 +1810,7 @@ declare const DEFAULTS: {
 	previewAspectRatio: PreviewAspectRatio;
 	tagSuggestionLimit: number;
 	savedSelections: SavedSelection[];
-	pinnedCommands: string[];
+	pinnedCommands: PinnedEntry[];
 };
 export type AppSettings = typeof DEFAULTS;
 declare function setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void;
@@ -1775,7 +2039,7 @@ declare const mma: {
 		previewAspectRatio: PreviewAspectRatio;
 		tagSuggestionLimit: number;
 		savedSelections: SavedSelection[];
-		pinnedCommands: string[];
+		pinnedCommands: PinnedEntry[];
 	};
 	on<E extends EditorEvent>(event: E, handler: EventHandler<E>): () => void;
 	getSeenEntries: typeof getSeenEntries;
@@ -1879,7 +2143,6 @@ declare const mma: {
 	renameField(from: string, to: string, winner?: MergeWinner): Promise<void>;
 	deleteField(key: string): Promise<void>;
 	patchLocationExtra(loc: Location$1, extraPatch: Record<string, unknown>, replace?: boolean): Promise<void>;
-	isSelectionGhosted(key: string): boolean;
 	toggleGhostSelection(key: string): Promise<void>;
 	isolateSelection(key: string): Promise<void>;
 	toggleGhostAllSelections(): Promise<void>;
@@ -1951,10 +2214,7 @@ declare const mma: {
 		canRedo: boolean;
 	};
 	commitMap(message?: string): Promise<string>;
-	diffPositions(locs: {
-		lat: number;
-		lng: number;
-	}[]): Float32Array;
+	diffPositions(locs: LatLng[]): Float32Array;
 	categorizeCommitDelta<T extends {
 		id: number;
 	}>(delta: {

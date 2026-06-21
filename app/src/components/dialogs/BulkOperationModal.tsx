@@ -4,14 +4,13 @@ import {
 	getCurrentMap,
 	addSelections,
 	fetchAllLocations,
-	batchUpdateLocations,
 	useScope,
 	applyScope,
 	type ScopeController,
+    updateLocations,
 } from "@/store/useMapStore";
-import type { Scope } from "@/bindings.gen";
+import type { Scope, Location, LocationUpdate_Deserialize as LocationUpdate } from "@/bindings.gen";
 import { ScopeSelector } from "@/components/primitives/ScopeSelector";
-import type { Location } from "@/types";
 import { isPinnedToPano } from "@/types";
 import { getFieldDef, getAllFieldDefs } from "@/lib/data/fieldDefRegistry";
 import {
@@ -575,7 +574,7 @@ function BulkProgress({
 				});
 			} else if (operation === "clearFields") {
 				const keys = clearKeys ?? [];
-				const updates: { id: number; patch: { extra: Record<string, unknown> } }[] = [];
+				const updates: LocationUpdate[] = [];
 				for (const loc of locations) {
 					if (!loc.extra) continue;
 					const hasAny = keys.some((k) => loc.extra![k] != null);
@@ -587,7 +586,7 @@ function BulkProgress({
 
 				setTotal(updates.length);
 				if (updates.length > 0) {
-					await batchUpdateLocations(updates);
+					await updateLocations(updates);
 				}
 				setDone(updates.length);
 				setClearCount(updates.length);
@@ -599,7 +598,7 @@ function BulkProgress({
 				);
 				setTotal(updates.length);
 				if (updates.length > 0) {
-					await batchUpdateLocations(updates);
+					await updateLocations(updates);
 				}
 				setDone(updates.length);
 				setClearCount(updates.length);
@@ -608,7 +607,7 @@ function BulkProgress({
 				const updates = planFieldSet(locations, setField);
 				setTotal(updates.length);
 				if (updates.length > 0) {
-					await batchUpdateLocations(updates);
+					await updateLocations(updates);
 				}
 				setDone(updates.length);
 				setClearCount(updates.length);

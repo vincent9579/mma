@@ -13,7 +13,7 @@ import {
 import { registerSvResolver, runResolvers, type SvResolver } from "@/lib/sv/svRunner";
 import { SV_CONCURRENCY } from "@/lib/sv/constants";
 import { log } from "@/lib/util/log";
-import type { Location } from "@/types";
+import type { Location } from "@/bindings.gen";
 
 export function needsEnrichment(loc: Location, enrichFields?: string[]): boolean {
 	const fields = enrichFields ?? getDefaultEnrichKeys();

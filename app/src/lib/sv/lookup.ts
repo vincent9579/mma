@@ -3,12 +3,14 @@ import { fetchPanoDotsWithIds, latLngToWorldCoord } from "@/lib/geo/photometa";
 import { google } from "@/lib/sv/opensv";
 import { cameraTypeFromHeight, fetchSvMetadata } from "@/lib/sv/svMeta";
 import { LocationFlag, hasLoadAsPanoId, createLocation } from "@/types";
-import type { Location } from "@/types";
+import type { LatLng } from "@/types";
+import type { Location } from "@/bindings.gen";
 import { toast } from "@/lib/util/toast";
 import { runConcurrent } from "@/lib/util/concurrent";
-import { batchUpdateLocations } from "@/store/useMapStore";
 
 import { SV_SEARCH_RADIUS, SV_CONCURRENCY } from "@/lib/sv/constants";
+import type { LocationUpdate_Deserialize as LocationUpdate } from "@/bindings.gen";
+import { updateLocations } from "@/store/useMapStore";
 
 /** A single historical panorama entry (pano ID + capture date). */
 export interface PanoReference {
@@ -79,7 +81,7 @@ export async function resolvePano(loc: Location): Promise<ResolvedPano> {
 	};
 }
 
-export interface ResolvePanoResult {
+interface ResolvePanoResult {
 	resolved: { id: number; panoId: string }[];
 	failed: number[];
 }
@@ -100,7 +102,7 @@ export async function resolvePanoIds(
 	for (let i = 0; i < locations.length; i += batchSize) {
 		signal?.throwIfAborted();
 		const chunk = locations.slice(i, i + batchSize);
-		const updates: { id: number; patch: { panoId: string } }[] = [];
+		const updates: LocationUpdate[] = [];
 		await runConcurrent(
 			chunk,
 			async (loc) => {
@@ -114,7 +116,7 @@ export async function resolvePanoIds(
 			},
 			{ concurrency, signal },
 		);
-		if (updates.length > 0) batchUpdateLocations(updates);
+		if (updates.length > 0) updateLocations(updates);
 		onProgress?.(Math.min(i + chunk.length, locations.length), locations.length);
 	}
 
@@ -182,10 +184,7 @@ export function calcHeading(
 }
 
 /** Extract plain {lat, lng} from a PanoData's LatLng object. */
-export function panoLatLng(p: google.maps.StreetViewResolvedPanoramaData): {
-	lat: number;
-	lng: number;
-} {
+export function panoLatLng(p: google.maps.StreetViewResolvedPanoramaData): LatLng {
 	const ll = p.location.latLng;
 	return { lat: ll.lat(), lng: ll.lng() };
 }
@@ -209,7 +208,7 @@ export function isUnofficial(p: google.maps.StreetViewResolvedPanoramaData | nul
 
 /** Find nearest pano via photometa tile dots (bypasses StreetViewService for coverage discovery). */
 export async function photometaSnap(
-	click: { lat: number; lng: number },
+	click: LatLng,
 	radius: number
 ): Promise<google.maps.StreetViewResolvedPanoramaData | null> {
 	try {

@@ -1,4 +1,4 @@
-import type { Location } from "@/types";
+import type { Location } from "@/bindings.gen";
 import { normalizeHeading } from "@/lib/sv/lookup";
 import { registerSvResolver, runResolvers, type SvResolver } from "@/lib/sv/svRunner";
 

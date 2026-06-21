@@ -5,7 +5,8 @@ import { baseMarkerLayers, buildMarkerLayer, panoDotsLayer } from "@/lib/render/
 import type { CellManager } from "@/lib/render/CellManager";
 import type { MarkerStyle } from "@/components/editor/map/mapSettingsTypes";
 import type { PanoDot } from "@/lib/geo/photometa";
-import type { Location } from "@/types";
+import type { LatLng } from "@/types";
+import type { Location } from "@/bindings.gen";
 import {
 	getCurrentMap,
 	getWorkArea,
@@ -40,7 +41,7 @@ function normalizePolygonCoords<T extends number[]>(coords: T[][]): T[][] {
 	return coords.map(normalizeRing);
 }
 
-export interface SceneContext {
+interface SceneContext {
 	markerStyle: MarkerStyle;
 	markerOpacity: number;
 	showPerfectScoreCircle: boolean;
@@ -211,7 +212,7 @@ export function buildSceneLayers(cm: CellManager, ctx: SceneContext): Layer[] {
 			new ScatterplotLayer({
 				id: PERFECT_SCORE_LAYER_ID,
 				data: [center],
-				getPosition: (d: { lat: number; lng: number }) => [d.lng, d.lat],
+				getPosition: (d: LatLng) => [d.lng, d.lat],
 				getFillColor: [200, 0, 0, 26],
 				getLineColor: [200, 0, 0, 128],
 				getRadius: Math.max(25, ctx.scoreMaxError),

@@ -24,6 +24,7 @@ fn main() {
     app_lib::specta_builder()
       .export(specta_typescript::Typescript::default(), &out)
       .expect("bindings export failed");
+    app_lib::promote_serialize_bindings(&out);
     println!("bindings exported to {}", out.display());
     return;
   }
