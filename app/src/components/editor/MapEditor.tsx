@@ -342,7 +342,7 @@ export function MapEditor() {
 			<section className="map-meta">
 				<MapMetaBar />
 			</section>
-			{workArea === "overview" && <MapOverview />}
+			<MapOverview hidden={workArea !== "overview"} />
 			{workArea === "location" && <LocationPreview />}
 			{workArea === "duplicates" && <SameLocation />}
 			{workArea === "import" && <ImportSidebar />}

@@ -694,7 +694,7 @@ function SelectionRow({
 	);
 }
 
-export function MapOverview() {
+export function MapOverview({ hidden }: { hidden?: boolean }) {
 	const map = useCurrentMap();
 	const selected = useSelectedLocationIds();
 	const selections = useSelections();
@@ -760,7 +760,7 @@ export function MapOverview() {
 	const hasSelections = selections.length > 0;
 
 	return (
-		<section className="map-overview">
+		<section className="map-overview" hidden={hidden}>
 			<TagManager />
 
 			<ToolBlock

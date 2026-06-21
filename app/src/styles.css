@@ -4215,6 +4215,9 @@ summary.button {
 	overflow-y: auto;
 	scrollbar-width: none;
 }
+.map-overview[hidden] {
+	display: none;
+}
 .map-overview::-webkit-scrollbar {
 	display: none;
 }
