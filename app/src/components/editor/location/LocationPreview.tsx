@@ -287,8 +287,8 @@ let singletonPano: google.maps.StreetViewPanorama | null = null;
 export async function loadSeenPano(entry: SeenEntry) {
 	seenSkipNext(entry.panoId);
 
-	// Resolve to a live location; recreate from the entry if the id is stale/deleted.
-	const existing = entry.locationId != null ? await fetchLocation(entry.locationId) : null;
+	const fetched = entry.locationId != null ? await fetchLocation(entry.locationId) : null;
+	const existing = fetched && fetched.panoId === entry.panoId ? fetched : null;
 
 	if (existing) {
 		const active = getActiveLocation();
