@@ -106,7 +106,7 @@ export function ApplyFieldAsTagsDialog({
 				>
 					<ScopeSelector ctl={scopeCtl} />
 					<select
-						className="input"
+						className="nselect nselect--compact"
 						value={field}
 						onChange={(e) => handleFieldChange(e.target.value)}
 						autoFocus
@@ -120,7 +120,7 @@ export function ApplyFieldAsTagsDialog({
 					</select>
 					{field && projOptions.length > 1 && (
 						<select
-							className="input"
+							className="nselect nselect--compact"
 							value={projectionId}
 							onChange={(e) => setProjectionId(e.target.value)}
 						>

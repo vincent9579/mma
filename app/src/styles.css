@@ -2075,9 +2075,11 @@ summary.button {
 	width: auto;
 	min-width: 0;
 	height: 28px;
+	align-self: center;
 	padding: 0 40px 0 10px;
 	font-size: 13px;
 	line-height: 28px;
+	border-color: #ccc;
 }
 .nselect--compact::picker-icon {
 	width: 8px;
@@ -2086,9 +2088,11 @@ summary.button {
 	top: calc(50% - 6px);
 }
 .nselect--compact option {
-	height: 28px;
-	padding: 0 10px;
+	padding: 4px 10px;
 	font-size: 13px;
+}
+.nselect--compact::picker(select) {
+	max-height: 300px;
 }
 .nselect:not(:disabled) {
 	cursor: pointer;
@@ -2132,8 +2136,7 @@ summary.button {
 	border: none;
 	outline: none;
 	width: 100%;
-	height: 36px;
-	padding: 0 16px;
+	padding: 8px 16px;
 	font-family:
 		Noto Sans,
 		sans-serif;
@@ -4689,7 +4692,7 @@ body {
 	font-size: 0.85em;
 }
 .settings-popup__select {
-	align-content: center;
+	align-items: center;
 	gap: 0.5rem;
 	display: flex;
 }

@@ -53,6 +53,7 @@ function SettingSelect<K extends keyof AppSettings>({
 	const value = useSetting(setting);
 	return (
 		<select
+			className="nselect nselect--compact"
 			value={value as string}
 			onChange={(e) => setSetting(setting, e.target.value as AppSettings[K])}
 		>
@@ -920,6 +921,7 @@ function BorderDetailSection() {
 			<label className="settings-popup__item">
 				Border accuracy
 				<select
+					className="nselect nselect--compact"
 					value={s.borderDetail}
 					onChange={(e) => handleChange(e.target.value as BorderDetail)}
 					disabled={downloading !== null}
@@ -935,6 +937,7 @@ function BorderDetailSection() {
 			<label className="settings-popup__item">
 				Subdivisions (Shift + click)
 				<select
+					className="nselect nselect--compact"
 					value={s.subdivisionDetail}
 					onChange={(e) => handleSubdivisionChange(e.target.value as SubdivisionDetail)}
 					disabled={downloading !== null}

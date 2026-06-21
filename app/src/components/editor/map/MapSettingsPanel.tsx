@@ -401,6 +401,7 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 							<label className="settings-popup__item settings-popup__select">
 								Direction:{" "}
 								<select
+									className="nselect nselect--compact"
 									value={preferDirection ?? ""}
 									onChange={(e) => setPreferDirection(e.target.value || null)}
 								>
@@ -514,6 +515,7 @@ export function MapSettingsDropdown({ settings: s }: { settings: MapSettingsDrop
 						<label className="settings-popup__item settings-popup__select">
 							Marker style:{" "}
 							<select
+								className="nselect nselect--compact"
 								value={s.markerStyle}
 								onChange={(e) => s.setMarkerStyle(e.target.value as MarkerStyle)}
 							>

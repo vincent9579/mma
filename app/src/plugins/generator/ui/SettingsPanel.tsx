@@ -426,7 +426,7 @@ export function SettingsPanel({
 							onChange={(e) => set("searchTerms", e.target.value)}
 						/>
 						<select
-							className="input"
+							className="nselect nselect--compact"
 							value={settings.searchMode}
 							onChange={(e) => set("searchMode", e.target.value as GeneratorSettings["searchMode"])}
 						>
