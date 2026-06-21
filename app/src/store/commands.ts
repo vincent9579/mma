@@ -1,13 +1,16 @@
 export type CommandGroup = "Map" | "Selections" | "Bulk Operations" | "Tags";
 
-export interface Command {
-	id: string;
+export interface CommandDef {
 	label: string;
 	icon?: string;
 	group: CommandGroup;
 	defaultBinding?: string;
 	execute: () => void;
 	enabled?: () => boolean;
+}
+
+export interface Command extends CommandDef {
+	id: string;
 }
 
 const commands: Command[] = [];

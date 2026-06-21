@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { createSyncStore } from "@/lib/util/syncStore";
 import type { SavedSelection } from "./savedSelections";
 import type { TagSortMode } from "@/types";
+import type { PinnedEntry } from "./commandDefs";
 
 export const MOVEMENT_MODES = {
 	moving: "Moving",
@@ -127,7 +128,7 @@ const DEFAULTS = {
 		"filter-by-metadata",
 		"---",
 		"bulk-enrich",
-	] as string[],
+	] as PinnedEntry[],
 };
 export type AppSettings = typeof DEFAULTS;
 
