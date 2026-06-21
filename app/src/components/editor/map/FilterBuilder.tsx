@@ -242,42 +242,41 @@ export function FilterForm({
 }) {
 	const fields = useExtraFieldKeys();
 	const saved = initial ?? (persistKey ? filterBuilderState.get(persistKey) : undefined);
-	const [field, setField] = useState(saved?.field ?? "");
-	const [op, setOp] = useState<FilterOp>(saved?.op ?? "eq");
+	const [field, setField] = useState(() => saved?.field || fields[0]?.key || "");
+	const [op, setOp] = useState<FilterOp>(() => {
+		const initial = saved?.op ?? "eq";
+		const ops = opsForType(fields.find((f) => f.key === (saved?.field || fields[0]?.key))?.fieldType);
+		return ops.includes(initial) ? initial : ops[0];
+	});
 	const [value, setValue] = useState(saved?.value ?? "");
 	const [value2, setValue2] = useState(saved?.value2 ?? "");
 	const [anyYear, setAnyYear] = useState(saved?.anyYear ?? false);
 	const [anyTime, setAnyTime] = useState(saved?.anyTime ?? false);
 	const [tzLocal, setTzLocal] = useState(saved?.tzLocal ?? false);
-	useEffect(() => {
-		if (!field && fields.length > 0) setField(fields[0].key);
-	}, [field, fields]);
-
-	useEffect(() => {
-		if (persistKey) filterBuilderState.set(persistKey, { field, op, value, value2, anyYear, anyTime, tzLocal });
-	}, [persistKey, field, op, value, value2, anyYear, anyTime, tzLocal]);
-
 	const fieldEntry = fields.find((f) => f.key === field);
 	const isNumeric = fieldEntry?.fieldType === "number" || fieldEntry?.fieldType === "date";
 	const isDateLike = fieldEntry?.fieldType === "date" || fieldEntry?.fieldType === "month";
 	const isExactDate = fieldEntry?.fieldType === "date";
 	const availableOps = opsForType(fieldEntry?.fieldType);
 	const isBetween = op === "between" || op === "between_anyyear" || op === "between_anytime";
-	// Persisted/legacy state can hold an op the field type no longer offers (e.g. eq on a date).
-	useEffect(() => {
-		if (fieldEntry && !availableOps.includes(op)) setOp(availableOps[0]);
-	}, [fieldEntry, availableOps, op]);
+
+	const persist = (patch: Partial<typeof saved>) => {
+		if (!persistKey) return;
+		filterBuilderState.set(persistKey, { field, op, value, value2, anyYear, anyTime, tzLocal, ...patch });
+	};
 
 	const handleFieldChange = (key: string) => {
 		setField(key);
 		const entry = fields.find((f) => f.key === key);
 		const ops = opsForType(entry?.fieldType);
-		if (!ops.includes(op)) setOp(ops[0]);
+		const newOp = ops.includes(op) ? op : ops[0];
+		if (newOp !== op) setOp(newOp);
 		setValue("");
 		setValue2("");
 		setAnyYear(false);
 		setAnyTime(false);
 		setTzLocal(false);
+		persist({ field: key, op: newOp, value: "", value2: "", anyYear: false, anyTime: false, tzLocal: false });
 	};
 
 	// tzLocal is an independent toggle: it survives op changes (the values' encoding
@@ -418,6 +417,7 @@ export function FilterForm({
 				parsed = pickPeriodEnd(parsed, grain(parsed), tzLocal);
 			}
 		}
+		persist({ field: field, op: finalOp, value, value2, anyYear, anyTime, tzLocal });
 		onSubmit(field, finalOp, parsed, parsed2, isExactDate && tzLocal);
 		onClose?.();
 	};

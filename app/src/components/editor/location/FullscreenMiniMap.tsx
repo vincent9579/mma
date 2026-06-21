@@ -6,6 +6,7 @@ import { useSetting, setSetting } from "@/store/settings";
 import { range, clamp } from "@/types/util";
 import { useLocalStorage, getLocal } from "@/lib/hooks/useLocalStorage";
 import { type MapEmbedPrefs, DEFAULT_PREFS } from "@/components/editor/map/mapEmbedPrefs";
+import type { LatLng } from "@/types";
 
 const MINIMAP_SCALE = range([0.5, 2]);
 const MINIMAP_SCALE_STEP = 0.5;
@@ -16,10 +17,7 @@ const MINIMAP_CLOSE_DELAY = 500;
 export function FullscreenMiniMap({
 	lat,
 	lng,
-}: {
-	lat: number;
-	lng: number;
-}) {
+}: LatLng) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const scale = useSetting("fullscreenMinimapScale");
 	const [expanded, setExpanded] = useState(false);

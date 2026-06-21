@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useEffectEvent } from "react";
+import { useEffect, useRef, useMemo, useCallback, useEffectEvent } from "react";
 import { getCommands } from "@/store/commands";
 import { getBinding } from "@/lib/util/hotkeys";
 
@@ -144,17 +144,13 @@ export function useHotkey(
 	callback: (e: KeyboardEvent) => void,
 	options: { enableInInputs?: boolean; bubble?: boolean; ignoreAlt?: boolean; ignoreShift?: boolean } = {},
 ) {
-	const parsed = useRef(parseHotkey(hotkey));
-
-	useEffect(() => {
-		parsed.current = parseHotkey(hotkey);
-	}, [hotkey]);
+	const parsed = useMemo(() => parseHotkey(hotkey), [hotkey]);
 
 	const onKey = useEffectEvent((e: KeyboardEvent) => {
 		if (e.defaultPrevented) return;
 		if (!options.enableInInputs && isEditableElement(e.target)) return;
 
-		for (const alt of parsed.current) {
+		for (const alt of parsed) {
 			if (alt.length === 1 && matchesKey(e, alt[0], { ignoreAlt: options.ignoreAlt, ignoreShift: options.ignoreShift })) {
 				e.preventDefault();
 				callback(e);
@@ -172,68 +168,6 @@ export function useHotkey(
 		document.addEventListener("keydown", handler, useCapture);
 		return () => document.removeEventListener("keydown", handler, useCapture);
 	}, [options.bubble]);
-}
-
-export function useHoldHotkey(hotkey: string, onHold: () => void, onRelease?: () => void) {
-	const parsed = useRef(parseHotkey(hotkey));
-
-	useEffect(() => {
-		parsed.current = parseHotkey(hotkey);
-	}, [hotkey]);
-
-	const hold = useEffectEvent(() => onHold());
-	const release = useEffectEvent(() => onRelease?.());
-
-	useEffect(() => {
-		let held = false;
-		let rafId = 0;
-
-		function tick() {
-			if (!held) {
-				rafId = 0;
-				return;
-			}
-			hold();
-			rafId = requestAnimationFrame(tick);
-		}
-
-		function onKeyDown(e: KeyboardEvent) {
-			if (e.defaultPrevented || e.repeat) return;
-			if (isEditableElement(e.target)) return;
-			for (const alt of parsed.current) {
-				if (alt.length === 1 && matchesKey(e, alt[0])) {
-					held = true;
-					if (!rafId) rafId = requestAnimationFrame(tick);
-					return;
-				}
-			}
-		}
-
-		function onKeyUp(e: KeyboardEvent) {
-			if (!held) return;
-			for (const alt of parsed.current) {
-				if (alt.length === 1 && e.key.toLowerCase() === alt[0].key) {
-					held = false;
-					release();
-					return;
-				}
-			}
-		}
-
-		function onBlur() {
-			held = false;
-		}
-
-		document.addEventListener("keydown", onKeyDown, true);
-		document.addEventListener("keyup", onKeyUp, true);
-		window.addEventListener("blur", onBlur);
-		return () => {
-			document.removeEventListener("keydown", onKeyDown, true);
-			document.removeEventListener("keyup", onKeyUp, true);
-			window.removeEventListener("blur", onBlur);
-			if (rafId) cancelAnimationFrame(rafId);
-		};
-	}, []);
 }
 
 export function useHotkeyRef<T extends HTMLElement = HTMLButtonElement>(

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useRef } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import { searchManual } from "@/components/manual/Manual";
@@ -16,17 +16,6 @@ export function ManualSearch({
 	const [active, setActive] = useState(0);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const results = useMemo(() => searchManual(query), [query]);
-
-	useEffect(() => {
-		if (open) {
-			setQuery("");
-			setActive(0);
-		}
-	}, [open]);
-
-	useEffect(() => {
-		setActive(0);
-	}, [query]);
 
 	const choose = (id: string) => {
 		onOpenChange(false);
@@ -60,7 +49,7 @@ export function ManualSearch({
 							ref={inputRef}
 							autoFocus
 							value={query}
-							onChange={(e) => setQuery(e.target.value)}
+							onChange={(e) => { setQuery(e.target.value); setActive(0); }}
 							onKeyDown={onKeyDown}
 							placeholder="Search the manual..."
 							className="command-palette__input"

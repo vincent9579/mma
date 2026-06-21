@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Sidebar, Field, EmptyState, SegmentedControl } from "@/components/primitives/Sidebar";
 import { ScopeSelector } from "@/components/primitives/ScopeSelector";
 import type { ExtraFieldDef, ExtraFieldType, KeySpec, DatePart } from "@/bindings.gen";
@@ -72,8 +72,24 @@ function defaultProjection(type: ExtraFieldType): string {
 	return type === "number" || type === "date" ? RANGE_ID : gradientOptions(type)[0]?.id ?? "value";
 }
 
+function buildGradientFields(knownKeys: ReadonlySet<string>): FieldOption[] {
+	const result: FieldOption[] = [];
+	for (const key of knownKeys) {
+		const def = getFieldDef(key);
+		const numeric = isNumericField(def);
+		if (!def || numeric || def.type === "enum" || def.type === "string" || def.type === "month") {
+			result.push({ key, label: def?.label ?? key, def, numeric });
+		}
+	}
+	return result;
+}
+
+function defaultGradientField(fields: FieldOption[]): string {
+	return (fields.find((f) => f.key === "altitude") ?? fields[0])?.key ?? "";
+}
+
 export function GradientSidebar({ onClose }: { onClose: () => void }) {
-	const [fieldKey, setFieldKey] = useState("");
+	const [fieldKey, setFieldKey] = useState(() => defaultGradientField(buildGradientFields(MMA.getKnownFieldKeys())));
 	const [projectionId, setProjectionId] = useState(RANGE_ID);
 	const [presetIdx, setPresetIdx] = useState(0);
 	const [bucketCount, setBucketCount] = useState(10);
@@ -84,36 +100,12 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 	const map = MMA.getCurrentMap();
 
 	const knownKeys = MMA.getKnownFieldKeys();
-	const fields = useMemo((): FieldOption[] => {
-		const result: FieldOption[] = [];
-		for (const key of knownKeys) {
-			const def = getFieldDef(key);
-			const numeric = isNumericField(def);
-			if (!def || numeric || def.type === "enum" || def.type === "string" || def.type === "month") {
-				result.push({ key, label: def?.label ?? key, def, numeric });
-			}
-		}
-		return result;
-	}, [knownKeys]);
-
-	useEffect(() => {
-		if (fieldKey || fields.length === 0) return;
-		const alt = fields.find((f) => f.key === "altitude");
-		setFieldKey(alt ? alt.key : fields[0].key);
-	}, [fields, fieldKey]);
+	const fields = useMemo(() => buildGradientFields(knownKeys), [knownKeys]);
 
 	const preset = PRESETS[presetIdx];
 	const fieldOpt = fields.find((f) => f.key === fieldKey);
 	const fieldType = (fieldOpt?.def?.type ?? "string") as ExtraFieldType;
 	const projOptions = useMemo(() => gradientOptions(fieldType), [fieldType]);
-
-	// Keep the projection valid for the selected field's type.
-	useEffect(() => {
-		if (!fieldOpt) return;
-		if (!projOptions.some((p) => p.id === projectionId)) {
-			setProjectionId(defaultProjection(fieldType));
-		}
-	}, [fieldOpt, projOptions, projectionId, fieldType]);
 
 	const applyGradient = useCallback(async () => {
 		if (!fieldOpt || !map) return;
@@ -130,7 +122,7 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 			if (groups.length === 0) return;
 
 			const sels = colorPartition(groups, {
-				fieldKey,
+				fieldKey: fieldKey,
 				fieldType,
 				stops: preset.stops,
 				scoped: scopeCtl.scope.kind === "selected",
@@ -161,7 +153,11 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 							className="nselect"
 							value={fieldKey}
 							onChange={(e) => {
-								setFieldKey(e.target.value);
+								const key = e.target.value;
+								setFieldKey(key);
+								const ft = (fields.find((f) => f.key === key)?.def?.type ?? "string") as ExtraFieldType;
+								const opts = gradientOptions(ft);
+								if (!opts.some((p) => p.id === projectionId)) setProjectionId(defaultProjection(ft));
 							}}
 						>
 							{fields.map((f) => (

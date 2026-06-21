@@ -10,7 +10,7 @@ import {
 import { Sidebar, Field, EmptyState } from "@/components/primitives/Sidebar";
 import type { ExtraFieldDef } from "@/bindings.gen";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
-import { bucketize, compareNatural } from "@/lib/util/util";
+import { binNumeric, compareNatural } from "@/lib/util/util";
 import type { LocationStore } from "@/api";
 import "./pivot.css";
 
@@ -99,13 +99,13 @@ async function computePivot(
 	// fixed histogram of ranges when a bucket count is given.
 	const buckets =
 		isNumeric && bucketCount
-			? bucketize(
+			? binNumeric(
 					allLocs.flatMap((loc) => {
 						const v = loc.extra?.[fieldKey];
 						const n = v == null ? NaN : Number(v);
 						return Number.isFinite(n) ? [n] : [];
 					}),
-					bucketCount,
+					{ by: "count", n: bucketCount },
 				)
 			: null;
 
@@ -186,31 +186,30 @@ async function computePivot(
 	return { rows: pivotRows, columns, columnLabels, columnTotals };
 }
 
+function buildPivotFields(knownKeys: ReadonlySet<string>): FieldOption[] {
+	const result: FieldOption[] = [{ key: TAGS_FIELD_KEY, label: "Tags", def: undefined }];
+	for (const key of knownKeys) {
+		const def = getFieldDef(key);
+		result.push({ key, label: def?.label ?? key, def });
+	}
+	return result;
+}
+
+function defaultPivotField(fields: FieldOption[]): string {
+	return (fields.find((f) => f.key === "cameraType") ?? fields[0])?.key ?? "";
+}
+
 export function PivotSidebar({ onClose }: { onClose: () => void }) {
 	const [rowSource, setRowSource] = useState<RowSource>("active");
-	const [fieldKey, setFieldKey] = useState("");
+	const [fieldKey, setFieldKey] = useState(() => defaultPivotField(buildPivotFields(MMA.getKnownFieldKeys())));
 	const [bucketCount, setBucketCount] = useState<number | null>(10);
 	const [data, setData] = useState<PivotData | null>(null);
 	const [loading, setLoading] = useState(false);
 
 	const knownKeys = MMA.getKnownFieldKeys();
-	const fields = useMemo((): FieldOption[] => {
-		const result: FieldOption[] = [{ key: TAGS_FIELD_KEY, label: "Tags", def: undefined }];
-		for (const key of knownKeys) {
-			const def = getFieldDef(key);
-			result.push({ key, label: def?.label ?? key, def });
-		}
-		return result;
-	}, [knownKeys]);
+	const fields = useMemo(() => buildPivotFields(knownKeys), [knownKeys]);
 
 	const savedSelections: SavedSelection[] = MMA.getSettings().savedSelections;
-
-	// Default field
-	useEffect(() => {
-		if (fieldKey || fields.length === 0) return;
-		const cam = fields.find((f) => f.key === "cameraType");
-		setFieldKey(cam ? cam.key : fields[0].key);
-	}, [fields, fieldKey]);
 
 	const currentDef = fields.find((f) => f.key === fieldKey)?.def;
 	const isNumericField = currentDef?.type === "number" || currentDef?.type === "date";
