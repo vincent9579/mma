@@ -240,7 +240,6 @@ function PanoDatePicker({
 					className="select__content"
 					position="popper"
 					side="top"
-					style={{ color: "#000" }}
 				>
 					<Select.Viewport>
 						<Select.Group>

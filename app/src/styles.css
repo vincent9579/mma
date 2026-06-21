@@ -864,7 +864,8 @@ summary.button {
 	padding: 0;
 	line-height: 2rem;
 }
-.icon-button:disabled {
+.icon-button:disabled,
+.icon-button.is-disabled {
 	opacity: 0.35;
 	cursor: default;
 }
@@ -2210,6 +2211,7 @@ summary.button {
 }
 .select__content {
 	width: var(--radix-select-trigger-width);
+	color: #000;
 	background: #fff;
 	border: none;
 	box-shadow: 0 0.0625rem 0.125rem #00000026;
@@ -5639,9 +5641,6 @@ body {
 }
 
 /* Seen dialog */
-.modal__content:has(> .seen-dialog) {
-	overflow: visible;
-}
 .seen-dialog {
 	width: 720px;
 	max-width: 95vw;
@@ -5655,6 +5654,10 @@ body {
 	align-items: center;
 	margin-bottom: 0.5rem;
 	flex-shrink: 0;
+}
+.seen-dialog__select {
+	width: auto;
+	min-width: 160px;
 }
 .seen-dialog__search {
 	flex: 1;

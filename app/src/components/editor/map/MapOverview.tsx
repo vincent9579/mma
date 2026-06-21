@@ -214,15 +214,14 @@ function PinnedToolbar({ right, panels }: { right?: ReactNode; panels: Record<st
 
 					const btn = command.icon ? (
 						<button
-							className={`icon-button${isOpen ? " is-active" : ""}${dragIdx === i ? " is-dragging" : ""}`}
+							className={`icon-button${isOpen ? " is-active" : ""}${disabled ? " is-disabled" : ""}${dragIdx === i ? " is-dragging" : ""}`}
 							type="button"
-							disabled={disabled}
 							role="tooltip"
 							data-microtip-position={tipPos}
 							aria-label={command.label}
 							data-qa={id}
 							data-drop={dropIdx === i ? "" : undefined}
-							onClick={handleClick}
+							onClick={disabled ? undefined : handleClick}
 							onMouseDown={(e) => handleDragStart(i, e)}
 							onMouseMove={() => handleDragOver(i)}
 						>
@@ -230,14 +229,13 @@ function PinnedToolbar({ right, panels }: { right?: ReactNode; panels: Record<st
 						</button>
 					) : (
 						<button
-							className={`button${isOpen ? " is-active" : ""}${dragIdx === i ? " is-dragging" : ""}`}
+							className={`button${isOpen ? " is-active" : ""}${disabled ? " is-disabled" : ""}${dragIdx === i ? " is-dragging" : ""}`}
 							type="button"
-							disabled={disabled}
 							role="tooltip"
 							data-microtip-position={tipPos}
 							aria-label={command.label}
 							data-drop={dropIdx === i ? "" : undefined}
-							onClick={handleClick}
+							onClick={disabled ? undefined : handleClick}
 							onMouseDown={(e) => handleDragStart(i, e)}
 							onMouseMove={() => handleDragOver(i)}
 						>

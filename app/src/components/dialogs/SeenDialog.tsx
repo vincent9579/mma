@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import * as Select from "@radix-ui/react-select";
 import { useDebouncedCallback } from "@/lib/hooks/useDebouncedCallback";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import {
@@ -147,30 +148,44 @@ export function SeenDialog({
 		<Dialog open={open && ready} onOpenChange={onOpenChange}>
 			<DialogContent title={`Seen (${total})`} className="seen-dialog">
 				<div className="seen-dialog__filters">
-					<select
-						className="nselect"
-						value={filterCountry}
-						onChange={(e) => setFilterCountry(e.target.value)}
-					>
-						<option value="">All countries</option>
-						{countries.map((c) => (
-							<option key={c} value={c}>
-								{c.toUpperCase()}
-							</option>
-						))}
-					</select>
-					<select
-						className="nselect"
-						value={filterMap}
-						onChange={(e) => setFilterMap(e.target.value)}
-					>
-						<option value="">All maps</option>
-						{maps.map((m) => (
-							<option key={m.id} value={m.id}>
-								{m.name}
-							</option>
-						))}
-					</select>
+					<Select.Root value={filterCountry || "_all"} onValueChange={(v) => setFilterCountry(v === "_all" ? "" : v)}>
+						<Select.Trigger className="select__input seen-dialog__select">
+							<Select.Value placeholder="All countries" />
+						</Select.Trigger>
+						<Select.Portal>
+							<Select.Content className="select__content" position="popper" sideOffset={6}>
+								<Select.Viewport>
+									<Select.Item value="_all" className="select__option">
+										<Select.ItemText>All countries</Select.ItemText>
+									</Select.Item>
+									{countries.map((c) => (
+										<Select.Item key={c} value={c} className="select__option">
+											<Select.ItemText>{c.toUpperCase()}</Select.ItemText>
+										</Select.Item>
+									))}
+								</Select.Viewport>
+							</Select.Content>
+						</Select.Portal>
+					</Select.Root>
+					<Select.Root value={filterMap || "_all"} onValueChange={(v) => setFilterMap(v === "_all" ? "" : v)}>
+						<Select.Trigger className="select__input seen-dialog__select">
+							<Select.Value placeholder="All maps" />
+						</Select.Trigger>
+						<Select.Portal>
+							<Select.Content className="select__content" position="popper" sideOffset={6}>
+								<Select.Viewport>
+									<Select.Item value="_all" className="select__option">
+										<Select.ItemText>All maps</Select.ItemText>
+									</Select.Item>
+									{maps.map((m) => (
+										<Select.Item key={m.id} value={m.id} className="select__option">
+											<Select.ItemText>{m.name}</Select.ItemText>
+										</Select.Item>
+									))}
+								</Select.Viewport>
+							</Select.Content>
+						</Select.Portal>
+					</Select.Root>
 					<input
 						className="input seen-dialog__search"
 						type="text"
