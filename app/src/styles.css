@@ -4387,7 +4387,7 @@ summary.button {
 	width: 260px;
 }
 .review-sessions-modal {
-	width: 38rem;
+	width: 46rem;
 	max-width: 95vw;
 }
 .review-sessions__tabs {
@@ -4453,10 +4453,10 @@ summary.button {
 }
 .review-sessions__meta {
 	display: flex;
-	gap: 0.75rem;
+	flex-wrap: wrap;
+	gap: 0.25rem 0.75rem;
 	font-size: 0.8rem;
 	color: #888;
-	white-space: nowrap;
 }
 .review-sessions__bar {
 	height: 4px;
