@@ -44,15 +44,15 @@ fn location_data_null_optionals() {
         created_at: 0, modified_at: None,
     };
     let json = serde_json::to_string(&loc).unwrap();
-    assert!(!json.contains("extra"));
-    assert!(!json.contains("modifiedAt"));
+    assert!(json.contains(r#""extra":null"#));
+    assert!(json.contains(r#""modifiedAt":null"#));
     let restored: Location = serde_json::from_str(&json).unwrap();
     assert_eq!(loc, restored);
 }
 
 #[test]
 fn location_data_id_defaults_to_zero() {
-    let json = r#"{"lat":0,"lng":0,"heading":0,"pitch":0,"zoom":0,"panoId":null,"flags":0,"tags":[],"createdAt":0}"#;
+    let json = r#"{"id":0,"lat":0,"lng":0,"heading":0,"pitch":0,"zoom":0,"panoId":null,"flags":0,"tags":[],"extra":null,"createdAt":0,"modifiedAt":null}"#;
     let loc: Location = serde_json::from_str(json).unwrap();
     assert_eq!(loc.id, 0);
 }

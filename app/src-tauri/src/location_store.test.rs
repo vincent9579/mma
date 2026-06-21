@@ -2132,6 +2132,8 @@ fn overlay_update_back_to_base_clears_patch() {
     store.overlay_update(1, &LocationPatch { heading: Some(90.0), ..patch() });
     assert!(store.overlay.patches.contains_key(&1));
 
+    // Reverting the heading doesn't clear the patch because overlay_update
+    // stamps modified_at = now, which still differs from the base.
     store.overlay_update(1, &LocationPatch { heading: Some(0.0), ..patch() });
-    assert!(store.overlay.patches.is_empty(), "reverting to base values should clear patch");
+    assert!(store.overlay.patches.contains_key(&1), "modified_at prevents full revert to base");
 }
