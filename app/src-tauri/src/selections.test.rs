@@ -1032,6 +1032,70 @@ fn partition_view<'a>(adds: &'a [Location], dead: &'a HashSet<u32>, patches: &'a
     make_view(None, dead, patches, adds)
 }
 
+// --- TopK ---
+
+#[test]
+fn topk_selects_highest() {
+    let locs = vec![
+        loc_extra(1, serde_json::json!({"alt": 100})),
+        loc_extra(2, serde_json::json!({"alt": 300})),
+        loc_extra(3, serde_json::json!({"alt": 200})),
+        loc_extra(4, serde_json::json!({"alt": 500})),
+        loc_extra(5, serde_json::json!({"alt": 400})),
+    ];
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let view = make_view(None, &dead, &patches, &locs);
+    let ids = resolve(&view, &SelectionProps::TopK { field: "alt".into(), k: 3, ascending: false });
+    assert_eq!(ids, vec![2, 4, 5]); // 500, 400, 300
+}
+
+#[test]
+fn topk_selects_lowest() {
+    let locs = vec![
+        loc_extra(1, serde_json::json!({"alt": 100})),
+        loc_extra(2, serde_json::json!({"alt": 300})),
+        loc_extra(3, serde_json::json!({"alt": 200})),
+        loc_extra(4, serde_json::json!({"alt": 500})),
+        loc_extra(5, serde_json::json!({"alt": 400})),
+    ];
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let view = make_view(None, &dead, &patches, &locs);
+    let ids = resolve(&view, &SelectionProps::TopK { field: "alt".into(), k: 2, ascending: true });
+    assert_eq!(ids, vec![1, 3]); // 100, 200
+}
+
+#[test]
+fn topk_skips_missing_field() {
+    let locs = vec![
+        loc_extra(1, serde_json::json!({"alt": 100})),
+        loc_extra(2, serde_json::json!({})),
+        loc_extra(3, serde_json::json!({"alt": 50})),
+    ];
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let view = make_view(None, &dead, &patches, &locs);
+    let ids = resolve(&view, &SelectionProps::TopK { field: "alt".into(), k: 10, ascending: false });
+    assert_eq!(ids, vec![1, 3]); // only 2 have the field, k=10 returns all available
+}
+
+#[test]
+fn topk_works_on_base_batch() {
+    let locs = vec![
+        loc_extra(1, serde_json::json!({"val": 10})),
+        loc_extra(2, serde_json::json!({"val": 30})),
+        loc_extra(3, serde_json::json!({"val": 20})),
+    ];
+    let batch = locations_to_batch(&locs);
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let adds: Vec<Location> = vec![];
+    let view = make_view(Some(&batch), &dead, &patches, &adds);
+    let ids = resolve(&view, &SelectionProps::TopK { field: "val".into(), k: 1, ascending: false });
+    assert_eq!(ids, vec![2]); // 30 is highest
+}
+
 #[test]
 fn partition_numeric_count_matches_js() {
     let adds = vec![

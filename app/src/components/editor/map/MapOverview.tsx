@@ -23,6 +23,7 @@ import {
 	updateFilterSelection,
 	pruneDuplicates,
 	selectFilter,
+	selectTopK,
 	selectRandomFromSelection,
 } from "@/store/useMapStore";
 import { toast } from "@/lib/util/toast";
@@ -325,6 +326,46 @@ function RandomPickPanel() {
 			<button className="button" type="submit" disabled={!valid}>
 				Pick
 			</button>
+		</form>
+	);
+}
+
+function TopKPanel({
+	field, setField, count, setCount, ascending, setAscending,
+}: {
+	field: string; setField: (v: string) => void;
+	count: number; setCount: (v: number) => void;
+	ascending: boolean; setAscending: (v: boolean) => void;
+}) {
+	const fields = useExtraFieldKeys();
+	if (field === "" && fields.length > 0) setField(fields[0].key);
+	return (
+		<form
+			className="selection-manager__inline-form"
+			onSubmit={(e) => {
+				e.preventDefault();
+				if (!field || count < 1) return;
+				selectTopK(field, count, ascending);
+			}}
+		>
+			<select className="nselect" value={field} onChange={(e) => setField(e.target.value)}>
+				{fields.map((f) => (
+					<option key={f.key} value={f.key}>{f.label}</option>
+				))}
+			</select>
+			<select className="nselect" value={ascending ? "bottom" : "top"} onChange={(e) => setAscending(e.target.value === "bottom")}>
+				<option value="top">Top</option>
+				<option value="bottom">Bottom</option>
+			</select>
+			<input
+				className="input"
+				type="number"
+				min={1}
+				style={{ width: "5rem" }}
+				value={count}
+				onChange={(e) => setCount(Math.max(1, Number(e.target.value)))}
+			/>
+			<button className="button" type="submit" disabled={!field}>Select</button>
 		</form>
 	);
 }
@@ -925,6 +966,9 @@ export function MapOverview({ hidden }: { hidden?: boolean }) {
 	const tagSortMode = useSetting("tagSortMode");
 	const [selectionsCollapsed, setSelectionsCollapsed] = useState(false);
 	const [dupDistance, setDupDistance] = useState(1);
+	const [topKField, setTopKField] = useState("");
+	const [topKCount, setTopKCount] = useState(10);
+	const [topKAscending, setTopKAscending] = useState(false);
 	const [showTagFindReplace, setShowTagFindReplace] = useState(false);
 	const [showMergeDuplicates, setShowMergeDuplicates] = useState(false);
 	const [showReviews, setShowReviews] = useState(false);
@@ -1109,6 +1153,16 @@ export function MapOverview({ hidden }: { hidden?: boolean }) {
 									}}
 								/>
 							),
+						},
+						"top-k": {
+							render: () => <TopKPanel
+								field={topKField}
+								setField={setTopKField}
+								count={topKCount}
+								setCount={setTopKCount}
+								ascending={topKAscending}
+								setAscending={setTopKAscending}
+							/>,
 						},
 					}}
 				/>

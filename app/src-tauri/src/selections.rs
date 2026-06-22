@@ -42,6 +42,7 @@ pub enum SelectionProps {
     Union { selections: Vec<Selection> },
     Invert { selections: Vec<Selection> },
     Filter { field: String, op: FilterOp, #[specta(type = specta_typescript::Any)] value: serde_json::Value, #[serde(default)] #[specta(type = Option<specta_typescript::Any>)] value2: Option<serde_json::Value>, #[serde(default, rename = "tzLocal")] tz_local: bool },
+    TopK { field: String, k: u32, ascending: bool },
 }
 
 /// Filter comparison operator. Single source of truth: specta renders the literal
@@ -494,6 +495,34 @@ fn resolve_leaf_mask(view: &LocView, props: &SelectionProps) -> Vec<bool> {
                     in_bbox(r.lng(), r.lat(), &bb) && point_in_geometry(r.lng(), r.lat(), polygon)
                 }),
             }
+        }
+        SelectionProps::TopK { field, k, ascending } => {
+            let mut entries: Vec<(usize, f64)> = Vec::new();
+            for i in 0..view.batch_rows {
+                if !view.is_alive(i) { continue; }
+                let row = match view.patch_at(i) {
+                    Some(p) => RowRef::from_loc(p),
+                    None => RowRef { inner: RowInner::Base(view, i) },
+                };
+                if let Some(v) = row.resolve_field(field).as_ref().and_then(as_f64) {
+                    entries.push((i, v));
+                }
+            }
+            for (j, loc) in view.adds.iter().enumerate() {
+                if let Some(v) = resolve_field_loc(loc, field).as_ref().and_then(as_f64) {
+                    entries.push((view.batch_rows + j, v));
+                }
+            }
+            if *ascending {
+                entries.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            } else {
+                entries.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            }
+            let mut mask = vec![false; n];
+            for &(i, _) in entries.iter().take(*k as usize) {
+                mask[i] = true;
+            }
+            mask
         }
         _ => view.resolve_mask(|r| test_row(r, props)),
     }

@@ -26,6 +26,7 @@ export type SavedSelectionProps =
 	| { type: "Uncommitted" }
 	| { type: "Duplicates"; distance: number }
 	| { type: "Filter"; field: string; op: FilterOp; value: unknown; value2?: unknown }
+	| { type: "TopK"; field: string; k: number; ascending: boolean }
 	| { type: "Intersection"; selections: SavedSelectionProps[] }
 	| { type: "Union"; selections: SavedSelectionProps[] }
 	| { type: "Invert"; selections: SavedSelectionProps[] };
@@ -121,6 +122,8 @@ export function describeRule(props: SavedSelectionProps): string {
 			return `Dupes (${props.distance}m)`;
 		case "Filter":
 			return `${props.field} ${props.op} ${String(props.value)}`;
+		case "TopK":
+			return `${props.ascending ? "Bottom" : "Top"} ${props.k} by ${props.field}`;
 		case "Intersection":
 			return props.selections.map(describeRule).join(" AND ");
 		case "Union":

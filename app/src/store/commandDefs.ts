@@ -27,6 +27,7 @@ import {
 	mdiMapPlus,
 	mdiMapSearchOutline,
 	mdiFilterOutline,
+	mdiPodium,
 	mdiCallMerge,
 	mdiPlayOutline,
 	mdiBookmarkOutline,
@@ -223,6 +224,12 @@ const COMMANDS = {
 		icon: mdiFilterOutline,
 		group: "Selections",
 		execute: () => document.dispatchEvent(new CustomEvent("open-inline-panel", { detail: "filter-by-metadata" })),
+	},
+	"top-k": {
+		label: "Select top/bottom K...",
+		icon: mdiPodium,
+		group: "Selections",
+		execute: () => document.dispatchEvent(new CustomEvent("open-inline-panel", { detail: "top-k" })),
 	},
 	"review-selected": {
 		label: "Review selected locations",

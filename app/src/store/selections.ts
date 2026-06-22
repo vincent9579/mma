@@ -110,6 +110,7 @@ function keyForProps(props: SelectionProps, locations: number[]): string {
 			(p) =>
 				`filter:${p.field}:${p.op}:${String(p.value)}${p.value2 != null ? `:${String(p.value2)}` : ""}${p.tzLocal ? ":local" : ""}`,
 		)
+		.with({ type: "TopK" }, (p) => `topk:${p.field}:${p.k}:${p.ascending}`)
 		.exhaustive();
 }
 
@@ -511,6 +512,11 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 			if (p.op === "between")
 				return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}..${fmtVal(p.value2)}${tzSuffix}`;
 			return `${fieldLabel} ${OP_LABELS[p.op as FilterOp]} ${fmtVal(p.value)}${tzSuffix}`;
+		})
+		.with({ type: "TopK" }, (p) => {
+			const fieldDef = getFieldDef(p.field);
+			const label = fieldDef?.label ?? p.field;
+			return `${p.ascending ? "Bottom" : "Top"} ${p.k} by ${label}`;
 		})
 		.exhaustive();
 }

@@ -1053,6 +1053,10 @@ export function selectFilter(
 	return addSelections([{ type: "Filter", field, op, value, value2, tzLocal }]);
 }
 
+export function selectTopK(field: string, k: number, ascending: boolean) {
+	return addSelections([{ type: "TopK", field, k, ascending }]);
+}
+
 /** Edit an existing filter (or any selection) in place by key, preserving its
  *  position inside any AND/OR/Invert composite. Carries ghost state to the new key. */
 export function updateFilterSelection(oldKey: string, props: SelectionProps) {
