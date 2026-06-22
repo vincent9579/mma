@@ -24,6 +24,7 @@ import {
 	reviewIndex,
 	isAtStart,
 	isCurrentReviewed,
+	reviewedHistoryIds,
 	type ReviewSession,
 } from "@/lib/review/review";
 
@@ -78,6 +79,23 @@ describe("pruneSession (the desync invariant)", () => {
 		const s = mk([1], 1, [1]);
 		const { session } = pruneSession(s, new Set([1]));
 		expect(session).toBeNull();
+	});
+});
+
+describe("reviewedHistoryIds (cross-session union)", () => {
+	it("unions reviewed ids across sessions and de-duplicates", () => {
+		const a = mk([1, 2, 3], 3, [1, 2]);
+		const b = mk([2, 4, 5], 5, [2, 4]);
+		expect(reviewedHistoryIds([a, b]).sort((x, y) => x - y)).toEqual([1, 2, 4]);
+	});
+
+	it("ignores the worklist; only reviewed ids count", () => {
+		const s = mk([1, 2, 3], 1, []);
+		expect(reviewedHistoryIds([s])).toEqual([]);
+	});
+
+	it("returns empty for no sessions", () => {
+		expect(reviewedHistoryIds([])).toEqual([]);
 	});
 });
 

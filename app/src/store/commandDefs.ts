@@ -62,6 +62,7 @@ import {
 } from "./useMapStore";
 import { loadGeoJSON } from "@/lib/util/loadGeoJSON";
 import { toggleSeenOverlay } from "@/lib/seen/seenOverlay";
+import { selectReviewedHistory } from "@/lib/review/review";
 
 const COMMANDS = {
 	"save": {
@@ -160,6 +161,12 @@ const COMMANDS = {
 		label: "Select uncommitted locations",
 		group: "Selections",
 		execute: selectUncommitted,
+	},
+	"select-reviewed": {
+		label: "Select reviewed locations",
+		group: "Selections",
+		execute: () => selectReviewedHistory(),
+		enabled: () => getCurrentMap() !== null,
 	},
 	"invert-selection": {
 		label: "Invert selection",

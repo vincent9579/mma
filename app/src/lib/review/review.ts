@@ -67,6 +67,13 @@ export function reviewIndex(s: ReviewSession): number {
 	return s.order.indexOf(s.cursorId);
 }
 
+/** Union of reviewed ids across sessions, de-duplicated. Pure (unit-tested). */
+export function reviewedHistoryIds(sessions: ReviewSession[]): number[] {
+	const ids = new Set<number>();
+	for (const s of sessions) for (const id of s.reviewed) ids.add(id);
+	return [...ids];
+}
+
 export function isAtStart(s: ReviewSession): boolean {
 	return reviewIndex(s) <= 0;
 }
@@ -273,6 +280,20 @@ export function listSessions(status?: "active" | "done"): Promise<ReviewSession[
 	const mapId = getCurrentMapId();
 	if (!mapId) return Promise.resolve([]);
 	return cmd.storeReviewList(mapId, status ?? null);
+}
+
+// Sentinel session id for the cross-session "everything reviewed on this map" selection.
+// Real sessions are UUID-keyed, so this never collides with a live projection's keys.
+const HISTORY_SESSION_ID = "history";
+
+/** Select every location marked reviewed across all review sessions on this map (active + done).
+ *  A snapshot; re-running refreshes it in place (deterministic key). */
+export async function selectReviewedHistory(): Promise<void> {
+	const ids = reviewedHistoryIds(await listSessions());
+	if (ids.length === 0) return;
+	await addSelections([
+		{ type: "Reviewed", locations: ids, sessionId: HISTORY_SESSION_ID, mode: "reviewed" },
+	]);
 }
 
 /** Add a reviewed/unreviewed overlay selection for an arbitrary session (resume modal). Mirrors
