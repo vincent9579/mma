@@ -309,7 +309,7 @@ function VisionSidebar({ onClose }) {
 // src/FindSimilarButton.tsx
 var import_react2 = __toESM(require_react());
 var import_jsx_runtime2 = __toESM(require_jsx_runtime());
-var SIMILARITY_THRESHOLD = 0.8;
+var SIMILARITY_THRESHOLD = 0.9;
 function FindSimilarButton() {
   const [running, setRunning] = (0, import_react2.useState)(false);
   const [result, setResult] = (0, import_react2.useState)(null);
