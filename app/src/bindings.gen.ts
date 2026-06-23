@@ -911,6 +911,7 @@ export type ReviewSession = {
  */
 export type ReviewUpdate = {
 	id: string,
+	name?: string | null,
 	cursorId: number | null,
 	reviewed: number[] | null,
 	ordering: number[] | null,

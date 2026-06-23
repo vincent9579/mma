@@ -267,6 +267,23 @@ export function cancelReview(): void {
 	void setActiveLocation(null);
 }
 
+/** Rename a session (custom label over the auto-derived selection name). Persists immediately;
+ *  also patches the live session if it's the one being renamed. */
+export async function renameReview(id: string, name: string): Promise<void> {
+	const trimmed = name.trim();
+	if (!trimmed) return;
+	try {
+		await cmd.storeReviewUpdate({ id, name: trimmed, cursorId: null, reviewed: null, ordering: null, status: null });
+	} catch (e) {
+		log.error("[review] rename failed:", e);
+		return;
+	}
+	if (session?.id === id) {
+		session = { ...session, name: trimmed };
+		notify();
+	}
+}
+
 export async function deleteSession(id: string): Promise<void> {
 	try {
 		await cmd.storeReviewDelete(id);

@@ -52,6 +52,8 @@ pub struct ReviewCreate {
 #[serde(rename_all = "camelCase")]
 pub struct ReviewUpdate {
     pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
     pub cursor_id: Option<u32>,
     pub reviewed: Option<Vec<u32>>,
     pub ordering: Option<Vec<u32>>,
@@ -157,6 +159,10 @@ pub(crate) fn update(conn: &Connection, update: ReviewUpdate) -> AppResult<()> {
     let mut sets: Vec<&str> = Vec::new();
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
+    if let Some(name) = &update.name {
+        sets.push("name = ?");
+        params.push(Box::new(name.clone()));
+    }
     if let Some(cursor_id) = update.cursor_id {
         sets.push("cursor_id = ?");
         params.push(Box::new(cursor_id));

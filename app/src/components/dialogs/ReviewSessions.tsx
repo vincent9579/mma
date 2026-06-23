@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiCheckCircleOutline, mdiCircleOutline, mdiPlay, mdiDelete } from "@mdi/js";
@@ -7,6 +7,7 @@ import {
 	resumeReview,
 	deleteSession,
 	selectReviewSet,
+	renameReview,
 } from "@/lib/review/review";
 import type { ReviewSession } from "@/bindings.gen";
 
@@ -37,6 +38,9 @@ export function ReviewSessionsModal({
 	const [filter, setFilter] = useState<"active" | "done">("active");
 	const [sessions, setSessions] = useState<ReviewSession[]>([]);
 	const [loading, setLoading] = useState(false);
+	const [editingId, setEditingId] = useState<string | null>(null);
+	const [draft, setDraft] = useState("");
+	const skipBlur = useRef(false);
 
 	const reload = useCallback(async () => {
 		setLoading(true);
@@ -57,13 +61,28 @@ export function ReviewSessionsModal({
 	};
 
 	const handleDelete = async (id: string) => {
+		setSessions((prev) => prev.filter((s) => s.id !== id)); // drop in place
 		await deleteSession(id);
-		reload();
 	};
 
 	const handleSelect = (s: ReviewSession, mode: "reviewed" | "unreviewed") => {
 		selectReviewSet(s, mode);
 		onOpenChange(false);
+	};
+
+	const startEdit = (s: ReviewSession) => {
+		skipBlur.current = false;
+		setDraft(s.name || "");
+		setEditingId(s.id);
+	};
+
+	const saveEdit = async () => {
+		const id = editingId;
+		const name = draft.trim();
+		setEditingId(null);
+		if (!id || !name) return;
+		setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s))); // patch in place
+		await renameReview(id, name);
 	};
 
 	return (
@@ -97,9 +116,42 @@ export function ReviewSessionsModal({
 							return (
 								<li key={s.id} className="review-sessions__card">
 									<div className="review-sessions__info">
-										<div className="review-sessions__name">
-											{s.name || "Review"}
-										</div>
+										{editingId === s.id ? (
+											<input
+												className="review-sessions__name review-sessions__name-input"
+												style={{ font: "inherit", width: "100%", boxSizing: "border-box" }}
+												autoFocus
+												value={draft}
+												onChange={(e) => setDraft(e.target.value)}
+												onFocus={(e) => e.target.select()}
+												onBlur={() => {
+													if (skipBlur.current) {
+														skipBlur.current = false;
+														setEditingId(null);
+														return;
+													}
+													void saveEdit();
+												}}
+												onKeyDown={(e) => {
+													if (e.key === "Enter") {
+														e.preventDefault();
+														e.currentTarget.blur();
+													} else if (e.key === "Escape") {
+														e.preventDefault();
+														skipBlur.current = true;
+														e.currentTarget.blur();
+													}
+												}}
+											/>
+										) : (
+											<div
+												className="review-sessions__name"
+												title="Click to rename"
+												onClick={() => startEdit(s)}
+											>
+												{s.name || "Review"}
+											</div>
+										)}
 										<div className="review-sessions__meta">
 											<span>{s.reviewed.length} / {s.order.length} reviewed ({pct}%)</span>
 											<span title={new Date(s.createdAt).toLocaleString()}>
