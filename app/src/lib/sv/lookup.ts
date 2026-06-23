@@ -421,8 +421,7 @@ export function showToast(container: HTMLElement, message: string, timeout = 150
 	setTimeout(() => el.remove(), timeout);
 }
 
-/** Street View tiles are a fixed 512px pitch in `worldSize` space (e.g. a Gen 3
- *  pano is 6656 = 13 x 512 wide). */
+/** Street View tiles are a fixed 512px pitch in `worldSize` space */
 const SV_TILE = 512;
 
 /** Number of tiles and the cropped content size for a pano at a given zoom.
@@ -432,7 +431,7 @@ const SV_TILE = 512;
  *  to the full grid when metadata is unavailable. */
 export function panoTileLayout(
 	zoom: number,
-	worldSize?: { width: number; height: number },
+	worldSize?: google.maps.Size,
 ): { zoom: number; cols: number; rows: number; width: number; height: number; tile: number } {
 	let z = zoom;
 	let width: number;
