@@ -104,7 +104,7 @@ function spawnCommand(args) {
   })();
   return { process: proc, done };
 }
-async function resolveWorldSizes(panoIds) {
+async function resolveWorldSizes(panoIds, onProgress) {
   const BATCH = 200;
   const entries = [];
   for (let i = 0; i < panoIds.length; i += BATCH) {
@@ -119,11 +119,43 @@ async function resolveWorldSizes(panoIds) {
         worldHeight: ws?.height ?? 3328
       });
     }
+    onProgress?.(Math.min(i + BATCH, panoIds.length), panoIds.length);
   }
   return entries;
 }
-async function spawnEmbed(panoIds) {
-  const panos = await resolveWorldSizes(panoIds);
+async function listCached() {
+  const cd = await clipCacheDir();
+  const cmd = MMA.shell.Command.create(BINARY_NAME, ["list-cached", "--cache-dir", cd]);
+  const out = await cmd.execute();
+  if (out.code !== 0) return /* @__PURE__ */ new Set();
+  try {
+    return new Set(JSON.parse(out.stdout.trim()));
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+async function spawnEmbed(panoIds, onMetaProgress) {
+  onMetaProgress?.(`Checking cache...`);
+  const cached = await listCached();
+  const uncached = panoIds.filter((id) => !cached.has(id));
+  if (uncached.length === 0) {
+    onMetaProgress?.(`All ${panoIds.length} panos cached`);
+    const proc = {
+      kill() {
+      },
+      onLine() {
+      },
+      onStderr() {
+      },
+      onClose() {
+      }
+    };
+    return { process: proc, done: Promise.resolve() };
+  }
+  onMetaProgress?.(`Fetching metadata for ${uncached.length} uncached panos...`);
+  const panos = await resolveWorldSizes(uncached, (done, total) => {
+    onMetaProgress?.(`Metadata: ${done}/${total}`);
+  });
   const inputPath = await writeInputFile({ panos });
   const md = await modelDir();
   const cd = await clipCacheDir();
@@ -182,7 +214,7 @@ function VisionSidebar({ onClose }) {
       setProgress(`Embedding ${panoIds.length} panos (cached skip)...`);
       let embedDone = 0;
       const embedStart = Date.now();
-      const { process: embedProc, done: embedWhen } = await spawnEmbed(panoIds);
+      const { process: embedProc, done: embedWhen } = await spawnEmbed(panoIds, setProgress);
       killRef.current = () => embedProc.kill();
       embedProc.onStderr((line) => {
         if (line.startsWith("[vision]")) setProgress(line);

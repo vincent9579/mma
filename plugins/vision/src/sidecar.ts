@@ -78,7 +78,10 @@ interface PanoEntry {
 	worldHeight: number;
 }
 
-async function resolveWorldSizes(panoIds: string[]): Promise<PanoEntry[]> {
+async function resolveWorldSizes(
+	panoIds: string[],
+	onProgress?: (done: number, total: number) => void,
+): Promise<PanoEntry[]> {
 	const BATCH = 200;
 	const entries: PanoEntry[] = [];
 	for (let i = 0; i < panoIds.length; i += BATCH) {
@@ -93,12 +96,46 @@ async function resolveWorldSizes(panoIds: string[]): Promise<PanoEntry[]> {
 				worldHeight: ws?.height ?? 3328,
 			});
 		}
+		onProgress?.(Math.min(i + BATCH, panoIds.length), panoIds.length);
 	}
 	return entries;
 }
 
-export async function spawnEmbed(panoIds: string[]): ReturnType<typeof spawnCommand> {
-	const panos = await resolveWorldSizes(panoIds);
+async function listCached(): Promise<Set<string>> {
+	const cd = await clipCacheDir();
+	const cmd = MMA.shell.Command.create(BINARY_NAME, ["list-cached", "--cache-dir", cd]);
+	const out = await cmd.execute();
+	if (out.code !== 0) return new Set();
+	try {
+		return new Set(JSON.parse(out.stdout.trim()) as string[]);
+	} catch {
+		return new Set();
+	}
+}
+
+export async function spawnEmbed(
+	panoIds: string[],
+	onMetaProgress?: (msg: string) => void,
+): ReturnType<typeof spawnCommand> {
+	onMetaProgress?.(`Checking cache...`);
+	const cached = await listCached();
+	const uncached = panoIds.filter((id) => !cached.has(id));
+
+	if (uncached.length === 0) {
+		onMetaProgress?.(`All ${panoIds.length} panos cached`);
+		const proc: SidecarProcess = {
+			kill() {},
+			onLine() {},
+			onStderr() {},
+			onClose() {},
+		};
+		return { process: proc, done: Promise.resolve() };
+	}
+
+	onMetaProgress?.(`Fetching metadata for ${uncached.length} uncached panos...`);
+	const panos = await resolveWorldSizes(uncached, (done, total) => {
+		onMetaProgress?.(`Metadata: ${done}/${total}`);
+	});
 	const inputPath = await writeInputFile({ panos });
 	const md = await modelDir();
 	const cd = await clipCacheDir();

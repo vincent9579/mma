@@ -43,7 +43,7 @@ export function VisionSidebar({ onClose }: { onClose: () => void }) {
 			setProgress(`Embedding ${panoIds.length} panos (cached skip)...`);
 			let embedDone = 0;
 			const embedStart = Date.now();
-			const { process: embedProc, done: embedWhen } = await spawnEmbed(panoIds);
+			const { process: embedProc, done: embedWhen } = await spawnEmbed(panoIds, setProgress);
 			killRef.current = () => embedProc.kill();
 			embedProc.onStderr((line) => {
 				if (line.startsWith("[vision]")) setProgress(line);

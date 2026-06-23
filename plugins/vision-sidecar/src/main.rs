@@ -15,6 +15,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// List pano IDs already in the embedding cache
+    ListCached {
+        #[arg(long)]
+        cache_dir: String,
+    },
     /// Batch-compute CLIP image embeddings
     Embed {
         #[arg(long)]
@@ -89,6 +94,13 @@ fn main() {
     let mut stdout = io::stdout();
 
     match cli.command {
+        Command::ListCached { cache_dir } => {
+            let cache = embed::EmbedCache::load(&cache_dir);
+            let ids: Vec<&str> = cache.entries.keys().map(|s| s.as_str()).collect();
+            let out = serde_json::to_string(&ids).unwrap();
+            writeln!(stdout, "{out}").ok();
+            stdout.flush().ok();
+        }
         Command::Embed { input, model_dir, cache_dir } => {
             let input: embed::EmbedInput =
                 serde_json::from_str(&read_input(&input)).expect("invalid input JSON");
