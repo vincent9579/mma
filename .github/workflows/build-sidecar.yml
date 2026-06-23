@@ -1,0 +1,79 @@
+name: Build Sidecar
+
+on:
+  workflow_call:
+    inputs:
+      crate-path:
+        description: 'Path to the Rust crate (e.g. plugins/vision-sidecar)'
+        required: true
+        type: string
+      binary-name:
+        description: 'Name of the binary (e.g. mma-vision)'
+        required: true
+        type: string
+      pre-build:
+        description: 'Optional shell command to run before cargo build (e.g. model export)'
+        required: false
+        type: string
+        default: ''
+      pre-build-python:
+        description: 'Set to true if pre-build needs Python'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: .exe
+            label: windows-x64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: ''
+            label: macos-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: ''
+            label: macos-x64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            suffix: ''
+            label: linux-x64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ inputs.crate-path }} -> target
+          key: ${{ matrix.target }}
+
+      - uses: actions/setup-python@v5
+        if: inputs.pre-build-python
+        with:
+          python-version: '3.11'
+
+      - name: Pre-build step
+        if: inputs.pre-build != ''
+        working-directory: ${{ inputs.crate-path }}
+        run: ${{ inputs.pre-build }}
+
+      - name: Build
+        working-directory: ${{ inputs.crate-path }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.binary-name }}-${{ matrix.label }}
+          path: ${{ inputs.crate-path }}/target/${{ matrix.target }}/release/${{ inputs.binary-name }}${{ matrix.suffix }}

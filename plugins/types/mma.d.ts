@@ -390,7 +390,6 @@ export type MapSettings = {
 	searchRadius?: number | null;
 	enrichMetadata?: boolean;
 	enrichFields?: string[] | null;
-	generatedLocationTag?: string | null;
 	keyBindings?: MapKeyBinding[];
 };
 /**
@@ -534,6 +533,7 @@ export type ReviewSession = {
  */
 export type ReviewUpdate = {
 	id: string;
+	name?: string | null;
 	cursorId: number | null;
 	reviewed: number[] | null;
 	ordering: number[] | null;
@@ -695,6 +695,11 @@ export type SelectionProps = {
 	value: any;
 	value2?: any | null;
 	tzLocal?: boolean;
+} | {
+	type: "TopK";
+	field: string;
+	k: number;
+	ascending: boolean;
 };
 /**
  *  Selection bitmask sync payload. `bitmask` carries the packed per-cell bitmask bytes
@@ -1371,6 +1376,11 @@ export type SavedSelectionProps = {
 	value: unknown;
 	value2?: unknown;
 } | {
+	type: "TopK";
+	field: string;
+	k: number;
+	ascending: boolean;
+} | {
 	type: "Intersection";
 	selections: SavedSelectionProps[];
 } | {
@@ -1397,7 +1407,14 @@ declare const COMMANDS: {
 		execute: () => boolean;
 		enabled: () => boolean;
 	};
-	addLocationToMap: {
+	copyToMap: {
+		label: string;
+		icon: string;
+		group: "Map";
+		execute: () => boolean;
+		enabled: () => boolean;
+	};
+	quickCopyToMap: {
 		label: string;
 		icon: string;
 		group: "Map";
@@ -1537,6 +1554,12 @@ declare const COMMANDS: {
 		execute: () => boolean;
 	};
 	"filter-by-metadata": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => boolean;
+	};
+	"top-k": {
 		label: string;
 		icon: string;
 		group: "Selections";
@@ -1785,6 +1808,7 @@ declare function validateLocations(locations: Location$1[], opts?: {
 	signal?: AbortSignal;
 	onProgress?: (p: ValidationProgress) => void;
 }): Promise<Map<ValidationState, Location$1[]>>;
+declare function fetchSvMetadata(panoIds: string[]): Promise<(google.maps.StreetViewResolvedPanoramaData | null)[]>;
 declare function mmaBufUrl(path: string): string;
 /** One summary row per pass that did work: the core metadata pass, then every
  *  provider that updated or failed at least one location. */
@@ -2006,6 +2030,7 @@ declare const mma: {
 	bulkPinToPano: (opts?: Record<string, unknown>) => Promise<number>;
 	validateLocations: typeof validateLocations;
 	needsEnrichment: (loc: Pick<Location$1, "extra">) => boolean;
+	fetchSvMetadata: typeof fetchSvMetadata;
 	mmaBufUrl: typeof mmaBufUrl;
 	_test: {
 		openMap: (id: string) => Promise<void>;
@@ -2032,6 +2057,7 @@ declare const mma: {
 	reviewPrev(): Promise<void>;
 	reviewDelete(): Promise<void>;
 	cancelReview(): void;
+	renameReview(id: string, name: string): Promise<void>;
 	deleteSession(id: string): Promise<void>;
 	listSessions(status?: "active" | "done"): Promise<ReviewSession[]>;
 	selectReviewedHistory(): Promise<void>;
@@ -2064,6 +2090,7 @@ declare const mma: {
 	fetchAllLocations(): Promise<Location$1[]>;
 	fetchLocation(id: number): Promise<Location$1 | null>;
 	fetchLocationsByIds(ids: number[]): Promise<Location$1[]>;
+	getAllSelections(): Selection$1[];
 	getSelections(): Selection$1[];
 	getSelectedLocationIds(): SelectedIds;
 	syncSelections(): Promise<{
@@ -2121,6 +2148,7 @@ declare const mma: {
 	selectTag(tagId: number): Promise<void>;
 	selectPolygon(polygon: PolygonGeometry, includeInformational?: boolean): Promise<void>;
 	selectFilter(field: string, op: FilterOp, value: unknown, value2?: unknown, tzLocal?: boolean): Promise<void>;
+	selectTopK(field: string, k: number, ascending: boolean): Promise<void>;
 	updateFilterSelection(oldKey: string, props: SelectionProps): Promise<void>;
 	setPolygonName(key: string, name: string): Promise<void>;
 	setSelectionColors(entries: {
@@ -2213,6 +2241,7 @@ declare const mma: {
 	useCommitDiffPreview: () => CommitDiffPreview | null;
 	useDiffMarkerVersion: () => number;
 	useKnownFieldKeys: () => ReadonlySet<string>;
+	useAllSelections: () => Selection$1[];
 	useSelections: () => Selection$1[];
 	useGhostedSelections: () => Set<string>;
 	useActivePluginId: () => string | null;

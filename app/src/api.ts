@@ -33,6 +33,7 @@ import { loadSeenPano } from "@/components/editor/location/LocationPreview";
 import { enrichAll, needsEnrichment } from "@/lib/sv/enrich";
 import { bulkPinToPano } from "@/lib/sv/pinPano";
 import { validateLocations } from "@/lib/sv/validate";
+import { fetchSvMetadata } from "@/lib/sv/svMeta";
 import { mmaBufUrl } from "@/lib/util/util";
 
 export interface LocationStore {
@@ -152,6 +153,9 @@ const mma = {
 	bulkPinToPano: async (opts?: Record<string, unknown>) => bulkPinToPano(await store.fetchAllLocations(), opts),
 	validateLocations,
 	needsEnrichment: (loc: Pick<Location, "extra">) => needsEnrichment(loc as Location),
+
+	// --- SV metadata ---
+	fetchSvMetadata,
 
 	// --- Util ---
 	mmaBufUrl,

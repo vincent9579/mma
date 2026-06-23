@@ -1,5 +1,6 @@
 node_modules/
 dist/
+target/
 app/src-tauri/target/
 *.Zone.Identifier
 editor.html
@@ -41,3 +42,4 @@ lint.json
 docs/
 CLAUDE.md
 mma-source
+*.bin

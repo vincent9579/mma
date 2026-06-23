@@ -1,0 +1,87 @@
+name: Vision Plugin Release
+
+on:
+  push:
+    tags: ['vision-v*']
+  workflow_dispatch:
+
+jobs:
+  # Export ONNX models (once, platform-independent)
+  export-models:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python deps
+        run: pip install torch transformers --index-url https://download.pytorch.org/whl/cpu
+      - name: Export ONNX models
+        working-directory: plugins/vision-sidecar
+        run: python export_models.py --output-dir models
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clip-models
+          path: plugins/vision-sidecar/models/
+
+  # Build sidecar binary for each platform
+  build-sidecar:
+    uses: ./.github/workflows/build-sidecar.yml
+    with:
+      crate-path: plugins/vision-sidecar
+      binary-name: mma-vision
+
+  # Bundle everything into release archives
+  package:
+    needs: [export-models, build-sidecar]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - label: windows-x64
+            suffix: .exe
+          - label: macos-arm64
+            suffix: ''
+          - label: macos-x64
+            suffix: ''
+          - label: linux-x64
+            suffix: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mma-vision-${{ matrix.label }}
+          path: bundle/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: clip-models
+          path: bundle/models/
+
+      # Include the JS plugin
+      - name: Copy JS plugin
+        run: |
+          cp plugins/vision/manifest.json bundle/
+          cp plugins/vision/index.js bundle/
+
+      - name: Create archive
+        run: |
+          cd bundle
+          chmod +x mma-vision${{ matrix.suffix }} 2>/dev/null || true
+          tar czf ../mma-vision-${{ matrix.label }}.tar.gz .
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: mma-vision-bundle-${{ matrix.label }}
+          path: mma-vision-${{ matrix.label }}.tar.gz
+
+      # Attach to GitHub release if triggered by tag
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mma-vision-${{ matrix.label }}.tar.gz
