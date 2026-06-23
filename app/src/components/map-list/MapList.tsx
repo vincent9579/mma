@@ -545,7 +545,11 @@ const FolderEntry = React.memo(function FolderEntry({
 	fields: MapListField[];
 }) {
 	const triggerId = `folder:${name}-trig`;
-	const [open, setOpen] = useState(true);
+	const [collapsed, setCollapsed] = useLocalStorage<string[]>("collapsedFolders", []);
+	const open = !collapsed.includes(name);
+	const setOpen = (v: boolean) => {
+		setCollapsed((prev) => v ? prev.filter((f) => f !== name) : [...prev, name]);
+	};
 	const count = useMemo(() => maps.reduce((a, m) => a + m.locationCount, 0), [maps]);
 
 	return (
