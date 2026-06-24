@@ -1,3 +1,36 @@
+## v0.6.3 — 2026-06-23
+- Redesigned map overview UI
+- Add command to open a different map without leaving the window
+- Toggleable overlay showing all seen locations on the map
+- Quickly copy a location to another map
+- Folders in the map list remember their collapsed state
+- Select uncommitted locations
+- Select reviewed locations across every review session at once
+- Rename review sessions, and single-selection reviews are now named after their selection
+- Redesigned review sessions window with dates
+- Optional cursor overlay showing the click search radius
+- Filter by the top or bottom K values of a field
+- Filter by heading, pitch, and zoom
+- "Filter by metadata" now applies when you press Enter
+- Enrichment status is now field-aware
+- Locations now show created and modified timestamps in the editor
+- Extra field keys are now sorted alphabetically
+- Improved metadata details UI
+- New selection dropdown styling and saved selection dialogs
+- Pinned command context menu and default pinned commands
+- Free-aspect-ratio split view with smoother resizing
+- Edit generator regions while a job is running, with buffered finds flushed on pause or stop
+- Improved Street View pano dot rendering
+- Faster bulk metadata operations
+- Fixed seen-matching using location IDs instead of pano IDs
+- Fixed edge cases where exact date matching did not run when the setting was enabled
+- Fixed a location's date being wrong after moving within a panorama, if the location had a cached datetime
+- Fixed deleted maps showing up in the seen filter dropdown
+- Fixed modified time not updating on location edits
+- Fixed undo back to the original state marking a location as uncommitted
+- Fixed map overview losing its state when switching work areas
+- Fixed validation handling of the load-as-pano-ID flag
+
 ## v0.6.2 — 2026-06-20
 
 - Select admin-1 subdivisions on the map
