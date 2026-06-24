@@ -1289,7 +1289,7 @@ function LocationPreviewInner() {
 							</li>
 						</ul>
 						{suggestions.length > 0 && (
-							<div style={{ paddingTop: "0.5rem", maxHeight: "40vh", overflowY: "auto" }}>
+							<div style={{ paddingTop: "0.5rem", maxHeight: "40vh", overflowY: "auto", scrollbarWidth: "none" }}>
 								<ol className="tag-list">
 									{suggestions.map((t) => (
 										<li
