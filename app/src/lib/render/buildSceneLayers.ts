@@ -1,10 +1,10 @@
 import type { Layer, Position } from "@deck.gl/core";
 import { ScatterplotLayer, PolygonLayer, PathLayer, LineLayer } from "@deck.gl/layers";
 import SDFMarkerLayer from "@/lib/render/sdf-marker-layer/SDFMarkerLayer";
-import { baseMarkerLayers, buildMarkerLayer, panoDotsLayer } from "@/lib/render/markerLayer";
+import { baseMarkerLayers, buildMarkerLayer } from "@/lib/render/markerLayer";
+import PanoCoverageLayer from "@/lib/render/PanoCoverageLayer";
 import type { CellManager } from "@/lib/render/CellManager";
 import type { MarkerStyle } from "@/components/editor/map/mapSettingsTypes";
-import type { PanoDot } from "@/lib/geo/photometa";
 import type { LatLng } from "@/types";
 import { isImportPreview } from "@/types";
 import type { Location, SeenEntry } from "@/bindings.gen";
@@ -48,7 +48,6 @@ interface SceneContext {
 	showPerfectScoreCircle: boolean;
 	scoreMaxError: number;
 	svPanoramas: boolean;
-	panoDots: PanoDot[];
 	panoDotColor: RGB;
 	panoDotScaled: boolean;
 	activeLocationColor: RGB;
@@ -134,6 +133,15 @@ export function buildSceneLayers(cm: CellManager, ctx: SceneContext): Layer[] {
 	for (const k of ctx.polygonGeomCache.keys()) {
 		if (!livePolygonKeys.has(k)) ctx.polygonGeomCache.delete(k);
 	}
+
+	if (ctx.svPanoramas)
+		layers.push(
+			new PanoCoverageLayer({
+				id: "pano-coverage",
+				color: [ctx.panoDotColor.r, ctx.panoDotColor.g, ctx.panoDotColor.b],
+				scaled: ctx.panoDotScaled,
+			}),
+		);
 
 	layers.push(...baseMarkerLayers(cm, ctx.markerStyle, ctx.markerOpacity));
 
@@ -272,15 +280,6 @@ export function buildSceneLayers(cm: CellManager, ctx: SceneContext): Layer[] {
 			}),
 		);
 	}
-
-	if (ctx.svPanoramas && ctx.panoDots.length > 0)
-		layers.push(
-			panoDotsLayer(
-				ctx.panoDots,
-				[ctx.panoDotColor.r, ctx.panoDotColor.g, ctx.panoDotColor.b],
-				ctx.panoDotScaled,
-			),
-		);
 
 	const anchor = getLatLngAnchor();
 	if (anchor) {

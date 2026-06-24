@@ -3,7 +3,6 @@ import { ScatterplotLayer } from "@deck.gl/layers";
 import SDFMarkerLayer from "@/lib/render/sdf-marker-layer/SDFMarkerLayer";
 import type { MarkerStyle } from "@/components/editor/map/mapSettingsTypes";
 import type { CellManager } from "@/lib/render/CellManager";
-import type { PanoDot } from "@/lib/geo/photometa";
 
 export type MarkerBuf = { positions: Float32Array; colors: Uint8Array; angles: Float32Array };
 
@@ -68,26 +67,4 @@ export function baseMarkerLayers(
 		);
 	}
 	return out;
-}
-
-export function panoDotsLayer(
-	dots: PanoDot[],
-	color: [number, number, number],
-	scaled: boolean,
-): Layer {
-	// scaled: radius in meters (grows when zoomed in). otherwise a constant on-screen pixel size.
-	return new ScatterplotLayer<PanoDot>({
-		id: "panorama-dots",
-		data: dots,
-		getPosition: (d) => [d.lng, d.lat],
-		getFillColor: color,
-		radiusUnits: scaled ? "meters" : "pixels",
-		getRadius: scaled ? 2 : 4,
-		radiusMaxPixels: scaled ? 24 : 4,
-		stroked: false,
-		filled: true,
-		opacity: 0.7,
-		pickable: false,
-		updateTriggers: { getFillColor: color },
-	});
 }

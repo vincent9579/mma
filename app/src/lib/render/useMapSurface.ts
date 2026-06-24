@@ -6,7 +6,6 @@ import { google } from "@/lib/sv/opensv";
 import { buildSceneLayers, type PolyGeom } from "@/lib/render/buildSceneLayers";
 import { getScene, useScene } from "@/lib/render/sceneStore";
 import { useLatestRef } from "@/lib/hooks/useLatestRef";
-import { usePanoDots } from "@/lib/render/usePanoDots";
 import { useSetting, getSettings } from "@/store/settings";
 import { useScoreMaxError, useLatLngAnchor } from "@/lib/sv/measure";
 import { handleMapClick, handleMapHover } from "@/lib/map/mapClick";
@@ -55,7 +54,6 @@ export function useMapSurface(
 ): { requestUpdate: () => void } {
 	const overlayRef = useRef<GoogleMapsOverlay | null>(null);
 	const polygonGeomCache = useRef(new Map<string, PolyGeom>());
-	const panoDots = usePanoDots(map, opts.prefs.svPanoramas);
 	const activeLocationColor = useSetting("activeLocationColor");
 	const importPreviewColor = useSetting("importPreviewColor");
 	const panoDotColor = useSetting("panoDotColor");
@@ -91,7 +89,6 @@ export function useMapSurface(
 			showPerfectScoreCircle: opts.prefs.showPerfectScoreCircle,
 			scoreMaxError,
 			svPanoramas: opts.prefs.svPanoramas,
-			panoDots,
 			panoDotColor,
 			panoDotScaled,
 			activeLocationColor,
@@ -107,7 +104,6 @@ export function useMapSurface(
 		});
 	}, [
 		map,
-		panoDots,
 		scoreMaxError,
 		activeLocationColor,
 		importPreviewColor,
