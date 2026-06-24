@@ -1,3 +1,7 @@
+## v0.6.4 — 2026-06-23
+- Bound panorama dots to evict, preventing performance degradation over time
+- Add icons to remaining selection commands
+
 ## v0.6.3 — 2026-06-23
 - Redesigned map overview UI
 - Add command to open a different map without leaving the window
