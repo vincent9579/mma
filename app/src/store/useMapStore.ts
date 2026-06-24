@@ -1415,7 +1415,7 @@ export async function confirmImport(droppedFields: string[], tagName?: string) {
 			autosaveTimer = null;
 		}
 		if (inflightSave) await inflightSave;
-		await cmd.storeCommitAndBake(currentMapId, `Import ${r.importedCount} locations`);
+		await cmd.storeCommit(currentMapId, `Import ${r.importedCount} locations`);
 		undoRedoState = { canUndo: false, canRedo: false };
 		cachedCommitDiff = { added: 0, removed: 0, modified: 0 };
 		bump();
@@ -1468,14 +1468,6 @@ export const useUndoRedo = makeStoreHook(() => undoRedoState);
 
 // --- Version control ---
 
-function formatDiffMessage(diff: CommitDiff): string | undefined {
-	const parts: string[] = [];
-	if (diff.added > 0) parts.push(`+${diff.added}`);
-	if (diff.removed > 0) parts.push(`-${diff.removed}`);
-	if (diff.modified > 0) parts.push(`~${diff.modified}`);
-	return parts.length > 0 ? parts.join(" ") : undefined;
-}
-
 /** Bake overlay, write the commit delta, create a VCS commit. Resets undo stack. */
 export async function commitMap(message?: string): Promise<string> {
 	if (!currentMapId) throw new Error("No map open");
@@ -1488,17 +1480,10 @@ export async function commitMap(message?: string): Promise<string> {
 		autosaveTimer = null;
 	}
 	if (inflightSave) await inflightSave;
-	// Commit reads the overlay (the in-memory changeset) to build the delta, so it must
-	// run BEFORE the bake folds the overlay into the base and clears it.
-	const diff = await computeCommitDiff();
-	t.step("computeCommitDiff");
-	const autoMessage = message ?? formatDiffMessage(diff);
-	const id = await cmd.storeCreateCommit(currentMapId, autoMessage ?? null);
-	t.step("createCommit");
-	await cmd.storeBakeAndSave();
-	t.step("bake_and_save");
-	await cmd.storeResetUndo();
-	t.step("reset_undo");
+	// One Rust call: build the delta from the overlay, bake it into the base, record the
+	// commit, and clear undo. A null message is auto-formatted (+a -r ~m) Rust-side.
+	const id = await cmd.storeCommit(currentMapId, message ?? null);
+	t.step("commit");
 	t.end();
 	undoRedoState = { canUndo: false, canRedo: false };
 	cachedCommitDiff = { added: 0, removed: 0, modified: 0 };
@@ -1586,7 +1571,7 @@ export async function checkoutCommit(commitId: string) {
 		await cmd.storeOpenMap(currentMapId);
 		await cmd.storeResetUndo();
 		const msg = `Revert to ${commitId.slice(0, 7)}`;
-		await cmd.storeCreateCommit(currentMapId, msg);
+		await cmd.storeCommit(currentMapId, msg);
 	} catch (e) {
 		log.error("[checkout] restore failed:", e);
 		throw e;

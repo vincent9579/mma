@@ -56,109 +56,31 @@ pub struct CommitDelta {
 // Commands
 // ---------------------------------------------------------------------------
 
-/// Create a new commit for a map.
-///
-/// 1. Finds the current HEAD commit (parent).
-/// 2. Collects the current location state (overlay already baked by the caller).
-/// 3. Diffs it against the materialized parent state to produce the delta.
-/// 4. Writes the delta as an Arrow file, then records the commit row.
-///
-/// Returns the new commit ID.
-#[tauri::command]
-#[specta::specta]
-pub fn store_create_commit(
-    state: State<'_, StoreState>,
-    map_id: String,
-    message: Option<String>,
-) -> AppResult<String> {
-    let _t = std::time::Instant::now();
-    let conn = storage::open_db()?;
-
-    // 1. Parent = current HEAD commit.
-    let parent_id: Option<String> = conn
-        .query_row(
-            "SELECT id FROM commits WHERE map_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT 1",
-            params![map_id],
-            |row| row.get(0),
-        )
-        .ok();
-
-    // 2. Build the delta. Fast path: read it straight from the overlay -- the in-memory
-    //    changeset since the last commit -- in O(changeset), no history replay. Fall back
-    //    to a full parent-vs-current diff only when the overlay is clean (a post-checkout
-    //    revert commit, or an empty no-op commit), which is rare and off the hot path.
-    // The overlay fast path is only valid when the base file equals the parent commit's
-    // state -- i.e. a parent exists. For genesis (no parent, e.g. an old map with
-    // pre-existing data and no commits yet) the base is NOT a committed baseline, so we
-    // must capture the full current state, not just the overlay changeset.
-    let mut overlay_delta: Option<(Vec<Location>, Vec<Location>, u32, u32, u32)> = None;
-    let mut current_fallback: Vec<Location> = Vec::new();
-    let location_count: u32;
-    {
-        let mut mgr = state.lock()?;
-        let store = mgr.store_for_map(&map_id)?;
-        location_count = store.alive_count as u32;
-        if parent_id.is_some() && store.overlay.dirty {
-            overlay_delta = Some(store.build_overlay_delta());
-        } else {
-            current_fallback = store.collect_all_locations();
-        }
-    }
-    let (created, removed, added, removed_n, modified) = match overlay_delta {
-        Some(d) => d,
-        None => {
-            let parent_state = match &parent_id {
-                Some(p) => vcs_delta::materialize_commit(&conn, &map_id, p)?,
-                None => std::collections::BTreeMap::new(),
-            };
-            vcs_delta::diff_states(&parent_state, &current_fallback)
-        }
-    };
-
-    // 4. Commit id. A random nonce keeps empty/rapid commits sharing a parent and
-    //    millisecond timestamp from colliding on the primary key.
-    let now = now_iso();
-    let nonce = uuid::Uuid::new_v4();
-    let id = sha256_hex(
-        format!("{}\n{}\n{}", parent_id.as_deref().unwrap_or(""), now, nonce).as_bytes(),
-    );
-
-    // 5. Write the delta file, then record the commit row.
-    let batch = arrow_bridge::delta_to_batch(&created, &removed);
-    let path = storage::commit_delta_path(&map_id, &id)?;
-    storage::write_arrow_ipc(&path, &batch)?;
-
-    conn.execute(
-        "INSERT INTO commits (id, map_id, parent_id, message, location_count, created_at, tree_hash, added, removed, modified) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        params![id, map_id, parent_id, message, location_count, now, Option::<String>::None, added, removed_n, modified],
-    )?;
-
-    log::info!(
-        "[vcs] commit {} locs={} +{} -{} ~{} in {}ms",
-        &id[..7],
-        location_count,
-        added,
-        removed_n,
-        modified,
-        _t.elapsed().as_millis()
-    );
-    Ok(id)
+/// Build a default commit message (`+a -r ~m`) from the diff counts; None when empty.
+fn format_diff_message(added: u32, removed: u32, modified: u32) -> Option<String> {
+    let mut parts = Vec::new();
+    if added > 0 { parts.push(format!("+{added}")); }
+    if removed > 0 { parts.push(format!("-{removed}")); }
+    if modified > 0 { parts.push(format!("~{modified}")); }
+    (!parts.is_empty()).then(|| parts.join(" "))
 }
 
-/// Commit + bake in a single pass — the import/autocommit hot path.
+/// Create a commit and bake the overlay in a single pass — the only commit path.
 ///
-/// `store_create_commit` followed by `store_bake_and_save` builds the Arrow batch
-/// up to three times (collect+diff clones in the genesis fallback, then the bake)
-/// and serializes `extra` JSON twice. This builds it ONCE (the bake) and derives the
-/// commit delta by reusing the baked columns + an op column. Semantically identical:
-/// genesis delta = full state (all created); non-genesis delta = the pre-bake overlay
-/// changeset (captured before the bake clears it). Returns the new commit id.
-// `async` so the heavy bake/VCS work runs on a runtime worker instead of the main
-// (event-loop) thread — a sync command here blocks the webview AND stalls the queued
-// render command behind it (the import-confirm freeze).
+/// Builds the canonical batch ONCE (the bake) and derives the commit delta three ways:
+/// - dirty overlay (normal commit/import): the pre-bake overlay changeset, O(changeset).
+/// - genesis (no parent): full state == the base file just written; stored by copying
+///   the base (one serialization, not two; batch_to_delta reads it as all-created).
+/// - clean overlay with a parent (a checkout/revert commit): diff the current baked
+///   state against the materialized parent.
+/// `message` is auto-formatted (`+a -r ~m`) when None. Returns the new commit id.
+///
+/// `async` so the heavy bake/VCS work runs on a runtime worker, not the main
+/// (event-loop) thread — a sync command here freezes the webview and stalls the
+/// queued render behind it.
 #[tauri::command]
 #[specta::specta]
-pub async fn store_commit_and_bake(
+pub async fn store_commit(
     state: State<'_, StoreState>,
     map_id: String,
     message: Option<String>,
@@ -175,14 +97,12 @@ pub async fn store_commit_and_bake(
         .ok();
     let genesis = parent_id.is_none();
 
-    // Non-genesis delta is a small overlay changeset; genesis writes no separate delta
-    // batch (it reuses the base file as a snapshot — see below).
-    let (pre_bake, location_count) = {
+    let (pre_bake, current_fallback, location_count) = {
         let mut mgr = state.lock()?;
         let store = mgr.store_for_map(&map_id)?;
         let location_count = store.alive_count as u32;
 
-        // The non-genesis overlay delta must be read BEFORE the bake folds it in.
+        // The overlay changeset must be read BEFORE the bake folds it in.
         let pre_bake = if !genesis && store.overlay.dirty {
             Some(store.build_overlay_delta())
         } else {
@@ -195,7 +115,15 @@ pub async fn store_commit_and_bake(
         store.edits.undo.clear();
         store.edits.redo.clear();
 
-        (pre_bake, location_count)
+        // Clean overlay + existing parent (checkout/revert commit): capture the current
+        // baked state to diff against the parent below.
+        let current_fallback = if pre_bake.is_none() && !genesis {
+            store.collect_all_locations()
+        } else {
+            Vec::new()
+        };
+
+        (pre_bake, current_fallback, location_count)
     };
 
     let now = now_iso();
@@ -210,15 +138,25 @@ pub async fn store_commit_and_bake(
             storage::write_arrow_ipc(&path, &arrow_bridge::delta_to_batch(&created, &removed))?;
             (a, r, m)
         }
-        None => {
-            // Genesis: the commit's full state == the base file we just wrote. Store the
-            // delta as a snapshot by copying the base (one serialization, not two);
-            // batch_to_delta reads a 12-column snapshot as all-created.
+        None if genesis => {
+            // The commit's full state == the base file we just wrote. Store the delta as a
+            // snapshot by copying the base (one serialization, not two); batch_to_delta
+            // reads a 12-column snapshot as all-created.
             let base_path = storage::arrow_path(&map_id)?;
             std::fs::copy(&base_path, &path)?;
             (location_count, 0, 0)
         }
+        None => {
+            // Clean overlay with a parent (revert/no-op commit): diff current vs parent.
+            let parent_state = vcs_delta::materialize_commit(&conn, &map_id, parent_id.as_ref().unwrap())?;
+            let (created, removed, a, r, m) = vcs_delta::diff_states(&parent_state, &current_fallback);
+            storage::write_arrow_ipc(&path, &arrow_bridge::delta_to_batch(&created, &removed))?;
+            (a, r, m)
+        }
     };
+
+    // Auto-format a default message when the caller didn't supply one.
+    let message = message.or_else(|| format_diff_message(added, removed_n, modified));
 
     conn.execute(
         "INSERT INTO commits (id, map_id, parent_id, message, location_count, created_at, tree_hash, added, removed, modified) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -230,7 +168,7 @@ pub async fn store_commit_and_bake(
     )?;
 
     log::info!(
-        "[vcs] commit+bake {} locs={} +{} -{} ~{} in {}ms",
+        "[vcs] commit {} locs={} +{} -{} ~{} in {}ms",
         &id[..7], location_count, added, removed_n, modified, _t.elapsed().as_millis()
     );
     Ok(id)

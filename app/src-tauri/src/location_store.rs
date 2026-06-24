@@ -2074,7 +2074,7 @@ pub(crate) fn persist_dirty_inner(
 }
 
 /// Delta-only autosave: writes only dirty geohash chunks to disk (~17ms).
-/// Does NOT bake the overlay — call `store_bake_and_save` for a full merge.
+/// Does NOT bake the overlay — `store_commit` does a full merge.
 #[tauri::command]
 #[specta::specta]
 pub async fn store_save_dirty(
@@ -2205,23 +2205,9 @@ pub(crate) fn save_arrow_inner(store: &Store, map_id: &str) -> AppResult<()> {
 // VCS: snapshot / restore Arrow files
 // ---------------------------------------------------------------------------
 
-/// Merge the overlay into the Arrow batch, then write the full file to disk.
-/// Expensive at 10M+ rows — only called on commit, not on autosave.
-#[tauri::command]
-#[specta::specta]
-pub fn store_bake_and_save(
-    webview: tauri::Webview,
-    state: tauri::State<'_, StoreState>,
-) -> AppResult<()> {
-    with_store!(webview, state, |store| {
-        let map_id = store.map_id.clone().ok_or("no map open")?;
-        bake_and_save_inner(store, &map_id)
-    })
-}
-
 /// Bake the overlay into the base batch, write it to disk, re-mmap, and flush
-/// location count + dirty tags. The reusable core of `store_bake_and_save`, also
-/// used by `store_commit_and_bake` so a commit builds the batch only once.
+/// location count + dirty tags. Used by `store_commit` so a commit builds
+/// the batch only once.
 pub(crate) fn bake_and_save_inner(store: &mut Store, map_id: &str) -> AppResult<()> {
     store.bake_overlay();
     store.mmap_handle = None;

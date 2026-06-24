@@ -379,7 +379,6 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             location_store::store_close_map,
             location_store::store_save_dirty,
             location_store::store_copy_locations_to_map,
-            location_store::store_bake_and_save,
             location_store::store_get_summary,
             // --- Map metadata ---
             map_meta::store_list_maps,
@@ -451,8 +450,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             review::store_review_list,
             review::store_review_update,
             review::store_review_delete,
-            vcs::store_create_commit,
-            vcs::store_commit_and_bake,
+            vcs::store_commit,
             vcs::store_list_commits,
             vcs::store_checkout_commit,
             vcs::store_get_commit_delta,

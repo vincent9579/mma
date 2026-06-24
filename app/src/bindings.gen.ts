@@ -45,7 +45,7 @@ export const commands = {
 	storeCloseMap: () => typedError<null, string>(__TAURI_INVOKE("store_close_map")),
 	/**
 	 *  Delta-only autosave: writes only dirty geohash chunks to disk (~17ms).
-	 *  Does NOT bake the overlay — call `store_bake_and_save` for a full merge.
+	 *  Does NOT bake the overlay — `store_commit` does a full merge.
 	 */
 	storeSaveDirty: () => typedError<SaveResult, string>(__TAURI_INVOKE("store_save_dirty")),
 	/**
@@ -58,11 +58,6 @@ export const commands = {
 	 *  the result is persisted immediately (delta sidecar + tags + count).
 	 */
 	storeCopyLocationsToMap: (targetMapId: string, ids: number[]) => typedError<CopyToMapResult, string>(__TAURI_INVOKE("store_copy_locations_to_map", { targetMapId, ids })),
-	/**
-	 *  Merge the overlay into the Arrow batch, then write the full file to disk.
-	 *  Expensive at 10M+ rows — only called on commit, not on autosave.
-	 */
-	storeBakeAndSave: () => typedError<null, string>(__TAURI_INVOKE("store_bake_and_save")),
 	/**  Lightweight status query: location count, version, and dirty flag. */
 	storeGetSummary: () => typedError<SummaryResult, string>(__TAURI_INVOKE("store_get_summary")),
 	/**  Return metadata for every map in the database. */
@@ -343,27 +338,21 @@ export const commands = {
 	storeReviewUpdate: (update: ReviewUpdate) => typedError<null, string>(__TAURI_INVOKE("store_review_update", { update })),
 	storeReviewDelete: (id: string) => typedError<null, string>(__TAURI_INVOKE("store_review_delete", { id })),
 	/**
-	 *  Create a new commit for a map.
+	 *  Create a commit and bake the overlay in a single pass — the only commit path.
 	 * 
-	 *  1. Finds the current HEAD commit (parent).
-	 *  2. Collects the current location state (overlay already baked by the caller).
-	 *  3. Diffs it against the materialized parent state to produce the delta.
-	 *  4. Writes the delta as an Arrow file, then records the commit row.
+	 *  Builds the canonical batch ONCE (the bake) and derives the commit delta three ways:
+	 *  - dirty overlay (normal commit/import): the pre-bake overlay changeset, O(changeset).
+	 *  - genesis (no parent): full state == the base file just written; stored by copying
+	 *    the base (one serialization, not two; batch_to_delta reads it as all-created).
+	 *  - clean overlay with a parent (a checkout/revert commit): diff the current baked
+	 *    state against the materialized parent.
+	 *  `message` is auto-formatted (`+a -r ~m`) when None. Returns the new commit id.
 	 * 
-	 *  Returns the new commit ID.
+	 *  `async` so the heavy bake/VCS work runs on a runtime worker, not the main
+	 *  (event-loop) thread — a sync command here freezes the webview and stalls the
+	 *  queued render behind it.
 	 */
-	storeCreateCommit: (mapId: string, message: string | null) => typedError<string, string>(__TAURI_INVOKE("store_create_commit", { mapId, message })),
-	/**
-	 *  Commit + bake in a single pass — the import/autocommit hot path.
-	 * 
-	 *  `store_create_commit` followed by `store_bake_and_save` builds the Arrow batch
-	 *  up to three times (collect+diff clones in the genesis fallback, then the bake)
-	 *  and serializes `extra` JSON twice. This builds it ONCE (the bake) and derives the
-	 *  commit delta by reusing the baked columns + an op column. Semantically identical:
-	 *  genesis delta = full state (all created); non-genesis delta = the pre-bake overlay
-	 *  changeset (captured before the bake clears it). Returns the new commit id.
-	 */
-	storeCommitAndBake: (mapId: string, message: string | null) => typedError<string, string>(__TAURI_INVOKE("store_commit_and_bake", { mapId, message })),
+	storeCommit: (mapId: string, message: string | null) => typedError<string, string>(__TAURI_INVOKE("store_commit", { mapId, message })),
 	/**  List all commits for a map, newest first. */
 	storeListCommits: (mapId: string) => typedError<CommitInfo[], string>(__TAURI_INVOKE("store_list_commits", { mapId })),
 	/**

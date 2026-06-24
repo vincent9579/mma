@@ -193,7 +193,7 @@ export type ExtraFieldDef = {
  *  Type discriminant for `Location.extra` field definitions.
  *  Determines how the field is displayed and filtered in the UI.
  */
-export type ExtraFieldType = "string" | "number" | "date" | "month" | "enum";
+export type ExtraFieldType = "string" | "number" | "date" | "month" | "enum" | "array";
 /**
  *  Field presence count for the editor import preview dialog, letting
  *  the user see which optional fields exist and decide which to keep/drop.
@@ -206,7 +206,7 @@ export type FieldCount = {
  *  Filter comparison operator. Single source of truth: specta renders the literal
  *  union, so the TS `FilterOp` type and `OP_LABELS` derive from this enum.
  */
-export type FilterOp = "eq" | "neq" | "gt" | "lt" | "gte" | "lte" | "between" | "between_anyyear" | "between_anytime" | "has" | "nothas";
+export type FilterOp = "eq" | "neq" | "gt" | "lt" | "gte" | "lte" | "between" | "between_anyyear" | "between_anytime" | "has" | "nothas" | "contains" | "notcontains";
 /**  Reverse geocode result: nearest populated place to a coordinate. */
 export type GeoResult = {
 	city: string;
@@ -1467,37 +1467,44 @@ declare const COMMANDS: {
 	};
 	selectAll: {
 		label: string;
+		icon: string;
 		group: "Selections";
 		defaultBinding: string;
 		execute: typeof selectEverything;
 	};
 	"select-untagged": {
 		label: string;
+		icon: string;
 		group: "Selections";
 		execute: typeof selectUntagged;
 	};
 	"select-unpanned": {
 		label: string;
+		icon: string;
 		group: "Selections";
 		execute: typeof selectUnpanned;
 	};
 	"select-panoid": {
 		label: string;
+		icon: string;
 		group: "Selections";
 		execute: typeof selectPanoIds;
 	};
 	"select-no-panoid": {
 		label: string;
+		icon: string;
 		group: "Selections";
 		execute: typeof selectNotPanoIds;
 	};
 	"select-uncommitted": {
 		label: string;
+		icon: string;
 		group: "Selections";
 		execute: typeof selectUncommitted;
 	};
 	"select-reviewed": {
 		label: string;
+		icon: string;
 		group: "Selections";
 		execute: () => Promise<void>;
 		enabled: () => boolean;
@@ -1800,6 +1807,16 @@ declare function getSeenEntries(limit?: number, offset?: number, filter?: SeenFi
 declare function getSeenCount(filter?: SeenFilter): Promise<number>;
 declare function clearSeen(): Promise<void>;
 declare function loadSeenPano(entry: SeenEntry): Promise<void>;
+declare function needsEnrichment(loc: Location$1, enrichFields?: string[]): boolean;
+/** One summary row per pass that did work: the core metadata pass, then every
+ *  provider that updated or failed at least one location. */
+export interface EnrichOutcome {
+	id: string;
+	label: string;
+	success: number[];
+	failed: number[];
+}
+export type EnrichResult = EnrichOutcome[];
 export interface ValidationProgress {
 	progress: number;
 	results: Map<ValidationState, Location$1[]>;
@@ -1810,15 +1827,6 @@ declare function validateLocations(locations: Location$1[], opts?: {
 }): Promise<Map<ValidationState, Location$1[]>>;
 declare function fetchSvMetadata(panoIds: string[]): Promise<(google.maps.StreetViewResolvedPanoramaData | null)[]>;
 declare function mmaBufUrl(path: string): string;
-/** One summary row per pass that did work: the core metadata pass, then every
- *  provider that updated or failed at least one location. */
-export interface EnrichOutcome {
-	id: string;
-	label: string;
-	success: number[];
-	failed: number[];
-}
-export type EnrichResult = EnrichOutcome[];
 export interface LocationStore {
 	locations: Map<number, Location$1>;
 	/** The materialized locations narrowed to a scope (defaults to all). */
@@ -2029,7 +2037,7 @@ declare const mma: {
 	enrichAll: (opts?: Record<string, unknown>) => Promise<EnrichResult>;
 	bulkPinToPano: (opts?: Record<string, unknown>) => Promise<number>;
 	validateLocations: typeof validateLocations;
-	needsEnrichment: (loc: Pick<Location$1, "extra">, enrichFields?: string[]) => boolean;
+	needsEnrichment: typeof needsEnrichment;
 	fetchSvMetadata: typeof fetchSvMetadata;
 	mmaBufUrl: typeof mmaBufUrl;
 	_test: {
