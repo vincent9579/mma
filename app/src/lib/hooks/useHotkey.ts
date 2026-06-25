@@ -134,7 +134,8 @@ export function isEditableElement(el: EventTarget | null): boolean {
 			type !== "reset" &&
 			type !== "checkbox" &&
 			type !== "radio" &&
-			type !== "file") ||
+			type !== "file" &&
+			type !== "range") ||
 		el.isContentEditable
 	);
 }
