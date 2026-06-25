@@ -416,6 +416,35 @@ fn finish_mutation_reports_correct_state() {
     assert_eq!(result.status.version, 1);
 }
 
+#[test]
+fn cached_bounds_tracks_adds_and_invalidates_on_remove() {
+    let mut store = setup_store_with(&[loc(1, 0.0, 0.0)]);
+    // [w,s,e,n] = [min_lng, min_lat, max_lng, max_lat]
+    assert_eq!(store.cached_bounds(), Some([0.0, 0.0, 0.0, 0.0]));
+
+    // Add outside the box -> grows incrementally, no recompute.
+    let a = loc(2, 10.0, 10.0);
+    store.overlay_add(a.clone());
+    store.update_bounds(&ChangeSet { added: vec![a], ..Default::default() });
+    assert!(!store.bounds_dirty, "add must not dirty the cache");
+    assert_eq!(store.cached_bounds(), Some([0.0, 0.0, 10.0, 10.0]));
+
+    // Add inside the box -> no change.
+    let b = loc(3, 5.0, 5.0);
+    store.overlay_add(b.clone());
+    store.update_bounds(&ChangeSet { added: vec![b], ..Default::default() });
+    assert_eq!(store.cached_bounds(), Some([0.0, 0.0, 10.0, 10.0]));
+
+    // Remove the extreme point -> invalidates, recompute shrinks the box.
+    store.overlay_remove(&[loc(2, 10.0, 10.0)]);
+    store.update_bounds(&ChangeSet { removed: vec![2], ..Default::default() });
+    assert!(store.bounds_dirty, "removal must invalidate the cache");
+    assert_eq!(store.cached_bounds(), Some([0.0, 0.0, 5.0, 5.0]));
+
+    // The cache must never diverge from a fresh O(N) compute.
+    assert_eq!(store.cached_bounds(), store.compute_bounds(None));
+}
+
 // -----------------------------------------------------------------------
 // Render cell tracking
 // -----------------------------------------------------------------------

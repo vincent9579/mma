@@ -262,6 +262,11 @@ pub struct Store {
     pub(crate) selections: SelectionState,
     pub(crate) tags: TagState,
     pub(crate) edits: EditStacks,
+    /// Cached unscoped bounding box `[w,s,e,n]`. Maintained incrementally on
+    /// add/update (which can only grow it); `bounds_dirty` forces an O(N)
+    /// recompute on the next read after a removal or bulk change.
+    bounds_cache: Option<[f64; 4]>,
+    bounds_dirty: bool,
 }
 
 /// One undo/redo entry. Records the locations created and removed by a single user action.
@@ -276,6 +281,23 @@ pub(crate) struct EditEntry {
 struct MembershipDelta {
     gained: Vec<(u32, [u8; 3])>,
     lost: Vec<u32>,
+}
+
+/// Everything derived from a single O(N) pass over all alive locations. Computed
+/// once on map open; add new whole-map derivations here rather than scanning again.
+struct LocationAggregates {
+    alive: usize,
+    tag_counts: HashMap<u32, usize>,
+    bounds: Option<[f64; 4]>,
+}
+
+/// Grow a bounding box `[w,s,e,n]` to include a point, seeding from the point when
+/// the box is empty.
+fn expand_bounds(b: Option<[f64; 4]>, lat: f64, lng: f64) -> [f64; 4] {
+    match b {
+        Some([w, s, e, n]) => [w.min(lng), s.min(lat), e.max(lng), n.max(lat)],
+        None => [lng, lat, lng, lat],
+    }
 }
 
 impl Store {
@@ -316,6 +338,8 @@ impl Store {
                 undo: Vec::new(),
                 redo: Vec::new(),
             },
+            bounds_cache: None,
+            bounds_dirty: true,
         }
     }
 
@@ -342,6 +366,7 @@ impl Store {
     /// source of truth; the render delta and selection sync are two projections of it.
     pub(crate) fn finish_mutation(&mut self, changes: ChangeSet) -> MutationResult {
         self.bump();
+        self.update_bounds(&changes);
 
         let has_selections = !self.selections.all.is_empty();
         let full_resolve = has_selections &&
@@ -830,29 +855,66 @@ impl Store {
 
     fn compute_bounds(&self, scope: Option<&RoaringBitmap>) -> Option<[f64; 4]> {
         let view = self.loc_view();
-        let (mut w, mut s, mut e, mut n) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-        let mut count = 0usize;
+        let mut b: Option<[f64; 4]> = None;
         view.for_each(|row| {
             if let Some(ids) = scope { if !ids.contains(row.id()) { return; } }
-            let (lat, lng) = (row.lat(), row.lng());
-            if lng < w { w = lng; }
-            if lat < s { s = lat; }
-            if lng > e { e = lng; }
-            if lat > n { n = lat; }
-            count += 1;
+            b = Some(expand_bounds(b, row.lat(), row.lng()));
         });
-        if count == 0 { None } else { Some([w, s, e, n]) }
+        b
     }
 
-    fn count_tags(&self) -> (usize, HashMap<u32, usize>) {
+    /// Unscoped bounding box, cached. Recomputes O(N) only when dirty (after a
+    /// removal or bulk change); otherwise O(1). The scoring UI refreshes this on
+    /// every edit, so it must not scan the whole map per mutation.
+    fn cached_bounds(&mut self) -> Option<[f64; 4]> {
+        if self.bounds_dirty {
+            self.bounds_cache = self.compute_bounds(None);
+            self.bounds_dirty = false;
+        }
+        self.bounds_cache
+    }
+
+    /// Keep the cached bounds current for one mutation. Added / updated-new
+    /// positions can only grow the box (O(changed)). A removal — or an update
+    /// whose OLD position sat on an edge — can shrink it, which needs the next
+    /// extreme point, so we just mark dirty and recompute lazily on next read.
+    /// `removed` carries ids only (no coords), so any removal is conservative.
+    fn update_bounds(&mut self, changes: &ChangeSet) {
+        if self.bounds_dirty { return; }
+        if changes.full_reset || !changes.removed.is_empty() {
+            self.bounds_dirty = true;
+            return;
+        }
+        if let Some([w, s, e, n]) = self.bounds_cache {
+            if changes.updated.iter().any(|(old, _)|
+                old.lng == w || old.lat == s || old.lng == e || old.lat == n)
+            {
+                self.bounds_dirty = true;
+                return;
+            }
+        }
+        for (lat, lng) in changes.added.iter().map(|l| (l.lat, l.lng))
+            .chain(changes.updated.iter().map(|(_, nw)| (nw.lat, nw.lng)))
+        {
+            self.bounds_cache = Some(expand_bounds(self.bounds_cache, lat, lng));
+        }
+    }
+
+    /// Single O(N) pass over all alive locations deriving every open-time
+    /// aggregate: alive count, tag counts, and the bounding box. Seeding the
+    /// bbox here means the first `store_bounds` after open is an O(1) cache hit
+    /// instead of a second full scan.
+    fn scan_locations(&self) -> LocationAggregates {
         let view = self.loc_view();
-        let mut counts: HashMap<u32, usize> = HashMap::new();
+        let mut tag_counts: HashMap<u32, usize> = HashMap::new();
         let mut alive = 0usize;
+        let mut bounds: Option<[f64; 4]> = None;
         view.for_each(|row| {
             alive += 1;
-            row.for_each_tag(|tid| { *counts.entry(tid).or_default() += 1; });
+            bounds = Some(expand_bounds(bounds, row.lat(), row.lng()));
+            row.for_each_tag(|tid| { *tag_counts.entry(tid).or_default() += 1; });
         });
-        (alive, counts)
+        LocationAggregates { alive, tag_counts, bounds }
     }
 
     /// Read a single location from the committed base batch by id (ignores the
@@ -1367,8 +1429,10 @@ pub async fn store_open_map(
     }
     store.next_id = seed_next_id(max_id, &store.overlay.adds, &undo, &redo);
 
-    let (alive, tag_counts) = store.count_tags();
+    let LocationAggregates { alive, tag_counts, bounds } = store.scan_locations();
     store.alive_count = alive;
+    store.bounds_cache = bounds;
+    store.bounds_dirty = false;
     {
         let conn = storage::open_db()?;
         conn.execute("UPDATE maps SET location_count = ?1 WHERE id = ?2",
@@ -2696,10 +2760,15 @@ pub fn store_reorder_tags(
 /// When `selected_only` is true, restricts to the current selection.
 #[tauri::command]
 #[specta::specta]
-pub fn store_bounds(webview: tauri::Webview, state: tauri::State<'_, StoreState>, selected_only: bool) -> AppResult<Option<[f64; 4]>> {
+pub async fn store_bounds(webview: tauri::Webview, state: tauri::State<'_, StoreState>, selected_only: bool) -> AppResult<Option<[f64; 4]>> {
     with_store!(webview, state, |store| {
-        let scope = if selected_only { Some(&store.selections.ids) } else { None };
-        Ok(store.compute_bounds(scope))
+        // Selection-scoped bounds change with the selection, so they stay O(N)
+        // (zoom-to-selection hotkey, infrequent). The unscoped box is cached.
+        if selected_only {
+            Ok(store.compute_bounds(Some(&store.selections.ids)))
+        } else {
+            Ok(store.cached_bounds())
+        }
     })
 }
 

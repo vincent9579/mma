@@ -87,7 +87,7 @@ async function createLocationStore(): Promise<LocationStore> {
 }
 
 const mma = {
-	ready: false as boolean,
+	ready: false,
 
 	// --- Store ---
 	...store,

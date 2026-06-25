@@ -156,7 +156,7 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 				if (map.meta.locationCount > 0) {
 					cmd.storeBounds(false).then((bounds) => {
 						if (cancelled || !gMapRef.current || !bounds) return;
-						const [west, south, east, north] = bounds as [number, number, number, number];
+						const [west, south, east, north] = bounds;
 						const gm = gMapRef.current!;
 						gm.fitBounds({ west, south, east, north });
 						google.maps.event.addListenerOnce(gm, "bounds_changed", () => {
@@ -296,7 +296,7 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 		cmd.storeBounds(false).then((bounds) => {
 			const gm = gMapRef.current;
 			if (!gm || !bounds || !google?.maps) return;
-			const [west, south, east, north] = bounds as [number, number, number, number];
+			const [west, south, east, north] = bounds;
 			gm.fitBounds({ west, south, east, north });
 			google.maps.event.addListenerOnce(gm, "bounds_changed", () => {
 				gm.moveCamera({ center: gm.getCenter()!, zoom: gm.getZoom()! });
@@ -308,7 +308,7 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 		cmd.storeBounds(true).then((bounds) => {
 			const gm = gMapRef.current;
 			if (!gm || !bounds || !google?.maps) return;
-			const [west, south, east, north] = bounds as [number, number, number, number];
+			const [west, south, east, north] = bounds;
 			gm.fitBounds({ west, south, east, north });
 			google.maps.event.addListenerOnce(gm, "bounds_changed", () => {
 				gm.moveCamera({ center: gm.getCenter()!, zoom: gm.getZoom()! });

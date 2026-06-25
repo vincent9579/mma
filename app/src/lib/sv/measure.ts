@@ -258,5 +258,5 @@ export function useScoreMaxError(): number {
 	}, [isAuto, refresh]);
 
 	if (isAuto) return resolveScoreMaxErrorFromBounds("auto", autoBbox);
-	return resolveScoreMaxErrorFromBounds(bounds as [number, number, number, number], null);
+	return resolveScoreMaxErrorFromBounds(bounds, null);
 }
