@@ -1,3 +1,15 @@
+## v0.6.5 — 2026-06-24
+- Coverage dates enrichment field with array type filtering
+- Faster imports
+- Tooltips migrated to Radix
+- Map generator shows a summary of active settings
+- Improved description search layout in map generator
+- Long tag names truncate by width
+- Fixed keyboard shortcuts not working while a slider has focus
+- Fixed folder renames not working for empty folders
+- Fixed tag autocomplete scrollbar showing incorrectly
+- Fixed release notes text justification
+
 ## v0.6.4 — 2026-06-23
 - Bound panorama dots to evict, preventing performance degradation over time
 - Add icons to remaining selection commands
