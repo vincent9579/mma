@@ -112,8 +112,14 @@ pub(crate) fn run_migrations() -> AppResult<()> {
         if *version == 16 { wiped_blobs = true; }
     }
 
-    // The delta-chain migration (v16) retires the geohash blob store. Reclaim its disk
-    // once, when v16 first applies.
+    // auto_vacuum must be set before the DB has data, or toggled with a one-time VACUUM.
+    let auto_vacuum: i32 = conn.pragma_query_value(None, "auto_vacuum", |r| r.get(0))?;
+    if auto_vacuum != 1 {
+        log::info!("[migrations] enabling auto_vacuum");
+        conn.pragma_update(None, "auto_vacuum", 1)?;
+        conn.execute_batch("VACUUM")?;
+    }
+
     if wiped_blobs {
         let blobs = arrow_dir()?.join("blobs");
         if blobs.exists() {
