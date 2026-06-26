@@ -1,7 +1,7 @@
 import type { Layer } from "@deck.gl/core";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import SDFMarkerLayer from "@/lib/render/sdf-marker-layer/SDFMarkerLayer";
-import type { MarkerStyle } from "@/components/editor/map/mapSettingsTypes";
+import type { MarkerStyle } from "@/types";
 import type { CellManager } from "@/lib/render/CellManager";
 
 export type MarkerBuf = { positions: Float32Array; colors: Uint8Array; angles: Float32Array };

@@ -13,7 +13,7 @@ import {
 	type SvCoverageType,
 	type SvThickness,
 	type MarkerStyle,
-} from "./mapSettingsTypes";
+} from "@/types";
 import { useMapSetting } from "./useMapSetting";
 import { ScoreBoundsEditor } from "./ScoreBoundsEditor";
 

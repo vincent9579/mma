@@ -20,7 +20,7 @@ import type {
 	MapTypeKey,
 	SvCoverageType,
 	SvThickness,
-} from "@/components/editor/map/mapSettingsTypes";
+} from "@/types";
 import type { MapEmbedPrefs } from "@/components/editor/map/mapEmbedPrefs";
 
 export interface MapStackOpts {

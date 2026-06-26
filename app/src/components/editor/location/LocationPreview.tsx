@@ -73,8 +73,7 @@ import {
 	getViewportLockSnapshot,
 } from "@/lib/sv/viewportLock";
 import { resetTrail, pushTrail, clearTrail } from "@/lib/sv/svTrail";
-import { singletonPano, singletonDiv, getPanorama, applyResolved } from "./panoSingleton";
-export { loadSeenPano } from "./panoSingleton";
+import { singletonPano, singletonDiv, getPanorama, applyResolved } from "@/lib/sv/panoSingleton";
 import { PanoDatePicker } from "./PanoDatePicker";
 import { usePanoNavigation } from "./usePanoNavigation";
 import { useLocationHotkeys } from "./useLocationHotkeys";

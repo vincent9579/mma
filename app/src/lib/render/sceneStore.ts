@@ -13,7 +13,7 @@ import {
 	setSelectedLocationIds,
 	subscribeStore,
 } from "@/store/useMapStore";
-import type { MarkerStyle } from "@/components/editor/map/mapSettingsTypes";
+import type { MarkerStyle } from "@/types";
 
 // Owns marker/scene data for every map surface. The editor map drives the
 // engine (fetch + lifecycle); both it and the minimap render from the same `CellManager`.

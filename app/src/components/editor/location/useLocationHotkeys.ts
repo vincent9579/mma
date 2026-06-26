@@ -27,7 +27,7 @@ import { cmd } from "@/lib/commands";
 import { log } from "@/lib/util/log";
 import { toggleViewportLock } from "@/lib/sv/viewportLock";
 import { sendHideCar } from "./PanoControls";
-import { singletonPano, getPanorama, clearSingletonPano } from "./panoSingleton";
+import { singletonPano, getPanorama, clearSingletonPano } from "@/lib/sv/panoSingleton";
 import { google } from "@/lib/sv/opensv";
 
 interface LocationHotkeyDeps {

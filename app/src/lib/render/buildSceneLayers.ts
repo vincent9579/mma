@@ -4,7 +4,7 @@ import SDFMarkerLayer from "@/lib/render/sdf-marker-layer/SDFMarkerLayer";
 import { baseMarkerLayers, buildMarkerLayer } from "@/lib/render/markerLayer";
 import PanoCoverageLayer from "@/lib/render/PanoCoverageLayer";
 import type { CellManager } from "@/lib/render/CellManager";
-import type { MarkerStyle } from "@/components/editor/map/mapSettingsTypes";
+import type { MarkerStyle } from "@/types";
 import type { LatLng } from "@/types";
 import { isImportPreview } from "@/types";
 import type { Location, SeenEntry } from "@/bindings.gen";

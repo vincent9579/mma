@@ -261,7 +261,6 @@ type Location$1 = {
 	lng: number;
 	heading: number;
 	pitch: number;
-	/**  Street View zoom level (0-5), not map zoom. */
 	zoom: number;
 	panoId: string | null;
 	/**  See [`LocationFlags`]. */

@@ -4,7 +4,7 @@ import { clamp } from "@/types/util";
 import { parseHotkey, matchesKey, isEditableElement } from "@/lib/hooks/useHotkey";
 import { getBinding } from "@/lib/util/hotkeys";
 import { useLatestRef } from "@/lib/hooks/useLatestRef";
-import { singletonPano } from "./panoSingleton";
+import { singletonPano } from "@/lib/sv/panoSingleton";
 import type { AppSettings } from "@/store/settings";
 
 export function usePanoNavigation(appSettings: AppSettings) {

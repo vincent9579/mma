@@ -4,7 +4,7 @@ import type {
 	SvCoverageType,
 	SvThickness,
 	MarkerStyle,
-} from "@/components/editor/map/mapSettingsTypes";
+} from "@/types";
 
 export interface MapEmbedPrefs {
 	svOpacity: number;
