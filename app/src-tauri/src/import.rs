@@ -454,6 +454,10 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
         zoom: f64,
         #[serde(borrow, rename = "panoId", alias = "pano", alias = "pano_id")]
         pano_id: Option<Cow<'a, str>>,
+        #[serde(rename = "countryCode")]
+        country_code: Option<Value>,
+        #[serde(rename = "stateCode")]
+        state_code: Option<Value>,
         extra: Option<serde_json::Map<String, Value>>,
     }
 
@@ -484,6 +488,8 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
             let has_top_pano = raw.pano_id.is_some();
             let top_pano = raw.pano_id.map(|c| c.into_owned());
             let mut extra_map = raw.extra.unwrap_or_default();
+            if let Some(v) = raw.country_code { extra_map.entry("countryCode").or_insert(v); }
+            if let Some(v) = raw.state_code { extra_map.entry("stateCode").or_insert(v); }
 
             let mut tags: Vec<u32> = Vec::new();
             if let Some(Value::Array(arr)) = extra_map.remove("tags") {
