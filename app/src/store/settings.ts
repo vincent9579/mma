@@ -121,6 +121,7 @@ const DEFAULTS = {
 		"deselectAll",
 		"selection-delete-locations",
 		"review-selected",
+		"review-sessions",
 		"---",
 		"select-unpanned",
 		"select-untagged",

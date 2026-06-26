@@ -27,10 +27,7 @@ import { MergeDuplicatesModal } from "@/components/dialogs/MergeDuplicatesModal"
 import { ReviewSessionsModal } from "@/components/dialogs/ReviewSessions";
 import { beginReview } from "@/lib/review/review";
 import { ToolBlock } from "@/components/primitives/ToolBlock";
-import { Icon } from "@/components/primitives/Icon";
-import { mdiBookOpenOutline } from "@mdi/js";
 import { PluginToolbar } from "@/plugins/PluginPanels";
-import { Tooltip } from "@/components/primitives/Tooltip";
 import { fmt } from "@/lib/util/format";
 import { useDomEvent } from "@/lib/hooks/useDomEvent";
 import { SelectionRow } from "./SelectionRow";
@@ -134,6 +131,7 @@ export function MapOverview({ hidden }: { hidden?: boolean }) {
 	useDomEvent("open-merge-duplicates", () => setShowMergeDuplicates(true));
 	useDomEvent("open-save-selections", () => setShowSaveSelections(true));
 	useDomEvent("open-apply-saved-selection", () => setShowApplySaved(true));
+	useDomEvent("open-review-sessions", () => setShowReviews(true));
 
 	useEffect(() => {
 		const handler = () => {
@@ -188,17 +186,6 @@ export function MapOverview({ hidden }: { hidden?: boolean }) {
 						</span>
 						<span className="selection-manager__space" />
 						<PluginToolbar />
-						<Tooltip content="Review sessions" side="bottom">
-							<button
-								className="icon-button"
-								type="button"
-								aria-label="Review sessions"
-								data-qa="open-reviews"
-								onClick={() => setShowReviews(true)}
-							>
-								<Icon path={mdiBookOpenOutline} />
-							</button>
-						</Tooltip>
 						<button
 							className="button"
 							onClick={() => document.dispatchEvent(new CustomEvent("open-command-palette"))}
