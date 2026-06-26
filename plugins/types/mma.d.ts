@@ -1582,6 +1582,12 @@ declare const COMMANDS: {
 		enabled: () => boolean;
 		execute: () => boolean;
 	};
+	"review-sessions": {
+		label: string;
+		icon: string;
+		group: "Selections";
+		execute: () => boolean;
+	};
 	"select-random": {
 		label: string;
 		icon: string;
