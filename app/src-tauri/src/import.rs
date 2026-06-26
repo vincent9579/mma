@@ -803,55 +803,51 @@ pub struct EditorImportPreview {
 }
 
 /// Write interleaved LE f32 `[lng, lat]` for every location to a temp file.
-fn write_preview_positions(locs: &[Location]) -> AppResult<String> {
-    let mut buf: Vec<u8> = Vec::with_capacity(locs.len() * 8);
-    for l in locs {
-        buf.extend_from_slice(&(l.lng as f32).to_le_bytes());
-        buf.extend_from_slice(&(l.lat as f32).to_le_bytes());
-    }
-    let path = std::env::temp_dir().join("mma_import_preview.bin");
-    std::fs::write(&path, &buf)?;
-    Ok(path.to_string_lossy().into_owned())
-}
-
 /// Build preview stats from a parsed map and cache the parse for commit.
+/// Single pass: field counts, positions buffer, and bounds are computed together.
 fn build_preview(parsed: ParsedMap) -> AppResult<EditorImportPreview> {
-    // Count without per-location String allocation: fixed counters for the core
-    // fields, and a map for extra.* keyed by the raw key (cloned at most once per
-    // distinct key, not once per location).
-    let (mut heading, mut pitch, mut zoom, mut pano, mut tags) = (0u32, 0u32, 0u32, 0u32, 0u32);
+    let n = parsed.locations.len();
+    let (mut h, mut p, mut z, mut pano_c, mut tag_c) = (0u32, 0u32, 0u32, 0u32, 0u32);
     let mut extra_counts: HashMap<&str, u32> = HashMap::new();
+    let mut pos_buf: Vec<u8> = Vec::with_capacity(n * 8);
+    let (mut west, mut south, mut east, mut north) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+
     for loc in &parsed.locations {
-        if loc.heading != 0.0 { heading += 1; }
-        if loc.pitch != 0.0 { pitch += 1; }
-        if loc.zoom != 0.0 { zoom += 1; }
-        if loc.pano_id.is_some() { pano += 1; }
-        if !loc.tags.is_empty() { tags += 1; }
+        if loc.heading != 0.0 { h += 1; }
+        if loc.pitch != 0.0 { p += 1; }
+        if loc.zoom != 0.0 { z += 1; }
+        if loc.pano_id.is_some() { pano_c += 1; }
+        if !loc.tags.is_empty() { tag_c += 1; }
         if let Some(extra) = &loc.extra {
-            for k in extra.keys() {
-                *extra_counts.entry(k.as_str()).or_default() += 1;
-            }
+            for k in extra.keys() { *extra_counts.entry(k.as_str()).or_default() += 1; }
         }
+        pos_buf.extend_from_slice(&(loc.lng as f32).to_le_bytes());
+        pos_buf.extend_from_slice(&(loc.lat as f32).to_le_bytes());
+        if loc.lng < west { west = loc.lng; }
+        if loc.lat < south { south = loc.lat; }
+        if loc.lng > east { east = loc.lng; }
+        if loc.lat > north { north = loc.lat; }
     }
 
     let mut fields: Vec<FieldCount> = Vec::with_capacity(5 + extra_counts.len());
-    for (key, count) in [("heading", heading), ("pitch", pitch), ("zoom", zoom), ("panoId", pano), ("tags", tags)] {
+    for (key, count) in [("heading", h), ("pitch", p), ("zoom", z), ("panoId", pano_c), ("tags", tag_c)] {
         if count > 0 { fields.push(FieldCount { key: key.into(), count }); }
     }
     for (key, count) in extra_counts {
         fields.push(FieldCount { key: format!("extra.{key}"), count });
     }
 
-    let preview_positions_path = write_preview_positions(&parsed.locations)?;
+    let path = std::env::temp_dir().join("mma_import_preview.bin");
+    std::fs::write(&path, &pos_buf)?;
 
     let preview = EditorImportPreview {
-        location_count: parsed.locations.len() as u32,
+        location_count: n as u32,
         tags: parsed.tags.clone(),
         fields,
         warnings: parsed.warnings.clone(),
-        preview_positions_path,
-        bounds: crate::util::compute_bounds(parsed.locations.iter().map(|l| (l.lat, l.lng))),
-        will_auto_commit: parsed.locations.len() > IMPORT_AUTOCOMMIT_THRESHOLD,
+        preview_positions_path: path.to_string_lossy().into_owned(),
+        bounds: if n == 0 { None } else { Some([west, south, east, north]) },
+        will_auto_commit: n > IMPORT_AUTOCOMMIT_THRESHOLD,
     };
 
     *EDITOR_IMPORT_CACHE.lock().unwrap() = Some(parsed);
