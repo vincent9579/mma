@@ -2,7 +2,7 @@
 //!
 //! Two import paths: **bulk import** creates new maps from files, and **editor
 //! import** merges locations into the currently open map. JSON parsing uses
-//! simd_json with parallel object deserialization via rayon. A two-phase
+//! serde_json with parallel object deserialization via rayon. A two-phase
 //! preview/confirm flow lets the user inspect data before committing.
 
 use crate::types::AppResult;
@@ -352,7 +352,7 @@ fn find_object_boundaries(bytes: &[u8]) -> (Vec<(usize, usize)>, usize) {
 ///    then locate the coordinate array (`customCoordinates` or `locations`).
 /// 2. **Boundary detection** -- single-pass scanner finds each `{...}` object
 ///    boundary inside the coordinate array.
-/// 3. **Parallel parse** -- rayon hands each object slice to simd_json for
+/// 3. **Parallel parse** -- rayon hands each object slice to serde_json for
 ///    deserialization. Non-coordinate fields are collected into `extra`.
 ///
 /// Tag names from `extra.tags` arrays are collected and deduplicated; tag

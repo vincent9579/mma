@@ -19,7 +19,6 @@ tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
 serde_json = { version = "1.0", features = ["preserve_order"] }
-simd-json = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.0", features = [] }
