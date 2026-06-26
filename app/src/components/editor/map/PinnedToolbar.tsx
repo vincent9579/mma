@@ -1,8 +1,9 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { useAllSelections, useSelectedLocationIds } from "@/store/useMapStore";
 import { useSetting } from "@/store/settings";
 import { getCommand, movePinnedCommand, removePinnedAt, insertSeparator, reorderPinned } from "@/store/commands";
 import { Icon } from "@/components/primitives/Icon";
+import { useDomEvent } from "@/lib/hooks/useDomEvent";
 import { Tooltip } from "@/components/primitives/Tooltip";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 
@@ -18,18 +19,15 @@ export function PinnedToolbar({ right, panels }: { right?: ReactNode; panels: Re
 	useAllSelections();
 	useSelectedLocationIds();
 
-	useEffect(() => {
-		const handler = (e: Event) => {
-			const id = (e as CustomEvent).detail as string;
-			if (panels[id]) setOpenPanels((prev) => {
-				const next = new Set(prev);
-				if (next.has(id)) next.delete(id); else next.add(id);
-				return next;
-			});
-		};
-		document.addEventListener("open-inline-panel", handler);
-		return () => document.removeEventListener("open-inline-panel", handler);
+	const handleInlinePanel = useCallback((e: Event) => {
+		const id = (e as CustomEvent).detail as string;
+		if (panels[id]) setOpenPanels((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id); else next.add(id);
+			return next;
+		});
 	}, [panels]);
+	useDomEvent("open-inline-panel", handleInlinePanel);
 
 	// eslint-disable-next-line react-hooks/exhaustive-deps -- enabled() reads arbitrary external state; no dep list covers it
 	useEffect(() => {
