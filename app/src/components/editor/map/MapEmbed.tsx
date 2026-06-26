@@ -321,8 +321,7 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 	return (
 		<ContextMenu.Root modal={false}>
 			<div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
-			{showFps && <FpsCounter />}
-			<div className="embed-controls">
+				<div className="embed-controls">
 				{/* TopLeft: Map dropdown, Search */}
 				<div
 					className="embed-controls__control"
@@ -461,6 +460,7 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 				<div className="embed-controls__control" style={{ bottom: 0, left: 0 }}>
 					<div className="map-control coordinate-control">
 						<span ref={coordDisplayRef} /> · zoom {mapZoom}
+						{showFps && <><span style={{ margin: "0 4px" }}>·</span><FpsCounter /></>}
 					</div>
 				</div>
 			</div>

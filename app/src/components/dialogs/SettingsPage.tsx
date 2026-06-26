@@ -417,7 +417,6 @@ function ViewerControlsSection() {
 		{ key: "showMapLinks", label: "Map links (open in maps, copy link)" },
 		{ key: "showCoordinateDisplay", label: "Coordinate / zoom display" },
 		{ key: "showPanoMetadata", label: "Show pano metadata" },
-		{ key: "showFps", label: "Show FPS counter" },
 	];
 
 	return (
@@ -1038,10 +1037,24 @@ function UpdateSection() {
 
 function AdvancedTab() {
 	const [showDbManager, setShowDbManager] = useState(false);
+	const showFps = useSetting("showFps");
 	return (
 		<>
 			<MapListSection />
 			<SeenSection />
+			<fieldset className="fieldset">
+				<legend className="fieldset__header">
+					Debug <span className="fieldset__divider" />
+				</legend>
+				<label className="settings-popup__item">
+					<input
+						type="checkbox"
+						checked={showFps}
+						onChange={(e) => setSetting("showFps", e.target.checked)}
+					/>
+					Show FPS counter
+				</label>
+			</fieldset>
 			<CustomCssSection />
 			<UpdateSection />
 			<fieldset className="fieldset">
