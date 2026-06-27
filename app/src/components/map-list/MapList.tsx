@@ -12,7 +12,7 @@ import {
 } from "@/store/useMapStore";
 import { openMapWindow } from "@/lib/window";
 import { openManual } from "@/store/router";
-import { log } from "@/lib/util/log";
+import { log, fireAndForget } from "@/lib/util/log";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { cmd } from "@/lib/commands";
 import { mmaBufUrl } from "@/lib/util/util";
@@ -914,6 +914,7 @@ export function BulkActions() {
 					preview={preview}
 					onConfirm={handleConfirm}
 					onClose={() => {
+						fireAndForget(cmd.bulkImportCancel(), "bulkImportCancel");
 						setPreview(null);
 						importEntriesRef.current = null;
 					}}

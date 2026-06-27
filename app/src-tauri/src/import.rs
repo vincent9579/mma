@@ -765,6 +765,15 @@ pub async fn bulk_import_confirm(
     }).await?
 }
 
+/// Drop the cached parse from `bulk_import_preview` when the user dismisses the
+/// import dialog without confirming, instead of holding it until the next preview.
+#[tauri::command]
+#[specta::specta]
+pub async fn bulk_import_cancel() -> AppResult<()> {
+    *CACHED_PARSE.lock().unwrap() = None;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Single-file import into open map (editor import)
 // ---------------------------------------------------------------------------

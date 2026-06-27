@@ -247,6 +247,11 @@ export const commands = {
 	 */
 	bulkImportConfirm: (path: string, selectedIndices: number[]) => typedError<ImportedMapInfo[], string>(__TAURI_INVOKE("bulk_import_confirm", { path, selectedIndices })),
 	/**
+	 *  Drop the cached parse from `bulk_import_preview` when the user dismisses the
+	 *  import dialog without confirming, instead of holding it until the next preview.
+	 */
+	bulkImportCancel: () => typedError<null, string>(__TAURI_INVOKE("bulk_import_cancel")),
+	/**
 	 *  Parse a file and return field-level statistics + preview positions for the editor
 	 *  import sidebar. Caches the parse result for `store_import_file` to consume on commit.
 	 */

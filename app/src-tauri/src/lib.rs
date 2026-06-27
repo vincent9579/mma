@@ -430,6 +430,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             // --- Import / export ---
             import::bulk_import_preview,
             import::bulk_import_confirm,
+            import::bulk_import_cancel,
             import::store_import_preview,
             import::store_import_paste_preview,
             import::store_import_staged_location,
