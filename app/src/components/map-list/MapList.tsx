@@ -617,6 +617,8 @@ interface ImportEntry {
 	tagCount: number;
 	isDuplicate: boolean;
 	selected: boolean;
+	srcPath: string;
+	localIndex: number;
 }
 
 interface ImportPreview {
@@ -729,7 +731,7 @@ export function BulkActions() {
 	const [importing, setImporting] = useState(false);
 	const [parseStatus, setParseStatus] = useState<string | null>(null);
 	const [preview, setPreview] = useState<ImportPreview | null>(null);
-	const importPathRef = useRef<string | null>(null);
+	const importEntriesRef = useRef<ImportEntry[] | null>(null);
 
 	const handleExport = useCallback(async () => {
 		setExporting(true);
@@ -758,36 +760,45 @@ export function BulkActions() {
 	}, []);
 
 	const handleImport = useCallback(async () => {
-		const path = await openDialog({
-			multiple: false,
+		const selection = await openDialog({
+			multiple: true,
 			filters: [{ name: "Map data", extensions: ["json", "zip"] }],
 		});
-		if (!path) return;
+		if (!selection) return;
+		const paths = Array.isArray(selection) ? selection : [selection];
 
-		setParseStatus("Scanning file...");
+		setParseStatus(paths.length > 1 ? "Scanning files..." : "Scanning file...");
 		try {
-			const entries = await cmd.bulkImportPreview(path);
-			if (entries.length === 0) {
+			const aggregated: ImportEntry[] = [];
+			const warnings: string[] = [];
+			for (const path of paths) {
+				const entries = await cmd.bulkImportPreview(path);
+				entries.forEach((e, localIndex) => {
+					const isDuplicate = maps.some(
+						(existing) => existing.name === e.name && existing.locationCount === e.locationCount,
+					);
+					aggregated.push({
+						name: e.name,
+						folder: e.folder,
+						locationCount: e.locationCount,
+						tagCount: e.tagCount,
+						isDuplicate,
+						selected: !isDuplicate,
+						srcPath: path,
+						localIndex,
+					});
+					warnings.push(...e.warnings);
+				});
+			}
+
+			if (aggregated.length === 0) {
 				log.warn("[bulk import] no maps found");
 				setParseStatus(null);
 				return;
 			}
 
-			importPathRef.current = path;
-			const importEntries: ImportEntry[] = entries.map((e) => {
-				const isDuplicate = maps.some(
-					(existing) => existing.name === e.name && existing.locationCount === e.locationCount,
-				);
-				return {
-					name: e.name,
-					folder: e.folder,
-					locationCount: e.locationCount,
-					tagCount: e.tagCount,
-					isDuplicate,
-					selected: !isDuplicate,
-				};
-			});
-			setPreview({ entries: importEntries, warnings: entries.flatMap((e) => e.warnings) });
+			importEntriesRef.current = aggregated;
+			setPreview({ entries: aggregated, warnings });
 		} catch (e) {
 			log.error("[bulk import] preview failed:", e);
 		} finally {
@@ -796,26 +807,49 @@ export function BulkActions() {
 	}, [maps]);
 
 	const handleConfirm = useCallback(async (indices: number[]) => {
-		const path = importPathRef.current;
-		if (!path) return;
+		const all = importEntriesRef.current;
+		if (!all) return;
+
+		// Map each selected aggregated index back to its source file + that file's local index.
+		const byPath = new Map<string, number[]>();
+		for (const i of indices) {
+			const entry = all[i];
+			if (!entry) continue;
+			const arr = byPath.get(entry.srcPath) ?? [];
+			arr.push(entry.localIndex);
+			byPath.set(entry.srcPath, arr);
+		}
+		if (byPath.size === 0) return;
+
 		setImporting(true);
 		setPreview(null);
+		const total = indices.length;
+		let base = 0; // maps confirmed in prior files, for global progress across the per-file loop
 		const progress = progressToast("Importing maps...");
 		const unlisten = await listen<{ current: number; total: number; mapName: string }>(
 			"bulk-import-progress",
-			(e) => progress.update(e.payload.current / e.payload.total, `${e.payload.current} / ${e.payload.total}`),
+			(e) => progress.update((base + e.payload.current) / total, `${base + e.payload.current} / ${total}`),
 		);
+		let failed = 0;
 		try {
-			await cmd.bulkImportConfirm(path, indices);
+			for (const [path, localIndices] of byPath) {
+				try {
+					await cmd.bulkImportConfirm(path, localIndices);
+				} catch (e) {
+					failed += localIndices.length;
+					log.error("[bulk import] confirm failed for", path, e);
+				}
+				base += localIndices.length;
+			}
 			await invalidateMapList();
-			progress.finish("Import complete");
+			progress.finish(failed ? `Imported ${total - failed}, ${failed} failed` : "Import complete");
 		} catch (e) {
 			log.error("[bulk import] confirm failed:", e);
 			progress.finish();
 		} finally {
 			unlisten();
 			setImporting(false);
-			importPathRef.current = null;
+			importEntriesRef.current = null;
 		}
 	}, []);
 
@@ -843,7 +877,7 @@ export function BulkActions() {
 					onConfirm={handleConfirm}
 					onClose={() => {
 						setPreview(null);
-						importPathRef.current = null;
+						importEntriesRef.current = null;
 					}}
 				/>
 			)}
