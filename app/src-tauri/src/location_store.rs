@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use roaring::RoaringBitmap;
 
-use arrow::array::RecordBatch;
-use arrow::datatypes::SchemaRef;
+use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 use rayon::prelude::*;
 
 use crate::arrow_bridge;
@@ -1127,11 +1127,11 @@ impl Store {
                 .map(|i| i as u32)
                 .collect();
             if keep.len() < batch.num_rows() {
-                let take_idx = arrow::array::UInt32Array::from(keep);
+                let take_idx = arrow_array::UInt32Array::from(keep);
                 batch = RecordBatch::try_new(
                     batch.schema(),
                     batch.columns().iter().map(|col| {
-                        arrow::compute::take(col.as_ref(), &take_idx, None).unwrap()
+                        arrow_select::take::take(col.as_ref(), &take_idx, None).unwrap()
                     }).collect(),
                 ).unwrap();
             }
@@ -1146,7 +1146,7 @@ impl Store {
         if !self.overlay.adds.is_empty() {
             let add_batch = arrow_bridge::locations_to_batch(&self.overlay.adds);
             let s = schema();
-            batch = arrow::compute::concat_batches(&s, &[batch, add_batch])
+            batch = arrow_select::concat::concat_batches(&s, &[batch, add_batch])
                 .expect("concat failed");
         }
 
@@ -1441,11 +1441,11 @@ pub async fn store_open_map(
                 (batch, mmap_handle)
             } else {
                 log::info!("[store_open] migrating unsorted Arrow file to sorted ID order");
-                let sort_idx = arrow::compute::sort_to_indices(ids, None, None)?;
+                let sort_idx = arrow_ord::sort::sort_to_indices(ids, None, None)?;
                 let sorted_batch = RecordBatch::try_new(
                     batch.schema(),
                     batch.columns().iter().map(|col| {
-                        arrow::compute::take(col.as_ref(), &sort_idx, None).unwrap()
+                        arrow_select::take::take(col.as_ref(), &sort_idx, None).unwrap()
                     }).collect(),
                 ).unwrap();
                 drop(batch);

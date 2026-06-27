@@ -136,7 +136,7 @@ impl_app_error_from!(
     std::io::Error,
     rusqlite::Error,
     serde_json::Error,
-    arrow::error::ArrowError,
+    arrow_schema::ArrowError,
     rmp_serde::encode::Error,
     rmp_serde::decode::Error,
     tauri::Error,

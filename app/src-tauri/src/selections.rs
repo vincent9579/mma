@@ -8,7 +8,7 @@
 //! to color the selection overlay.
 
 use std::collections::{HashMap, HashSet};
-use arrow::array::{RecordBatch, StringArray, Float64Array, UInt32Array, ListArray, Array};
+use arrow_array::{RecordBatch, StringArray, Float64Array, UInt32Array, ListArray, Array};
 use roaring::RoaringBitmap;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
