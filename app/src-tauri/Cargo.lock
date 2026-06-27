@@ -2667,6 +2667,7 @@ dependencies = [
  "rayon",
  "reqwest",
  "reverse_geocoder",
+ "rkyv",
  "rmp-serde",
  "roaring",
  "rusqlite",
