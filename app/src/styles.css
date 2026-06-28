@@ -5121,8 +5121,8 @@ body {
 	overflow: hidden;
 }
 .fullscreen-minimap.is-expanded {
-	width: var(--fs-minimap-w, 800px);
-	height: var(--fs-minimap-h, 600px);
+	width: min(var(--fs-minimap-w, 800px), calc(100vw - 16px));
+	height: min(var(--fs-minimap-h, 600px), calc(100vh - var(--fs-tray-h, 0px) - 16px));
 }
 .fullscreen-minimap__map {
 	position: absolute;
