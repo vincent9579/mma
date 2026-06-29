@@ -40,6 +40,8 @@ import {
 } from "@/store/settings";
 import { formatBinding, buildComboString } from "@/lib/hooks/useHotkey";
 import { cmd } from "@/lib/commands";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import type { DataLocation } from "@/bindings.gen";
 import { useUpdateState, checkForUpdate, installUpdate, relaunchApp } from "@/lib/util/updateCheck";
 import { ColorPicker } from "@/components/primitives/ColorPicker";
 
@@ -1081,6 +1083,76 @@ function UpdateSection() {
 	);
 }
 
+function DataFolderSection() {
+	const [loc, setLoc] = useState<DataLocation | null>(null);
+	// undefined = no dialog; string = chosen folder; null = reset to default.
+	const [pending, setPending] = useState<string | null | undefined>(undefined);
+	const [busy, setBusy] = useState(false);
+
+	useEffect(() => {
+		cmd.getDataLocation().then(setLoc).catch(() => {});
+	}, []);
+
+	const pick = useCallback(async () => {
+		const picked = await openDialog({ directory: true, title: "Choose data folder" });
+		if (typeof picked === "string") setPending(picked);
+	}, []);
+
+	const apply = useCallback(async () => {
+		setBusy(true);
+		try {
+			await cmd.setDataLocation(pending ?? null);
+			await relaunchApp();
+		} catch {
+			setBusy(false);
+		}
+	}, [pending]);
+
+	const target = pending ?? loc?.default_path ?? "";
+
+	return (
+		<fieldset className="fieldset">
+			<legend className="fieldset__header">
+				Data folder <span className="fieldset__divider" />
+			</legend>
+			<code style={{ display: "block", wordBreak: "break-all", marginBottom: 8 }}>
+				{loc?.path ?? "..."}
+			</code>
+			<div style={{ display: "flex", gap: 8 }}>
+				<button className="button" onClick={pick}>
+					Change folder...
+				</button>
+				{loc?.is_custom && (
+					<button className="button" onClick={() => setPending(null)}>
+						Reset to default
+					</button>
+				)}
+			</div>
+
+			<Dialog open={pending !== undefined} onOpenChange={(o) => !o && setPending(undefined)}>
+				<DialogContent title="Change data folder">
+					<p>Map data will be stored in:</p>
+					<code style={{ display: "block", wordBreak: "break-all", margin: "8px 0" }}>
+						{target}
+					</code>
+					<p style={{ color: "#888" }}>
+						Existing maps are not moved automatically. Copy them from the current
+						folder if you want to keep them. The app must relaunch to apply.
+					</p>
+					<div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+						<button className="button" onClick={() => setPending(undefined)} disabled={busy}>
+							Cancel
+						</button>
+						<button className="button button--primary" onClick={apply} disabled={busy}>
+							Relaunch now
+						</button>
+					</div>
+				</DialogContent>
+			</Dialog>
+		</fieldset>
+	);
+}
+
 function AdvancedTab() {
 	const [showDbManager, setShowDbManager] = useState(false);
 	const showFps = useSetting("showFps");
@@ -1116,6 +1188,7 @@ function AdvancedTab() {
 					</button>
 				</div>
 			</fieldset>
+			<DataFolderSection />
 			<DatabaseManager open={showDbManager} onOpenChange={setShowDbManager} />
 		</>
 	);

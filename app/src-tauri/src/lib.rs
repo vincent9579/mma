@@ -93,6 +93,38 @@ fn get_app_data_dir() -> AppResult<String> {
     storage::app_data_dir().map(|p| p.to_string_lossy().into_owned())
 }
 
+/// The active and default data-folder paths, plus whether a custom override is in effect.
+#[derive(serde::Serialize, specta::Type)]
+struct DataLocation {
+    /// Folder currently in use this session (default or override).
+    path: String,
+    /// OS default, ignoring any override -- used for the "reset" affordance.
+    default_path: String,
+    /// True when `path` differs from the OS default.
+    is_custom: bool,
+}
+
+/// Report where map data is currently stored.
+#[tauri::command]
+#[specta::specta]
+fn get_data_location() -> AppResult<DataLocation> {
+    let path = storage::app_data_dir()?;
+    let default_path = storage::default_data_dir()?;
+    Ok(DataLocation {
+        is_custom: path != default_path,
+        path: path.to_string_lossy().into_owned(),
+        default_path: default_path.to_string_lossy().into_owned(),
+    })
+}
+
+/// Set (`Some`) or clear (`None`) the data-folder override. Takes effect after relaunch.
+/// Does not move existing data -- the caller warns the user.
+#[tauri::command]
+#[specta::specta]
+fn set_data_location(path: Option<String>) -> AppResult<()> {
+    storage::set_data_location(path.as_deref().map(std::path::Path::new))
+}
+
 /// Open the app data directory in the OS file explorer.
 #[tauri::command]
 #[specta::specta]
@@ -375,6 +407,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             // --- Utility ---
             app_ready,
             get_app_data_dir,
+            get_data_location,
+            set_data_location,
             open_data_folder,
             list_user_plugins,
             install_plugin,
@@ -494,8 +528,8 @@ pub fn run() {
                     .unwrap(),
             }
         })
-        .register_uri_scheme_protocol("mma-plugin", |ctx, req| {
-            let plugins_dir = ctx.app_handle().path().app_data_dir()
+        .register_uri_scheme_protocol("mma-plugin", |_ctx, req| {
+            let plugins_dir = storage::app_data_dir()
                 .unwrap_or_default().join("plugins");
             let path = percent_encoding::percent_decode_str(req.uri().path())
                 .decode_utf8_lossy();

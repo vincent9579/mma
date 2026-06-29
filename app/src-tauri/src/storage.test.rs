@@ -83,6 +83,41 @@ fn sha256_hex_differs_for_different_input() {
 }
 
 // -----------------------------------------------------------------------
+// Data-folder override pointer
+// -----------------------------------------------------------------------
+
+#[test]
+fn parse_data_location_trims_and_rejects_empty() {
+    assert_eq!(parse_data_location(""), None);
+    assert_eq!(parse_data_location("   \n\t "), None);
+    assert_eq!(parse_data_location("  D:/maps  \n"), Some(std::path::PathBuf::from("D:/maps")));
+}
+
+#[test]
+fn read_data_location_override_round_trip() {
+    let cfg = std::env::temp_dir().join("mma_test_dataloc_cfg");
+    let target = std::env::temp_dir().join("mma_test_dataloc_target");
+    let _ = std::fs::remove_dir_all(&cfg);
+    let _ = std::fs::remove_dir_all(&target);
+    std::fs::create_dir_all(&cfg).unwrap();
+
+    // Absent pointer -> no override.
+    assert_eq!(read_data_location_override(&cfg), None);
+
+    // Written pointer to a valid (creatable) folder -> that folder, and it now exists.
+    std::fs::write(cfg.join(DATA_LOCATION_FILE), target.to_string_lossy().as_bytes()).unwrap();
+    assert_eq!(read_data_location_override(&cfg), Some(target.clone()));
+    assert!(target.exists());
+
+    // Empty pointer -> no override.
+    std::fs::write(cfg.join(DATA_LOCATION_FILE), b"").unwrap();
+    assert_eq!(read_data_location_override(&cfg), None);
+
+    let _ = std::fs::remove_dir_all(&cfg);
+    let _ = std::fs::remove_dir_all(&target);
+}
+
+// -----------------------------------------------------------------------
 // Arrow IPC mmap round-trip
 // -----------------------------------------------------------------------
 
