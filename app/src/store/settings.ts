@@ -120,6 +120,8 @@ const DEFAULTS = {
 	panoDotColor: { r: 255, g: 0, b: 0 },
 	panoDotScaled: false,
 	tagViewMode: "flat" as TagViewMode,
+	/** Tree view only: render each tag as the shortest path suffix that's still unique. */
+	truncateTagPaths: true,
 	tagSortMode: "default" as TagSortMode,
 	/** Gap between tag pills (px), shared by flat and tree views via `--tag-gap`. */
 	tagGap: 6 as number,

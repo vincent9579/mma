@@ -7,6 +7,8 @@ import { getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { localDateTime, utcDateTime } from "@/lib/util/format";
 import { isVariant, unionTuple, type Variant } from "@/types/util";
 import { pointInPolygon } from "@/lib/geo/geo";
+import { getSettings } from "@/store/settings";
+import { shortestUniqueSuffixes } from "@/components/editor/tags/tagTreeRange";
 
 import type { Selection, SelectionProps } from "@/bindings.gen";
 
@@ -523,8 +525,25 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 		.exhaustive();
 }
 
+let suffixCache: { tags: MapData["meta"]["tags"]; suffixes: Map<string, string> } | null = null;
+
+/** Display label for a tag NAME. In tree view with `truncateTagPaths` on, collapses the
+ *  `/`-path to its shortest unique suffix; otherwise returns the name verbatim. Memoized on
+ *  the tag-set reference (reassigned on every tag mutation) so list rendering stays O(n). */
+export function displayTagName(map: MapData, name: string): string {
+	const s = getSettings();
+	if (s.tagViewMode !== "tree" || !s.truncateTagPaths) return name;
+	const tags = map.meta.tags;
+	if (!suffixCache || suffixCache.tags !== tags) {
+		const names = Object.values(tags).map((t) => t.name);
+		suffixCache = { tags, suffixes: shortestUniqueSuffixes(names) };
+	}
+	return suffixCache.suffixes.get(name) ?? name;
+}
+
 function tagDisplayName(map: MapData, tagId: number): string {
-	return map.meta.tags[tagId]?.name ?? String(tagId);
+	const name = map.meta.tags[tagId]?.name;
+	return name == null ? String(tagId) : displayTagName(map, name);
 }
 
 function validationStateLabel(state: ValidationState): string {

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { Tag } from "@/bindings.gen";
-import { getTagCounts } from "@/store/useMapStore";
+import { getTagCounts, useCurrentMap } from "@/store/useMapStore";
 import { sortTagsByMode, tagChipStyle, appendTagName } from "@/lib/util/util";
 import { textColorFor } from "@/lib/util/color";
 import { useSetting } from "@/store/settings";
+import { displayTagName } from "@/store/selections";
 
 export function FullscreenTagBar({
 	pendingTags,
@@ -17,6 +18,10 @@ export function FullscreenTagBar({
 	const [input, setInput] = useState("");
 	const [focused, setFocused] = useState(false);
 	const tagSortMode = useSetting("tagSortMode");
+	const map = useCurrentMap();
+	useSetting("truncateTagPaths");
+	useSetting("tagViewMode");
+	const label = (name: string) => (map ? displayTagName(map, name) : name);
 
 	const handleAdd = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -57,7 +62,7 @@ export function FullscreenTagBar({
 								<path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
 							</svg>
 						</button>
-						<span className="tag__text">{name}</span>
+						<span className="tag__text">{label(name)}</span>
 					</li>
 				))}
 			</ul>
@@ -89,7 +94,7 @@ export function FullscreenTagBar({
 							}}
 							type="button"
 						>
-							<span className="tag__text">{t.name}</span>
+							<span className="tag__text">{label(t.name)}</span>
 						</button>
 					))}
 				</div>

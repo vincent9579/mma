@@ -828,6 +828,16 @@ function TagsSection() {
 				View mode
 				<SettingSelect setting="tagViewMode" options={TAG_VIEW_MODES} />
 			</label>
+			{s.tagViewMode === "tree" && (
+				<label className="settings-popup__item">
+					<input
+						type="checkbox"
+						checked={s.truncateTagPaths}
+						onChange={(e) => setSetting("truncateTagPaths", e.target.checked)}
+					/>
+					Truncate tag names to shortest unique path
+				</label>
+			)}
 			<label
 				className="settings-popup__item"
 				style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}

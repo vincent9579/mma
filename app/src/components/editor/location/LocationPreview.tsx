@@ -32,6 +32,7 @@ import {
 	getTagCounts,
 } from "@/store/useMapStore";
 import { sortTagsByMode, tagChipStyle, appendTagName } from "@/lib/util/util";
+import { displayTagName } from "@/store/selections";
 import { ReviewBar } from "@/components/editor/location/ReviewBar";
 import {
 	useReviewSession,
@@ -650,7 +651,7 @@ function LocationPreviewInner() {
 											<path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
 										</svg>
 									</button>
-									<span className="tag__text">{name}</span>
+									<span className="tag__text">{displayTagName(map, name)}</span>
 								</li>
 							))}
 							<li>
@@ -689,7 +690,7 @@ function LocationPreviewInner() {
 													<path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
 												</svg>
 											</button>
-											<span className="tag__text">{t.name}</span>
+											<span className="tag__text">{displayTagName(map, t.name)}</span>
 										</li>
 									))}
 								</ol>

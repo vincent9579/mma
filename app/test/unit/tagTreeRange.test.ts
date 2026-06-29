@@ -6,6 +6,7 @@ import {
 	cascadeRename,
 	isLeafTag,
 	sumCounts,
+	shortestUniqueSuffixes,
 	type TagTreeNode,
 } from "@/components/editor/tags/tagTreeRange";
 import type { Tag } from "@/bindings.gen";
@@ -23,6 +24,31 @@ const rows = [
 	{ descendantTagIds: [3] },
 	{ descendantTagIds: [4] },
 ];
+
+describe("shortestUniqueSuffixes", () => {
+	it("collapses a unique name to its last segment", () => {
+		const m = shortestUniqueSuffixes(["europe/france/paris", "usa/texas/austin"]);
+		expect(m.get("usa/texas/austin")).toBe("austin");
+	});
+
+	it("widens colliding suffixes until unique", () => {
+		const m = shortestUniqueSuffixes(["europe/france/paris", "usa/texas/paris", "usa/texas/austin"]);
+		expect(m.get("europe/france/paris")).toBe("france/paris");
+		expect(m.get("usa/texas/paris")).toBe("texas/paris");
+		expect(m.get("usa/texas/austin")).toBe("austin");
+	});
+
+	it("falls back to the full path when even that collides ancestrally", () => {
+		const m = shortestUniqueSuffixes(["a/b/c", "b/c"]);
+		expect(m.get("b/c")).toBe("b/c");
+		expect(m.get("a/b/c")).toBe("a/b/c");
+	});
+
+	it("leaves single-segment names untouched", () => {
+		const m = shortestUniqueSuffixes(["red", "blue"]);
+		expect(m.get("red")).toBe("red");
+	});
+});
 
 describe("rangeToggleTagIds", () => {
 	it("collects rows between anchor and target, excluding the anchor", () => {
