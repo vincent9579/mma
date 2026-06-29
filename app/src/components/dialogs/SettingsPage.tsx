@@ -41,6 +41,8 @@ import {
 import { formatBinding, buildComboString } from "@/lib/hooks/useHotkey";
 import { cmd } from "@/lib/commands";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { toast } from "@/lib/util/toast";
+import { log } from "@/lib/util/log";
 import type { DataLocation } from "@/bindings.gen";
 import { useUpdateState, checkForUpdate, installUpdate, relaunchApp } from "@/lib/util/updateCheck";
 import { ColorPicker } from "@/components/primitives/ColorPicker";
@@ -1113,7 +1115,9 @@ function DataFolderSection() {
 		try {
 			await cmd.setDataLocation(pending ?? null);
 			await relaunchApp();
-		} catch {
+		} catch (e) {
+			log.error("data folder relaunch failed", e);
+			toast("Couldn't relaunch automatically -- restart the app to apply.");
 			setBusy(false);
 		}
 	}, [pending]);
