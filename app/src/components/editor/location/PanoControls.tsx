@@ -262,15 +262,15 @@ export function PanoControls({
 	);
 
 	const zoomIn = useCallback(() => {
-		panorama.setZoom(Math.min(PANO_ZOOM.max, panorama.getZoom() + 1));
+		panorama.setZoom(Math.min(PANO_ZOOM.max, Math.max(0, panorama.getZoom()) + 1));
 	}, [panorama]);
 
 	const zoomOut = useCallback(() => {
-		panorama.setZoom(Math.max(PANO_ZOOM.min, panorama.getZoom() - 1));
+		panorama.setZoom(Math.max(0, panorama.getZoom() - 1));
 	}, [panorama]);
 
 	const resetZoom = useCallback(() => {
-		panorama.setZoom(0);
+		panorama.setZoom(PANO_ZOOM.min);
 	}, [panorama]);
 
 	const buildMapsUrl = useCallback(() => {
@@ -504,14 +504,14 @@ export function PanoControls({
 							</button>
 						</Tooltip>
 						<Tooltip content="Reset zoom" side="right">
-							<button disabled={zoom === 0} onClick={resetZoom} aria-label="Reset zoom">
+							<button disabled={zoom <= PANO_ZOOM.min} onClick={resetZoom} aria-label="Reset zoom">
 								<svg height="24" width="24" viewBox="0 0 24 24">
 									<path d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M19,19H15V21H19A2,2 0 0,0 21,19V15H19M19,3H15V5H19V9H21V5A2,2 0 0,0 19,3M5,5H9V3H5A2,2 0 0,0 3,5V9H5M5,15H3V19A2,2 0 0,0 5,21H9V19H5V15Z" />
 								</svg>
 							</button>
 						</Tooltip>
 						<Tooltip content="Zoom out" side="right">
-							<button disabled={zoom === 0} onClick={zoomOut} aria-label="Zoom out">
+							<button disabled={zoom <= 0} onClick={zoomOut} aria-label="Zoom out">
 								<svg height="24" width="24" viewBox="0 0 24 24">
 									<path d="M19,13H5V11H19V13Z" />
 								</svg>

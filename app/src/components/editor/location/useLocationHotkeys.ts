@@ -131,18 +131,16 @@ export function useLocationHotkeys(deps: LocationHotkeyDeps) {
 	});
 	useHotkey(useBinding("zoomIn"), () => {
 		if (singletonPano) {
-			singletonPano.setZoom(Math.min(PANO_ZOOM.max, singletonPano.getZoom() + 1));
+			singletonPano.setZoom(Math.min(PANO_ZOOM.max, Math.max(0, singletonPano.getZoom()) + 1));
 		}
 	});
 	useHotkey(useBinding("zoomOut"), () => {
 		if (singletonPano) {
-			singletonPano.setZoom(Math.max(PANO_ZOOM.min, singletonPano.getZoom() - 1));
+			singletonPano.setZoom(Math.max(0, singletonPano.getZoom() - 1));
 		}
 	});
 	useHotkey(useBinding("panoZoomReset"), () => {
-		if (singletonPano) {
-			singletonPano.setZoom(0);
-		}
+		if (singletonPano) singletonPano.setZoom(PANO_ZOOM.min);
 	});
 	useHotkey(
 		useBinding("copyLink"),
