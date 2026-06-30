@@ -133,7 +133,7 @@ function selectionColor(props: SelectionProps, key: string): [number, number, nu
 export function buildSelection(props: SelectionProps): Selection {
 	const locations = resolveLocations(props);
 	const key = keyForProps(props, locations);
-	return { key, color: selectionColor(props, key), props, count: 0 };
+	return { key, color: selectionColor(props, key), props };
 }
 
 // dedupe by key, preserving order of last occurrence

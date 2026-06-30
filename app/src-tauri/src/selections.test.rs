@@ -610,8 +610,8 @@ fn tag_index_in_composite() {
     let adds: Vec<Location> = vec![];
     let idx = LocView::new(Some(&batch), &dead, &patches, &adds, Some(&sets));
 
-    let t10 = Selection { key: "t10".into(), color: [0,0,0], props: SelectionProps::Tag { tag_id: 10 }, count: None };
-    let t20 = Selection { key: "t20".into(), color: [0,0,0], props: SelectionProps::Tag { tag_id: 20 }, count: None };
+    let t10 = Selection { key: "t10".into(), color: [0,0,0], props: SelectionProps::Tag { tag_id: 10 } };
+    let t20 = Selection { key: "t20".into(), color: [0,0,0], props: SelectionProps::Tag { tag_id: 20 } };
     // 10 AND 20 -> only loc 1
     let inter = resolve(&idx, &SelectionProps::Intersection { selections: vec![t10.clone(), t20.clone()] });
     assert_eq!(inter, vec![1]);
@@ -698,8 +698,8 @@ fn resolve_intersection() {
     let view = make_view(None, &dead, &patches, &adds);
     let props = SelectionProps::Intersection {
         selections: vec![
-            Selection { key: "a".into(), color: [0,0,0], count: None, props: SelectionProps::Tag { tag_id: 10 } },
-            Selection { key: "b".into(), color: [0,0,0], count: None, props: SelectionProps::PanoIds },
+            Selection { key: "a".into(), color: [0,0,0], props: SelectionProps::Tag { tag_id: 10 } },
+            Selection { key: "b".into(), color: [0,0,0], props: SelectionProps::PanoIds },
         ],
     };
     let ids = resolve(&view, &props);
@@ -719,8 +719,8 @@ fn resolve_union() {
     let view = make_view(None, &dead, &patches, &adds);
     let props = SelectionProps::Union {
         selections: vec![
-            Selection { key: "a".into(), color: [0,0,0], count: None, props: SelectionProps::Tag { tag_id: 10 } },
-            Selection { key: "b".into(), color: [0,0,0], count: None, props: SelectionProps::PanoIds },
+            Selection { key: "a".into(), color: [0,0,0], props: SelectionProps::Tag { tag_id: 10 } },
+            Selection { key: "b".into(), color: [0,0,0], props: SelectionProps::PanoIds },
         ],
     };
     let ids = resolve(&view, &props);
@@ -741,13 +741,71 @@ fn resolve_invert() {
     let view = make_view(None, &dead, &patches, &adds);
     let props = SelectionProps::Invert {
         selections: vec![
-            Selection { key: "a".into(), color: [0,0,0], count: None, props: SelectionProps::PanoIds },
+            Selection { key: "a".into(), color: [0,0,0], props: SelectionProps::PanoIds },
         ],
     };
     let ids = resolve(&view, &props);
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&2));
     assert!(ids.contains(&3));
+}
+
+// -----------------------------------------------------------------------
+// Per-node counts (resolve_node_counts)
+// -----------------------------------------------------------------------
+
+// Counts must cover every node — the composite AND its nested children, keyed by key.
+#[test]
+fn node_counts_cover_nested_children() {
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let mut l1 = loc(1, 0.0, 0.0); l1.tags = vec![10, 20];
+    let mut l2 = loc(2, 0.0, 0.0); l2.tags = vec![10];
+    let mut l3 = loc(3, 0.0, 0.0); l3.tags = vec![20];
+    let adds = vec![l1, l2, l3];
+    let view = make_view(None, &dead, &patches, &adds);
+
+    let tree = vec![Selection {
+        key: "root".into(),
+        color: [0, 0, 0],
+        props: SelectionProps::Intersection {
+            selections: vec![
+                Selection { key: "a".into(), color: [0,0,0], props: SelectionProps::Tag { tag_id: 10 } },
+                Selection { key: "b".into(), color: [0,0,0], props: SelectionProps::Tag { tag_id: 20 } },
+            ],
+        },
+    }];
+
+    let counts = resolve_node_counts(&view, &tree);
+    assert_eq!(counts.get("a"), Some(&2)); // tag 10: l1, l2
+    assert_eq!(counts.get("b"), Some(&2)); // tag 20: l1, l3
+    assert_eq!(counts.get("root"), Some(&1)); // intersection: only l1 has both
+}
+
+// Invert's count is the global complement (universe - inner), not parent-relative.
+#[test]
+fn node_counts_invert_is_global_complement() {
+    let dead = HashSet::new();
+    let patches = HashMap::new();
+    let mut l1 = loc(1, 0.0, 0.0); l1.tags = vec![10];
+    let l2 = loc(2, 0.0, 0.0);
+    let l3 = loc(3, 0.0, 0.0);
+    let adds = vec![l1, l2, l3];
+    let view = make_view(None, &dead, &patches, &adds);
+
+    let tree = vec![Selection {
+        key: "inv".into(),
+        color: [0, 0, 0],
+        props: SelectionProps::Invert {
+            selections: vec![
+                Selection { key: "t".into(), color: [0,0,0], props: SelectionProps::Tag { tag_id: 10 } },
+            ],
+        },
+    }];
+
+    let counts = resolve_node_counts(&view, &tree);
+    assert_eq!(counts.get("t"), Some(&1));   // tag 10: l1
+    assert_eq!(counts.get("inv"), Some(&2)); // NOT tag 10: l2, l3 (universe of 3 minus 1)
 }
 
 // -----------------------------------------------------------------------

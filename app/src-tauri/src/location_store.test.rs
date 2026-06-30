@@ -1383,7 +1383,6 @@ fn render_buffer_with_selection_overlay() {
         key: "manual".into(),
         color: [255, 0, 0],
         props: selections::SelectionProps::Manual { locations: vec![1] },
-        count: None,
     });
     let mut bm = RoaringBitmap::new();
     bm.insert(1);
@@ -1417,7 +1416,6 @@ fn color_for_uses_last_matching_selection() {
             key: key.into(),
             color,
             props: selections::SelectionProps::Manual { locations: vec![1] },
-            count: None,
         });
         let mut bm = RoaringBitmap::new();
         bm.insert(1);
@@ -1440,7 +1438,6 @@ fn color_map_matches_color_for() {
             key: key.into(),
             color,
             props: selections::SelectionProps::Manual { locations: members.clone() },
-            count: None,
         });
         let mut bm = RoaringBitmap::new();
         for id in &members { bm.insert(*id); store.selections.ids.insert(*id); }
@@ -1724,7 +1721,6 @@ fn add_tag_selection(store: &mut Store, tag_id: u32, color: [u8; 3]) {
         key: format!("tag:{}", tag_id),
         color,
         props: selections::SelectionProps::Tag { tag_id },
-        count: None,
     });
     store.selections.loc_sets.push(RoaringBitmap::new());
 }

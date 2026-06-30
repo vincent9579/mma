@@ -196,7 +196,7 @@ export const commands = {
 	 *  Replace all selections, resolve bitmasks against current data, and write a binary
 	 *  patch file for JS to apply to the render overlay. Returns per-selection counts.
 	 */
-	storeSyncSelections: (sels: SelectionInput[]) => typedError<SyncSelectionsResult, string>(__TAURI_INVOKE("store_sync_selections", { sels })),
+	storeSyncSelections: (sels: SelectionInput[]) => typedError<SelectionSync, string>(__TAURI_INVOKE("store_sync_selections", { sels })),
 	/**  Return the union of all currently selected location IDs. */
 	storeGetSelectedIdsList: () => typedError<number[], string>(__TAURI_INVOKE("store_get_selected_ids_list")),
 	/**
@@ -999,12 +999,12 @@ export type Selection = {
 	key: string,
 	color: [number, number, number],
 	props: SelectionProps,
-	/**  JS-only: cached resolved count for sidebar display. Rust never sets this. */
-	count?: number | null,
 };
 
 /**  Input for `store_sync_selections`: selection criteria + display color. */
 export type SelectionInput = {
+	/**  Deterministic selection key (e.g. `"tag:5"`), used to return per-node counts back keyed. */
+	key: string,
 	props: SelectionProps,
 	color: [number, number, number],
 	/**  Counted, but kept out of the overlay and the selected set. */
@@ -1025,7 +1025,8 @@ export type SelectionProps = { type: "Locations"; locations: number[]; name: str
  *  mutations). `None` when nothing changed. `counts` gives per-selection match counts.
  */
 export type SelectionSync = {
-	counts: number[],
+	/**  Resolved count per selection node, keyed by `Selection.key` (top-level and nested). */
+	counts: { [key in string]: number },
 	bitmask: number[] | null,
 	selectedCount: number,
 };
@@ -1051,13 +1052,6 @@ export type SummaryResult = {
 	locationCount: number,
 	version: number,
 	dirtyCount: number,
-};
-
-/**  Result of `store_sync_selections`: per-selection counts and the inline bitmask bytes. */
-export type SyncSelectionsResult = {
-	counts: number[],
-	bitmask: number[] | null,
-	selectedCount: number,
 };
 
 /**

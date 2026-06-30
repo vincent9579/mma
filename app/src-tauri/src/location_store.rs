@@ -201,6 +201,9 @@ pub(crate) struct SelectionState {
     pub all: Vec<Selection>,
     /// Per-selection membership, keyed by location id.
     pub loc_sets: Vec<RoaringBitmap>,
+    /// Resolved count of every selection node (top-level and nested), keyed by `Selection.key`.
+    /// The faithful per-node count source for sidebar display; refreshed on every sync/resolve.
+    pub node_counts: HashMap<String, u32>,
     pub version: u64,
     /// Union of all `loc_sets`. Answers "is this id selected".
     pub ids: RoaringBitmap,
@@ -372,6 +375,7 @@ impl Store {
             selections: SelectionState {
                 all: Vec::new(),
                 loc_sets: Vec::new(),
+                node_counts: HashMap::new(),
                 version: 0,
                 ids: RoaringBitmap::new(),
                 active_id: None,
@@ -619,6 +623,11 @@ impl Store {
             }
         }
         self.selections.version += 1;
+        // Incremental path runs only without composites, so every node is top-level.
+        self.selections.node_counts = self.selections.all.iter()
+            .zip(&self.selections.loc_sets)
+            .map(|(s, set)| (s.key.clone(), set.len() as u32))
+            .collect();
 
         let mut gained = Vec::new();
         let mut lost = Vec::new();
@@ -644,7 +653,7 @@ impl Store {
 
     /// Build the bitmask file for only the specified cell indices.
     fn build_selection_bitmask_for_cells(&self, affected: &HashSet<u8>) -> SelectionSync {
-        let counts: Vec<usize> = self.selections.loc_sets.iter().map(|s| s.len() as usize).collect();
+        let counts = self.selections.node_counts.clone();
         let selected_count = self.selections.ids.len() as usize;
 
         if affected.is_empty() {
@@ -677,11 +686,15 @@ impl Store {
     /// Full selection membership resolve: recomputes selection_loc_sets, selected_ids,
     /// selected_colors from scratch. O(S * N). Does NOT build the bitmask file.
     fn resolve_selection_membership(&mut self) {
-        let props: Vec<SelectionProps> = self.selections.all.iter().map(|s| s.props.clone()).collect();
-        self.selections.loc_sets = {
+        let sels = self.selections.all.clone();
+        let (loc_sets, node_counts) = {
             let view = self.loc_view();
-            props.iter().map(|p| selections::resolve_set(&view, p)).collect()
+            let loc_sets: Vec<RoaringBitmap> =
+                sels.iter().map(|s| selections::resolve_set(&view, &s.props)).collect();
+            (loc_sets, selections::resolve_node_counts(&view, &sels))
         };
+        self.selections.loc_sets = loc_sets;
+        self.selections.node_counts = node_counts;
 
         let mut all_selected = RoaringBitmap::new();
         for set in &self.selections.loc_sets {
@@ -694,7 +707,7 @@ impl Store {
     /// Build the bitmask file from current render_cells + selection_loc_sets (all cells).
     fn rebuild_selection_bitmask(&self) -> SelectionSync {
         let t0 = std::time::Instant::now();
-        let counts: Vec<usize> = self.selections.loc_sets.iter().map(|s| s.len() as usize).collect();
+        let counts = self.selections.node_counts.clone();
         let selected_count = self.selections.ids.len() as usize;
 
         let num_sels = self.selections.all.len();
@@ -1317,7 +1330,8 @@ pub struct ColorPatchEntry {
 #[derive(serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionSync {
-    pub counts: Vec<usize>,
+    /// Resolved count per selection node, keyed by `Selection.key` (top-level and nested).
+    pub counts: HashMap<String, u32>,
     pub bitmask: Option<Vec<u8>>,
     pub selected_count: usize,
 }
@@ -2877,20 +2891,13 @@ pub fn store_extra_field_values(webview: tauri::Webview, state: tauri::State<'_,
 #[derive(serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionInput {
+    /// Deterministic selection key (e.g. `"tag:5"`), used to return per-node counts back keyed.
+    pub key: String,
     pub props: SelectionProps,
     pub color: [u8; 3],
     /// Counted, but kept out of the overlay and the selected set.
     #[serde(default)]
     pub ghosted: bool,
-}
-
-/// Result of `store_sync_selections`: per-selection counts and the inline bitmask bytes.
-#[derive(serde::Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncSelectionsResult {
-    pub counts: Vec<usize>,
-    pub bitmask: Option<Vec<u8>>,
-    pub selected_count: usize,
 }
 
 /// Replace all selections, resolve bitmasks against current data, and write a binary
@@ -2901,11 +2908,18 @@ pub async fn store_sync_selections(
     webview: tauri::Webview,
     state: tauri::State<'_, StoreState>,
     sels: Vec<SelectionInput>,
-) -> AppResult<SyncSelectionsResult> {
+) -> AppResult<SelectionSync> {
     let _t = std::time::Instant::now();
     let (counts, buf, selected_count, num_cells) = {
         let mut mgr = state.lock()?;
     let store = mgr.store_for_window(webview.label())?;
+
+        // Faithful tree: real keys preserved so per-node counts come back keyed (incl. nested).
+        let sels_full: Vec<selections::Selection> = sels.iter().map(|si| selections::Selection {
+            key: si.key.clone(),
+            color: si.color,
+            props: si.props.clone(),
+        }).collect();
 
         // 1. Resolve each selection directly to a Roaring id-set. Tag leaves hit the
         //    membership index; composites combine natively. (Geometric leaves still scan.)
@@ -2913,10 +2927,10 @@ pub async fn store_sync_selections(
         let sel_sets: Vec<RoaringBitmap> = sels.iter()
             .map(|sel| selections::resolve_set(&view, &sel.props))
             .collect();
+        // Count all nodes (top-level and nested), keyed. Overlay uses the non-ghosted subset only.
+        let counts = selections::resolve_node_counts(&view, &sels_full);
         drop(view);
 
-        // Count all; overlay/union/stored state use the non-ghosted subset only.
-        let counts: Vec<usize> = sel_sets.iter().map(|s| s.len() as usize).collect();
         let live: Vec<usize> = (0..sels.len()).filter(|&i| !sels[i].ghosted).collect();
 
         let mut all_selected = RoaringBitmap::new();
@@ -2939,18 +2953,12 @@ pub async fn store_sync_selections(
         let buf = assemble_selection_bitmask(live.iter().map(|&i| &sels[i].color), &segments);
 
         store.selections.ids = all_selected;
-        store.selections.all = live.iter().map(|&i| {
-            selections::Selection {
-                key: format!("sync:{i}"),
-                color: sels[i].color,
-                props: sels[i].props.clone(),
-                count: None,
-            }
-        }).collect();
+        store.selections.all = live.iter().map(|&i| sels_full[i].clone()).collect();
         store.selections.loc_sets = sel_sets.into_iter().enumerate()
             .filter(|(i, _)| !sels[*i].ghosted)
             .map(|(_, s)| s)
             .collect();
+        store.selections.node_counts = counts.clone();
         store.selections.version += 1;
 
         let render_total: usize = store.render.cells.iter().filter_map(|o| o.as_ref()).map(|cr| cr.id_order.len()).sum();
@@ -2964,7 +2972,7 @@ pub async fn store_sync_selections(
     };
 
     let bitmask = if num_cells > 0 { Some(buf) } else { None };
-    Ok(SyncSelectionsResult { counts, bitmask, selected_count })
+    Ok(SelectionSync { counts, bitmask, selected_count })
 }
 
 /// Return the union of all currently selected location IDs.

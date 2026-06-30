@@ -86,9 +86,6 @@ pub struct Selection {
     pub key: String,
     pub color: [u8; 3],
     pub props: SelectionProps,
-    /// JS-only: cached resolved count for sidebar display. Rust never sets this.
-    #[serde(default)]
-    pub count: Option<u32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +446,30 @@ pub fn resolve_set(view: &LocView, props: &SelectionProps) -> RoaringBitmap {
     // Scan leaves (incl. Tag with no index): build a positional mask, convert to ids.
     let mask = resolve_leaf_mask(view, props);
     mask_to_set(view, &mask)
+}
+
+/// Resolved count of every selection node — top-level and nested — keyed by `Selection.key`.
+/// A thin walk over [`resolve_set`] (the single resolution path): each node is resolved for its
+/// own count, then composite children are walked for theirs. Produces the per-node sidebar counts.
+pub fn resolve_node_counts(view: &LocView, sels: &[Selection]) -> HashMap<String, u32> {
+    fn walk(view: &LocView, sel: &Selection, out: &mut HashMap<String, u32>) {
+        out.insert(sel.key.clone(), resolve_set(view, &sel.props).len() as u32);
+        match &sel.props {
+            SelectionProps::Intersection { selections }
+            | SelectionProps::Union { selections }
+            | SelectionProps::Invert { selections } => {
+                for c in selections {
+                    walk(view, c, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = HashMap::new();
+    for s in sels {
+        walk(view, s, &mut out);
+    }
+    out
 }
 
 /// Set of all alive location ids (batch minus dead, plus overlay adds).

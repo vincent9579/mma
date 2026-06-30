@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
 	useCurrentMap,
 	useGhostedSelections,
+	useSelectionCounts,
 	selectInverse,
 	setPolygonName,
 	setSelectionColors,
@@ -49,8 +50,8 @@ async function fitSelectionBounds(map: google.maps.Map, selection: Selection) {
 		map.fitBounds(bounds, 100);
 		return;
 	}
-	if ((selection.count ?? 0) === 0) return;
 	const ids = await cmd.storeResolveSelection(selection.props);
+	if (ids.length === 0) return;
 	const locs = await fetchLocationsByIds(ids);
 	const bounds = new google.maps.LatLngBounds();
 	for (const loc of locs) bounds.extend({ lat: loc.lat, lng: loc.lng });
@@ -116,6 +117,7 @@ export function SelectionRow({
 }) {
 	const map = useCurrentMap();
 	const ghostedKeys = useGhostedSelections();
+	const count = useSelectionCounts()[selection.key] ?? 0;
 	const isTopLevel = depth === 0;
 	const ghosted = inheritedGhost || (isTopLevel && ghostedKeys.has(selection.key));
 	const [view, setView] = useState<"contextmenu" | "color">("contextmenu");
@@ -313,7 +315,7 @@ export function SelectionRow({
 				{isDropTarget && dropZone === "on" && (
 					<span className="selection-row__drop-hint">{drag?.altKey ? "OR" : "AND"}</span>
 				)}
-				<span className="selection-row__size">{fmt.format(selection.count ?? 0)}</span>
+				<span className="selection-row__size">{fmt.format(count)}</span>
 				<span className="selection-row__actions">
 					{stepFilter && (
 						<>
@@ -376,7 +378,7 @@ export function SelectionRow({
 										)}
 										<DropdownMenu.Item
 											className="context-menu__item"
-											disabled={(selection.count ?? 0) === 0}
+											disabled={count === 0}
 											onSelect={async () => {
 												const ids = await cmd.storeResolveSelection(selection.props);
 												beginReview(ids, selection);
@@ -387,7 +389,7 @@ export function SelectionRow({
 										{selection.props.type !== "Tag" && (
 											<DropdownMenu.Item
 												className="context-menu__item"
-												disabled={(selection.count ?? 0) === 0}
+												disabled={count === 0}
 												onSelect={() => {
 													const names = new Set(Object.values(map.meta.tags).map((t) => t.name));
 													setTagName(uniqueTagName(selectionDisplayName(map, selection), names));
@@ -400,7 +402,7 @@ export function SelectionRow({
 										{pruneDistance(selection) != null && (
 											<DropdownMenu.Item
 												className="context-menu__item"
-												disabled={(selection.count ?? 0) === 0}
+												disabled={count === 0}
 												onSelect={async () => {
 													const n = await pruneDuplicates(selection.props, pruneDistance(selection)!);
 													toast(`Pruned ${fmt.format(n)} duplicate${n === 1 ? "" : "s"}`);

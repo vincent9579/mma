@@ -636,6 +636,8 @@ type Selection$1 = {
 };
 /**  Input for `store_sync_selections`: selection criteria + display color. */
 export type SelectionInput = {
+	/**  Deterministic selection key (e.g. `"tag:5"`), used to return per-node counts back keyed. */
+	key: string;
 	props: SelectionProps;
 	color: [
 		number,
@@ -717,7 +719,9 @@ export type SelectionProps = {
  *  mutations). `None` when nothing changed. `counts` gives per-selection match counts.
  */
 export type SelectionSync = {
-	counts: number[];
+	counts: {
+		[key in string]: number;
+	};
 	bitmask: number[] | null;
 	selectedCount: number;
 };
@@ -746,7 +750,9 @@ export type SummaryResult = {
 };
 /**  Result of `store_sync_selections`: per-selection counts and the inline bitmask bytes. */
 export type SyncSelectionsResult = {
-	counts: number[];
+	counts: {
+		[key in string]: number;
+	};
 	bitmask: number[] | null;
 	selectedCount: number;
 };
@@ -848,8 +854,11 @@ declare class SelectedIds {
 export type CompositeType = Extract<SelectionProps, {
 	selections: Selection$1[];
 }>["type"];
-/** Composite variants that are flat groups (no negation). */
-export type GroupType = Exclude<CompositeType, "Invert">;
+/** Composite variants that wrap exactly one child (operators, not bags). They never collapse — a
+ *  one-child group is degenerate, but one child is a unary node's only valid arity. */
+export type UnaryType = "Invert";
+/** Composite variants that are flat n-ary groups. */
+export type GroupType = Exclude<CompositeType, UnaryType>;
 declare enum ValidationState {
 	Ok = 0,
 	UpdateAvailable = 1,

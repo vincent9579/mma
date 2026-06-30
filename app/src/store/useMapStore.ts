@@ -8,7 +8,7 @@ import { cmd } from "@/lib/commands";
 import type {
 	MutationResult,
 	MapMetaPatch_Deserialize as MapMetaPatch,
-	SyncSelectionsResult,
+	SelectionSync,
 	CommitInfo
 } from "@/bindings.gen";
 import { emit as emitEvent } from "@/lib/events";
@@ -122,6 +122,9 @@ let currentMap: MapData | null = null;
 /** Persisted bitmasks per selection key. Updated incrementally on each
  *  mutation (delta refresh) when the column store is available. */
 let selections: Selection[] = [];
+/** Resolved count per selection node (top-level and nested), keyed by `Selection.key`.
+ *  The sole source for sidebar counts — refreshed wholesale from Rust on every sync. */
+let selectionCounts: Record<string, number> = {};
 /** Keys of selections that are "ghosted": kept in the list but excluded from the
  *  Rust sync, so they neither render nor count toward the selected set. Ephemeral. */
 const ghostedSelections = new Set<string>();
@@ -677,14 +680,11 @@ export function emitBitmask(bytes: number[]) {
 	});
 }
 
-function applySelectionSync(sync: {
-	counts: number[];
-	bitmask: number[] | null;
-	selectedCount: number;
-}) {
-	assignCounts(sync.counts);
+/** Apply a resolved selection payload (counts + overlay bitmask) to JS state and re-render.
+ *  Shared by both triggers: location mutations (membership changed) and selection edits. */
+function applySelectionSync(sync: SelectionSync) {
+	selectionCounts = sync.counts;
 	if (sync.bitmask) emitBitmask(sync.bitmask);
-
 	bump();
 }
 
@@ -840,6 +840,9 @@ export const useSelections = makeStoreHook(() =>
 	ghostedSelections.size === 0 ? selections : selections.filter((s) => !ghostedSelections.has(s.key)),
 );
 
+/** Keyed per-node selection counts (by `Selection.key`). Look up a row's count by its key. */
+export const useSelectionCounts = makeStoreHook(() => selectionCounts);
+
 /** Resolve a selection's overlay color, substituting the live tag color for Tag selections. */
 function selectionSyncColor(s: Selection): [number, number, number] {
 	if (s.props.type === "Tag" && currentMap) {
@@ -852,25 +855,11 @@ function selectionSyncColor(s: Selection): [number, number, number] {
 /** All selections, each flagged ghosted or not. Rust counts every one, renders/selects only non-ghosted. */
 function buildSyncInputs() {
 	return selections.map((s) => ({
+		key: s.key,
 		props: s.props,
 		color: selectionSyncColor(s),
 		ghosted: ghostedSelections.has(s.key),
 	}));
-}
-
-/** Map Rust counts onto `selections`. `full` = one per selection in order; otherwise counts
- *  cover only the non-ghosted subset, and ghosted entries keep their last count. */
-function assignCounts(counts: number[], full = false) {
-	let j = 0;
-	for (let i = 0; i < selections.length; i++) {
-		if (full) {
-			selections[i] = { ...selections[i], count: counts[i] ?? 0 };
-		} else if (ghostedSelections.has(selections[i].key)) {
-			selections[i] = { ...selections[i], count: selections[i].count ?? 0 };
-		} else {
-			selections[i] = { ...selections[i], count: counts[j++] ?? 0 };
-		}
-	}
 }
 
 /** Apply a pure selection transform, then IPC to Rust to resolve bitmasks and sync the overlay. */
@@ -880,20 +869,11 @@ async function applySelectionUpdate(updater: (sels: Selection[]) => Selection[])
 	selections = updater(selections);
 	pruneGhosted();
 	const sels = buildSyncInputs();
-	let result: SyncSelectionsResult;
-	try {
-		result = await cmd.storeSyncSelections(sels);
-	} catch (e) {
-		log.error("[selection] store_sync_selections failed:", e);
-		return;
-	}
+	const result = await cmd.storeSyncSelections(sels);
 	t.step("ipc");
-	assignCounts(result.counts, true);
-	if (result.bitmask) emitBitmask(result.bitmask);
+	applySelectionSync(result);
 	t.step("apply");
 	t.end({ selected: result.selectedCount });
-
-	bump();
 	emitEvent("selection:change", selections);
 }
 
