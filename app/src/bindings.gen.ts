@@ -777,6 +777,11 @@ export type MapSettings = {
 	keyBindings?: MapKeyBinding[],
 	/**  Virtual tag-tree nodes keyed by full slash path. Tree-view only. */
 	virtualTags?: { [key in string]: VirtualTag },
+	/**
+	 *  Tag aliases: a second tree location (full slash path) -> the real tag id shown
+	 *  there. Tree-view only; clicking the alias leaf toggles the real tag.
+	 */
+	aliases?: { [key in string]: number },
 };
 
 /**

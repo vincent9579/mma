@@ -401,6 +401,13 @@ export type MapSettings = {
 	virtualTags?: {
 		[key in string]: VirtualTag;
 	};
+	/**
+	 *  Tag aliases: a second tree location (full slash path) -> the real tag id shown
+	 *  there. Tree-view only; clicking the alias leaf toggles the real tag.
+	 */
+	aliases?: {
+		[key in string]: number;
+	};
 };
 /**
  *  Unified response for every mutation IPC. Bundles the store status, render delta,

@@ -66,6 +66,9 @@ pub struct MapSettings {
     pub key_bindings: Vec<MapKeyBinding>,
     /// Virtual tag-tree nodes keyed by full slash path. Tree-view only.
     pub virtual_tags: HashMap<String, VirtualTag>,
+    /// Tag aliases: a second tree location (full slash path) -> the real tag id shown
+    /// there. Tree-view only; clicking the alias leaf toggles the real tag.
+    pub aliases: HashMap<String, u32>,
 }
 
 /// Canonical default map settings.
@@ -86,6 +89,7 @@ impl Default for MapSettings {
             enrich_fields: None,
             key_bindings: Vec::new(),
             virtual_tags: HashMap::new(),
+            aliases: HashMap::new(),
         }
     }
 }
@@ -734,6 +738,20 @@ mod tests {
         let json = r##"{"virtualTags":{"a":{"color":"#ff0000"}}}"##;
         let settings: MapSettings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.virtual_tags["a"].color.as_deref(), Some("#ff0000"));
+    }
+
+    #[test]
+    fn map_settings_aliases_default_empty() {
+        // Old settings JSON (no aliases) must deserialize with an empty map.
+        let old_json = r#"{"pointAlongRoad":true}"#;
+        let settings: MapSettings = serde_json::from_str(old_json).unwrap();
+        assert!(settings.aliases.is_empty());
+        assert!(MapSettings::default().aliases.is_empty());
+
+        // Round-trips an alias path -> tag id.
+        let json = r#"{"aliases":{"d/e/c":42}}"#;
+        let settings: MapSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.aliases["d/e/c"], 42);
     }
 
     #[test]
