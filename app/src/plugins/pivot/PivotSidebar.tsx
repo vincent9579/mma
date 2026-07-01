@@ -2,11 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Selection, SelectionProps } from "@/bindings.gen";
 import { useDebouncedCallback } from "@/lib/hooks/useDebouncedCallback";
 import { selectionDisplayName } from "@/store/selections";
-import {
-	savedToSelectionProps,
-	describeRule,
-	type SavedSelection,
-} from "@/store/savedSelections";
+import { savedToSelectionProps, describeRule, type SavedSelection } from "@/store/savedSelections";
 import { Sidebar, Field, EmptyState } from "@/components/primitives/Sidebar";
 import type { ExtraFieldDef } from "@/bindings.gen";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
@@ -64,7 +60,7 @@ async function computePivot(
 		const sels = MMA.getSelections();
 		if (sels.length === 0) return null;
 		rowDefs = sels.map((s: Selection) => ({
-			label: selectionDisplayName(map, s),
+			label: selectionDisplayName(s),
 			color: s.color,
 		}));
 		idSets = await Promise.all(
@@ -76,9 +72,13 @@ async function computePivot(
 		const saved: SavedSelection[] = MMA.getSettings().savedSelections;
 		const entry = saved.find((s: SavedSelection) => s.id === rowSource);
 		if (!entry || entry.items.length === 0) return null;
-		const resolvedRows: { label: string; color: [number, number, number]; props: SelectionProps }[] = [];
+		const resolvedRows: {
+			label: string;
+			color: [number, number, number];
+			props: SelectionProps;
+		}[] = [];
 		for (const item of entry.items) {
-			const props = savedToSelectionProps(item.props, map);
+			const props = savedToSelectionProps(item.props);
 			if (!props) continue;
 			resolvedRows.push({ label: describeRule(item.props), color: item.color, props });
 		}
@@ -114,7 +114,10 @@ async function computePivot(
 	for (const loc of allLocs) {
 		if (isTags) {
 			if (loc.tags.length > 0) {
-				fieldIndex.set(loc.id, loc.tags.map((t) => String(t)));
+				fieldIndex.set(
+					loc.id,
+					loc.tags.map((t) => String(t)),
+				);
 			}
 		} else {
 			const val = loc.extra?.[fieldKey];
@@ -201,7 +204,9 @@ function defaultPivotField(fields: FieldOption[]): string {
 
 export function PivotSidebar({ onClose }: { onClose: () => void }) {
 	const [rowSource, setRowSource] = useState<RowSource>("active");
-	const [fieldKey, setFieldKey] = useState(() => defaultPivotField(buildPivotFields(MMA.getKnownFieldKeys())));
+	const [fieldKey, setFieldKey] = useState(() =>
+		defaultPivotField(buildPivotFields(MMA.getKnownFieldKeys())),
+	);
 	const [bucketCount, setBucketCount] = useState<number | null>(10);
 	const [data, setData] = useState<PivotData | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -348,8 +353,7 @@ function PivotTable({ data }: { data: PivotData }) {
 		return indices;
 	}, [data, sortKey, sortAsc]);
 
-	const arrow = (key: SortKey) =>
-		sortKey === key ? (sortAsc ? " ▴" : " ▾") : "";
+	const arrow = (key: SortKey) => (sortKey === key ? (sortAsc ? " ▴" : " ▾") : "");
 
 	return (
 		<div className="pivot-sidebar__table-wrap">
@@ -368,13 +372,11 @@ function PivotTable({ data }: { data: PivotData }) {
 								className="pivot-sidebar__th-sort"
 								onClick={() => handleSort(data.columns[i])}
 							>
-								{label}{arrow(data.columns[i])}
+								{label}
+								{arrow(data.columns[i])}
 							</th>
 						))}
-						<th
-							className="pivot-sidebar__th-sort"
-							onClick={() => handleSort("total")}
-						>
+						<th className="pivot-sidebar__th-sort" onClick={() => handleSort("total")}>
 							Total{arrow("total")}
 						</th>
 					</tr>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Tag } from "@/bindings.gen";
-import { getTagCounts, useCurrentMap } from "@/store/useMapStore";
+import { getTagCounts } from "@/store/useMapStore";
 import { sortTagsByMode, tagChipStyle, appendTagName } from "@/lib/util/util";
 import { textColorFor } from "@/lib/util/color";
 import { useSetting } from "@/store/settings";
@@ -18,10 +18,9 @@ export function FullscreenTagBar({
 	const [input, setInput] = useState("");
 	const [focused, setFocused] = useState(false);
 	const tagSortMode = useSetting("tagSortMode");
-	const map = useCurrentMap();
 	useSetting("truncateTagPaths");
 	useSetting("tagViewMode");
-	const label = (name: string) => (map ? displayTagName(map, name) : name);
+	const label = displayTagName;
 
 	const handleAdd = (e: React.FormEvent) => {
 		e.preventDefault();

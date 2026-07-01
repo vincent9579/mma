@@ -228,9 +228,26 @@ export function refreshAfterMutation() {
 
 export const useCurrentMap = makeStoreHook(() => currentMap);
 
+/** Tags that exist from the user's point of view. Raw `meta.tags` also holds soft-deleted ghosts (count=0, visible=false, kept for undo revival) — almost nothing outside the undo/revival machinery should enumerate those. Cached on the tag-set reference (reassigned on every tag mutation) so repeated calls return the same array and memo deps stay stable. */
+let visibleTagsCache: { tags: MapData["meta"]["tags"]; list: Tag[] } | null = null;
 export function getVisibleTags(): Tag[] {
 	if (!currentMap) return [];
-	return Object.values(currentMap.meta.tags).filter((t) => t.visible !== false);
+	const tags = currentMap.meta.tags;
+	if (!visibleTagsCache || visibleTagsCache.tags !== tags) {
+		visibleTagsCache = {
+			tags,
+			list: Object.values(tags).filter((t) => t.visible !== false),
+		};
+	}
+	return visibleTagsCache.list;
+}
+
+export const useVisibleTags = makeStoreHook(getVisibleTags);
+
+/** Raw by-id tag lookup — includes soft-deleted ghosts so stale references
+ *  (e.g. a selection whose tag just died) still resolve to a name. */
+export function getTag(id: number): Tag | undefined {
+	return currentMap?.meta.tags[id];
 }
 
 /** Reactive map version counter. Bumps on every mutation. */
@@ -1047,9 +1064,9 @@ export async function pruneDuplicates(props: SelectionProps, distance: number): 
 	if (!currentMap) return 0;
 	const ids = await cmd.storeResolveSelection(props);
 	if (ids.length === 0) return 0;
-	const keepTagIds = Object.entries(currentMap.meta.tags)
-		.filter(([, t]) => t.name === "keep pano")
-		.map(([id]) => Number(id));
+	const keepTagIds = getVisibleTags()
+		.filter((t) => t.name === "keep pano")
+		.map((t) => t.id);
 	const r = await mutate(cmd.storePruneDuplicates(ids, distance, keepTagIds));
 	return r.delta.removed.length;
 }

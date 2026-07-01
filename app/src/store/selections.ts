@@ -1,7 +1,8 @@
 /** Pure selection transforms. These only manipulate the JS selection tree; Rust resolves the actual bitmasks. */
 
 import { match, P } from "ts-pattern";
-import type { MapData, FilterOp } from "@/bindings.gen";
+import type { FilterOp, Tag } from "@/bindings.gen";
+import { getVisibleTags, getTag } from "@/store/useMapStore";
 import { hslToRgb } from "@/lib/util/color";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { localDateTime, utcDateTime } from "@/lib/util/format";
@@ -95,31 +96,33 @@ export function resolveLocations(props: SelectionProps): number[] {
 }
 
 function keyForProps(props: SelectionProps, locations: number[]): string {
-	return match(props)
-		.with({ type: "Locations" }, () => locationsKey(locations))
-		.with({ type: "Everything" }, () => "everything")
-		// polygon keys are unique per draw; use a generated id stored on first init
-		.with({ type: "Polygon" }, () => `polygon:${crypto.randomUUID()}`)
-		.with({ type: "Tag" }, (p) => `tag:${p.tagId}`)
-		.with({ type: "Untagged" }, () => "untagged")
-		.with({ type: "Unpanned" }, () => "unpanned")
-		.with({ type: "PanoIds" }, () => "panoids")
-		.with({ type: "NotPanoIds" }, () => "notpanoids")
-		.with({ type: "Uncommitted" }, () => "uncommitted")
-		.with({ type: "Duplicates" }, (p) => `duplicates:${p.distance}`)
-		.with({ type: "Manual" }, () => "manual")
-		.with({ type: "ValidationState" }, (p) => `validation:${p.state}`)
-		.with({ type: "Reviewed" }, (p) => `review:${p.sessionId}:${p.mode}`)
-		.with({ type: "Intersection" }, (p) => p.selections.map((s) => `(${s.key})`).join("^"))
-		.with({ type: "Union" }, (p) => p.selections.map((s) => `(${s.key})`).join("|"))
-		.with({ type: "Invert" }, (p) => `!${p.selections[0].key}`)
-		.with(
-			{ type: "Filter" },
-			(p) =>
-				`filter:${p.field}:${p.op}:${String(p.value)}${p.value2 != null ? `:${String(p.value2)}` : ""}${p.tzLocal ? ":local" : ""}`,
-		)
-		.with({ type: "TopK" }, (p) => `topk:${p.field}:${p.k}:${p.ascending}`)
-		.exhaustive();
+	return (
+		match(props)
+			.with({ type: "Locations" }, () => locationsKey(locations))
+			.with({ type: "Everything" }, () => "everything")
+			// polygon keys are unique per draw; use a generated id stored on first init
+			.with({ type: "Polygon" }, () => `polygon:${crypto.randomUUID()}`)
+			.with({ type: "Tag" }, (p) => `tag:${p.tagId}`)
+			.with({ type: "Untagged" }, () => "untagged")
+			.with({ type: "Unpanned" }, () => "unpanned")
+			.with({ type: "PanoIds" }, () => "panoids")
+			.with({ type: "NotPanoIds" }, () => "notpanoids")
+			.with({ type: "Uncommitted" }, () => "uncommitted")
+			.with({ type: "Duplicates" }, (p) => `duplicates:${p.distance}`)
+			.with({ type: "Manual" }, () => "manual")
+			.with({ type: "ValidationState" }, (p) => `validation:${p.state}`)
+			.with({ type: "Reviewed" }, (p) => `review:${p.sessionId}:${p.mode}`)
+			.with({ type: "Intersection" }, (p) => p.selections.map((s) => `(${s.key})`).join("^"))
+			.with({ type: "Union" }, (p) => p.selections.map((s) => `(${s.key})`).join("|"))
+			.with({ type: "Invert" }, (p) => `!${p.selections[0].key}`)
+			.with(
+				{ type: "Filter" },
+				(p) =>
+					`filter:${p.field}:${p.op}:${String(p.value)}${p.value2 != null ? `:${String(p.value2)}` : ""}${p.tzLocal ? ":local" : ""}`,
+			)
+			.with({ type: "TopK" }, (p) => `topk:${p.field}:${p.k}:${p.ascending}`)
+			.exhaustive()
+	);
 }
 
 /** Overlay color for a selection. Reviewed is green (145), unreviewed is violet (280): both stay
@@ -143,15 +146,16 @@ function dedupe(selections: Selection[]): Selection[] {
 	return map.size === selections.length ? selections : Array.from(map.values());
 }
 
-export function addSelection(
-	current: Selection[],
-	props: SelectionProps,
-): Selection[] {
+export function addSelection(current: Selection[], props: SelectionProps): Selection[] {
 	return dedupe([...current, buildSelection(props)]);
 }
 
 /** Keys of every Polygon selection whose geometry contains the point. */
-export function polygonSelectionsContaining(selections: Selection[], lat: number, lng: number): string[] {
+export function polygonSelectionsContaining(
+	selections: Selection[],
+	lat: number,
+	lng: number,
+): string[] {
 	const keys: string[] = [];
 	for (const sel of selections) {
 		if (sel.props.type !== "Polygon") continue;
@@ -198,10 +202,7 @@ export const unionSelections = (current: Selection[], keys: string[] | null) =>
 	composeSelectionGroup(current, keys, "Union");
 
 /** Invert targeted selections. Single target toggles in-place at any depth; multiple are wrapped in Union then Invert. */
-export function invertSelections(
-	current: Selection[],
-	keys: string[] | null,
-): Selection[] {
+export function invertSelections(current: Selection[], keys: string[] | null): Selection[] {
 	if (current.length === 0) return current;
 	const targetKeys = keys ?? current.map((s) => s.key);
 	// single-target invert toggles in-place, nested children included
@@ -218,18 +219,13 @@ export function invertSelections(
 	}
 	const [targets, others] = partitionByKeys(current, targetKeys);
 	const flat = targets.flatMap((s) => (s.props.type === "Union" ? s.props.selections : [s]));
-	const inner =
-		flat.length === 1 ? flat[0] : buildSelection({ type: "Union", selections: flat });
+	const inner = flat.length === 1 ? flat[0] : buildSelection({ type: "Union", selections: flat });
 	return [...others, buildSelection({ type: "Invert", selections: [inner] })];
 }
 
-export function toggleManualSelection(
-	current: Selection[],
-	locationId: number,
-): Selection[] {
+export function toggleManualSelection(current: Selection[], locationId: number): Selection[] {
 	const idx = current.findIndex((s) => s.key === "manual");
-	if (idx === -1)
-		return [...current, buildSelection({ type: "Manual", locations: [locationId] })];
+	if (idx === -1) return [...current, buildSelection({ type: "Manual", locations: [locationId] })];
 	const sel = current[idx];
 	const ids = (sel.props as Variant<SelectionProps, "Manual">).locations.slice();
 	const at = ids.indexOf(locationId);
@@ -318,7 +314,7 @@ function removeChildFromComposite(
 		];
 		const group =
 			remaining.length <= 1
-				? remaining[0] ?? child
+				? (remaining[0] ?? child)
 				: buildSelection({ type: compositeProps.type, selections: remaining });
 		return { updated: rewrap(group), removed: child };
 	}
@@ -486,14 +482,14 @@ export function replaceSelection(
 }
 
 /** Human-readable label for a selection, resolving tag names and filter ops. */
-export function selectionDisplayName(map: MapData, sel: Selection): string {
+export function selectionDisplayName(sel: Selection): string {
 	return match(sel.props)
 		.with({ type: "Locations" }, (p) => p.name ?? "Selection")
 		.with({ type: "Everything" }, () => "Everything")
 		.with({ type: "Polygon" }, (p) =>
 			p.polygon.properties?.name ? `Polygon: ${p.polygon.properties.name}` : "Polygon",
 		)
-		.with({ type: "Tag" }, (p) => `Tag: ${tagDisplayName(map, p.tagId)}`)
+		.with({ type: "Tag" }, (p) => `Tag: ${tagDisplayName(p.tagId)}`)
 		.with({ type: "Untagged" }, () => "Untagged")
 		.with({ type: "Unpanned" }, () => "Unpanned")
 		.with({ type: "PanoIds" }, () => "Pano ID locations")
@@ -505,7 +501,7 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 		.with({ type: "Reviewed" }, (p) => (p.mode === "unreviewed" ? "Unreviewed" : "Reviewed"))
 		.with({ type: "Intersection" }, () => "Intersection")
 		.with({ type: "Union" }, () => "Union")
-		.with({ type: "Invert" }, (p) => `Invert: ${selectionDisplayName(map, p.selections[0])}`)
+		.with({ type: "Invert" }, (p) => `Invert: ${selectionDisplayName(p.selections[0])}`)
 		.with({ type: "Filter" }, (p) => {
 			const fieldDef = getFieldDef(p.field);
 			const fieldLabel = fieldDef?.label ?? p.field;
@@ -547,25 +543,26 @@ export function selectionDisplayName(map: MapData, sel: Selection): string {
 		.exhaustive();
 }
 
-let suffixCache: { tags: MapData["meta"]["tags"]; suffixes: Map<string, string> } | null = null;
+let suffixCache: { tags: Tag[]; suffixes: Map<string, string> } | null = null;
 
 /** Display label for a tag NAME. In tree view with `truncateTagPaths` on, collapses the
- *  `/`-path to its shortest unique suffix; otherwise returns the name verbatim. Memoized on
- *  the tag-set reference (reassigned on every tag mutation) so list rendering stays O(n). */
-export function displayTagName(map: MapData, name: string): string {
+ *  `/`-path to its shortest unique suffix; otherwise returns the name verbatim. Uniqueness
+ *  is computed over visible tags only — soft-deleted ghosts must not widen suffixes.
+ *  Memoized on the visible-tags array (stable identity between tag mutations) so list
+ *  rendering stays O(n). */
+export function displayTagName(name: string): string {
 	const s = getSettings();
 	if (s.tagViewMode !== "tree" || !s.truncateTagPaths) return name;
-	const tags = map.meta.tags;
+	const tags = getVisibleTags();
 	if (!suffixCache || suffixCache.tags !== tags) {
-		const names = Object.values(tags).map((t) => t.name);
-		suffixCache = { tags, suffixes: shortestUniqueSuffixes(names) };
+		suffixCache = { tags, suffixes: shortestUniqueSuffixes(tags.map((t) => t.name)) };
 	}
 	return suffixCache.suffixes.get(name) ?? name;
 }
 
-function tagDisplayName(map: MapData, tagId: number): string {
-	const name = map.meta.tags[tagId]?.name;
-	return name == null ? String(tagId) : displayTagName(map, name);
+function tagDisplayName(tagId: number): string {
+	const name = getTag(tagId)?.name;
+	return name == null ? String(tagId) : displayTagName(name);
 }
 
 function validationStateLabel(state: ValidationState): string {

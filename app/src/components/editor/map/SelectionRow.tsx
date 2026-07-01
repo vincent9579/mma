@@ -17,6 +17,7 @@ import {
 	isolateSelection,
 	updateFilterSelection,
 	pruneDuplicates,
+	getVisibleTags,
 } from "@/store/useMapStore";
 import { toast } from "@/lib/util/toast";
 import { stepFilterWindow } from "@/lib/data/fieldOps";
@@ -24,7 +25,11 @@ import { cmd } from "@/lib/commands";
 import { RgbColorPicker } from "react-colorful";
 import type { Selection } from "@/bindings.gen";
 import { selectionDisplayName } from "@/store/selections";
-import { FilterForm, filterPropsToSeed, useExtraFieldKeys } from "@/components/editor/map/FilterBuilder";
+import {
+	FilterForm,
+	filterPropsToSeed,
+	useExtraFieldKeys,
+} from "@/components/editor/map/FilterBuilder";
 import { beginReview } from "@/lib/review/review";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { Icon } from "@/components/primitives/Icon";
@@ -310,7 +315,7 @@ export function SelectionRow({
 					}}
 				>
 					<span className="color-block" style={{ backgroundColor: colorBlockCss }} />{" "}
-					{selectionDisplayName(map, selection)}
+					{selectionDisplayName(selection)}
 				</span>
 				{isDropTarget && dropZone === "on" && (
 					<span className="selection-row__drop-hint">{drag?.altKey ? "OR" : "AND"}</span>
@@ -391,8 +396,8 @@ export function SelectionRow({
 												className="context-menu__item"
 												disabled={count === 0}
 												onSelect={() => {
-													const names = new Set(Object.values(map.meta.tags).map((t) => t.name));
-													setTagName(uniqueTagName(selectionDisplayName(map, selection), names));
+													const names = new Set(getVisibleTags().map((t) => t.name));
+													setTagName(uniqueTagName(selectionDisplayName(selection), names));
 													setSavingTag(true);
 												}}
 											>
@@ -404,7 +409,10 @@ export function SelectionRow({
 												className="context-menu__item"
 												disabled={count === 0}
 												onSelect={async () => {
-													const n = await pruneDuplicates(selection.props, pruneDistance(selection)!);
+													const n = await pruneDuplicates(
+														selection.props,
+														pruneDistance(selection)!,
+													);
 													toast(`Pruned ${fmt.format(n)} duplicate${n === 1 ? "" : "s"}`);
 												}}
 											>
@@ -478,7 +486,14 @@ export function SelectionRow({
 					initial={filterPropsToSeed(selection.props)}
 					submitLabel="Update filter"
 					onSubmit={(field, op, value, value2, tzLocal) =>
-						updateFilterSelection(selection.key, { type: "Filter", field, op, value, value2, tzLocal })
+						updateFilterSelection(selection.key, {
+							type: "Filter",
+							field,
+							op,
+							value,
+							value2,
+							tzLocal,
+						})
 					}
 					onClose={() => setEditingFilter(false)}
 				/>

@@ -5,9 +5,10 @@ import {
 	type RefObject,
 	type SetStateAction,
 } from "react";
-import type { Location, MapData } from "@/bindings.gen";
+import type { Location } from "@/bindings.gen";
 import {
 	getActiveLocation,
+	getCurrentMap,
 	getVisibleTags,
 	getTagCounts,
 	duplicateLocation,
@@ -38,7 +39,6 @@ import { google } from "@/lib/sv/opensv";
 
 interface LocationHotkeyDeps {
 	location: Location | null;
-	map: MapData | null;
 	isReviewMode: boolean;
 	panoDates: PanoReference[];
 	selectedPanoId: string | null;
@@ -59,7 +59,6 @@ interface LocationHotkeyDeps {
 export function useLocationHotkeys(deps: LocationHotkeyDeps) {
 	const {
 		location,
-		map,
 		isReviewMode,
 		panoDates,
 		selectedPanoId,
@@ -230,7 +229,7 @@ export function useLocationHotkeys(deps: LocationHotkeyDeps) {
 	});
 
 	const quicktagSlot = (idx: number) => {
-		if (!location || !map) return;
+		if (!location || !getCurrentMap()) return;
 		const tags = sortTagsByMode(getVisibleTags(), getSettings().tagSortMode, getTagCounts());
 		if (idx >= tags.length) return;
 		const tag = tags[idx];
