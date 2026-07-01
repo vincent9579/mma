@@ -1814,6 +1814,8 @@ declare const DEFAULTS: {
 	slowModifier: number;
 	showFps: boolean;
 	mapListFields: MapListField[];
+	/** Reopen the maps that were open when the session last ended (main window closed). */
+	restoreSession: boolean;
 	/** Per-label color overrides (hex), keyed by lowercased label name. Shared across all maps. */
 	labelColors: Record<string, string>;
 	geocodeProvider: GeocodeProvider;
@@ -2050,6 +2052,7 @@ declare const mma: {
 		slowModifier: number;
 		showFps: boolean;
 		mapListFields: MapListField[];
+		restoreSession: boolean;
 		labelColors: Record<string, string>;
 		geocodeProvider: GeocodeProvider;
 		nominatimApiKey: string;
@@ -2288,6 +2291,7 @@ declare const mma: {
 	};
 	subscribeStore: (fn: () => void) => () => void;
 	useMapList: () => MapMeta[];
+	getMapList: () => MapMeta[];
 	useTagCounts: () => Record<number, number>;
 	useCurrentMap: () => MapData | null;
 	useMapVersion: () => number;

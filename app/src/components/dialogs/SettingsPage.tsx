@@ -719,7 +719,15 @@ function MapListSection() {
 			<legend className="fieldset__header">
 				Map List <span className="fieldset__divider" />
 			</legend>
-			<p style={{ margin: "0 0 0.25rem", fontSize: "0.85rem", color: "#888" }}>
+			<label className="settings-popup__item">
+				<input
+					type="checkbox"
+					checked={s.restoreSession}
+					onChange={(e) => setSetting("restoreSession", e.target.checked)}
+				/>
+				Restore open maps on startup
+			</label>
+			<p style={{ margin: "0.25rem 0", fontSize: "0.85rem", color: "#888" }}>
 				Fields shown on each map row (labels are always shown)
 			</p>
 			{Object.entries(MAP_LIST_FIELDS).map(([value, label]) => (
@@ -1102,7 +1110,10 @@ function DataFolderSection() {
 	const [busy, setBusy] = useState(false);
 
 	useEffect(() => {
-		cmd.getDataLocation().then(setLoc).catch(() => {});
+		cmd
+			.getDataLocation()
+			.then(setLoc)
+			.catch(() => {});
 	}, []);
 
 	const pick = useCallback(async () => {
@@ -1153,8 +1164,8 @@ function DataFolderSection() {
 						{target}
 					</code>
 					<p style={{ color: "#888" }}>
-						Existing maps are not moved automatically. Copy them from the current
-						folder if you want to keep them. The app must relaunch to apply.
+						Existing maps are not moved automatically. Copy them from the current folder if you want
+						to keep them. The app must relaunch to apply.
 					</p>
 					<div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
 						<button className="button" onClick={() => setPending(undefined)} disabled={busy}>

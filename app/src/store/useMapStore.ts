@@ -1,7 +1,25 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { WorkArea, LatLng, MaybeLocation } from "@/types";
-import { isVirtualLocation, isImportPreview, LocationFlag, locId, bboxTupleToBounds } from "@/types";
-import type { Location, MapData, MapMeta, Tag, ExtraFieldDef, FilterOp, KeySpec, Scope, CommitDiff, PartitionBucket, EditorImportPreview } from "@/bindings.gen";
+import {
+	isVirtualLocation,
+	isImportPreview,
+	LocationFlag,
+	locId,
+	bboxTupleToBounds,
+} from "@/types";
+import type {
+	Location,
+	MapData,
+	MapMeta,
+	Tag,
+	ExtraFieldDef,
+	FilterOp,
+	KeySpec,
+	Scope,
+	CommitDiff,
+	PartitionBucket,
+	EditorImportPreview,
+} from "@/bindings.gen";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { emit as tauriEmit, listen } from "@tauri-apps/api/event";
 import { cmd } from "@/lib/commands";
@@ -9,7 +27,7 @@ import type {
 	MutationResult,
 	MapMetaPatch_Deserialize as MapMetaPatch,
 	SelectionSync,
-	CommitInfo
+	CommitInfo,
 } from "@/bindings.gen";
 import { emit as emitEvent } from "@/lib/events";
 import { log, fireAndForget } from "@/lib/util/log";
@@ -20,7 +38,11 @@ import { mmaBufUrl, compareNatural } from "@/lib/util/util";
 import { fitMapToBounds } from "@/lib/map/mapState";
 import { getSettings, setSetting } from "@/store/settings";
 import { getTriggeredProviders } from "@/lib/data/fieldDefs";
-import { setUserFieldDefs, mergeUserFieldDefs, resetForMapChange } from "@/lib/data/fieldDefRegistry";
+import {
+	setUserFieldDefs,
+	mergeUserFieldDefs,
+	resetForMapChange,
+} from "@/lib/data/fieldDefRegistry";
 import {
 	planFieldMove,
 	planFieldDelete,
@@ -30,7 +52,12 @@ import {
 import type { LocationPatch_Deserialize as LocationPatch, Update, TagPatch } from "@/bindings.gen";
 import { getSavedSelections, rewriteSavedSelectionFields } from "./savedSelections";
 import type { RenderDelta } from "@/bindings.gen";
-import { SelectedIds, decodeSelectionBitmask, type ReadonlyIdSet, type SelCellEntry } from "@/lib/render/CellManager";
+import {
+	SelectedIds,
+	decodeSelectionBitmask,
+	type ReadonlyIdSet,
+	type SelCellEntry,
+} from "@/lib/render/CellManager";
 
 /** Minimal pub/sub bus. `.on()` returns an unsubscribe function. */
 function createBus<T extends (...args: never[]) => void>() {
@@ -104,6 +131,7 @@ function getMapListSnapshot() {
 
 let cachedMapList: MapMeta[] = [];
 export const useMapList = makeStoreHook(() => cachedMapList, getMapListSnapshot);
+export const getMapList = () => cachedMapList;
 
 async function reloadMapList() {
 	cachedMapList = await cmd.storeListMaps();
@@ -404,7 +432,6 @@ export function discardOpenMap() {
 	resetMapState();
 }
 
-
 export function getCurrentMapId() {
 	return currentMapId;
 }
@@ -484,7 +511,11 @@ export function applyScope<T extends { id: number }>(scope: Scope, pool: T[]): T
 
 /** Group the scoped location set by a derived key — entirely in Rust, no locations fetched.
  *  Numeric bins arrive in bound order; projection keys are sorted naturally for display. */
-export async function partition(field: string, key: KeySpec, scope: Scope): Promise<PartitionBucket[]> {
+export async function partition(
+	field: string,
+	key: KeySpec,
+	scope: Scope,
+): Promise<PartitionBucket[]> {
 	const groups = await cmd.storePartition(field, key, scope);
 	if (key.kind !== "numericBin") groups.sort((a, b) => compareNatural(a.key, b.key));
 	return groups;
@@ -742,14 +773,14 @@ export async function removeLocations(ids: ReadonlyIdSet) {
 
 export async function updateLocations(
 	updates: Update<LocationPatch>[],
-	opts?: { undoable?: boolean }
+	opts?: { undoable?: boolean },
 ) {
 	if (!currentMap || updates.length === 0) return;
-	if (updates.some(u => isVirtualLocation(u))) return;
+	if (updates.some((u) => isVirtualLocation(u))) return;
 	emitEvent("location:update", updates);
 	await mutate(cmd.storeUpdateLocations(updates, opts?.undoable ?? true));
-	if (cachedActiveLocation && updates.some(u => u.id === activeLocationId)) {
-		const activePatch = updates.find(u => u.id === activeLocationId)?.patch;
+	if (cachedActiveLocation && updates.some((u) => u.id === activeLocationId)) {
+		const activePatch = updates.find((u) => u.id === activeLocationId)?.patch;
 		if (activePatch) cachedActiveLocation = { ...cachedActiveLocation, ...activePatch } as Location;
 		bump();
 	}
@@ -837,7 +868,9 @@ export const useAllSelections = makeStoreHook(() => selections);
 
 /** Active (non-ghosted) selections — the default for any operational logic. */
 export const useSelections = makeStoreHook(() =>
-	ghostedSelections.size === 0 ? selections : selections.filter((s) => !ghostedSelections.has(s.key)),
+	ghostedSelections.size === 0
+		? selections
+		: selections.filter((s) => !ghostedSelections.has(s.key)),
 );
 
 /** Keyed per-node selection counts (by `Selection.key`). Look up a row's count by its key. */
@@ -1141,7 +1174,11 @@ export async function openStagedLocation(index: number) {
 	activeLocationId = null;
 	// Rust's active_id must not stay pinned to the previous real location.
 	fireAndForget(cmd.storeSetActive(null), "stagedOpen:setActive");
-	cachedActiveLocation = { ...loc, id: freshVirtualId(), flags: loc.flags | LocationFlag.ImportPreview };
+	cachedActiveLocation = {
+		...loc,
+		id: freshVirtualId(),
+		flags: loc.flags | LocationFlag.ImportPreview,
+	};
 	workArea = "location";
 	importMarkerVersion++;
 	bump();
@@ -1153,7 +1190,11 @@ export async function openStagedLocation(index: number) {
 export function previewVirtualLocation(loc: Location) {
 	activeLocationId = null;
 	fireAndForget(cmd.storeSetActive(null), "virtualPreview:setActive");
-	cachedActiveLocation = { ...loc, id: freshVirtualId(), flags: loc.flags | LocationFlag.SeenOverlay };
+	cachedActiveLocation = {
+		...loc,
+		id: freshVirtualId(),
+		flags: loc.flags | LocationFlag.SeenOverlay,
+	};
 	workArea = "location";
 	bump();
 	emitEvent("active:change", null);
@@ -1269,7 +1310,9 @@ export async function createTags(names: string[]): Promise<Tag[]> {
 	if (names.length === 0) return [];
 	await mutate(cmd.storeCreateTags(names));
 	const lower = new Set(names.map((n) => n.toLowerCase()));
-	const created = Object.values(currentMap!.meta.tags).filter((t) => lower.has(t.name.toLowerCase()));
+	const created = Object.values(currentMap!.meta.tags).filter((t) =>
+		lower.has(t.name.toLowerCase()),
+	);
 	emitEvent("tag:add", created);
 	return created;
 }

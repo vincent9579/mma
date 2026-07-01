@@ -58,7 +58,7 @@ export const PREVIEW_ASPECT_RATIOS = {
 	"16 / 9": "16:9",
 	"21 / 9": "21:9",
 	"32 / 9": "32:9",
-	"free": "Free",
+	free: "Free",
 } as const;
 
 export type MovementMode = keyof typeof MOVEMENT_MODES;
@@ -109,6 +109,8 @@ const DEFAULTS = {
 	slowModifier: 4,
 	showFps: false,
 	mapListFields: ["locationCount"] as MapListField[],
+	/** Reopen the maps that were open when the session last ended (main window closed). */
+	restoreSession: true,
 	/** Per-label color overrides (hex), keyed by lowercased label name. Shared across all maps. */
 	labelColors: {} as Record<string, string>,
 	geocodeProvider: "local" as GeocodeProvider,
@@ -149,10 +151,9 @@ export type AppSettings = typeof DEFAULTS;
 
 /** App settings mirrored to CSS custom properties on `:root`. Add an entry to expose a
  *  setting to CSS; `useCssVarSettings` (App.tsx) keeps them in sync reactively. */
-export const CSS_VAR_SETTINGS: ReadonlyArray<readonly [cssVar: string, value: (s: AppSettings) => string]> = [
-	["--tag-gap", (s) => `${s.tagGap}px`],
-];
-
+export const CSS_VAR_SETTINGS: ReadonlyArray<
+	readonly [cssVar: string, value: (s: AppSettings) => string]
+> = [["--tag-gap", (s) => `${s.tagGap}px`]];
 
 const STORAGE_KEY = "appSettings";
 
