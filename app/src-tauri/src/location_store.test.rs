@@ -1089,6 +1089,7 @@ fn render_buffer_format_matches_js_parser() {
         west: -180.0, south: -90.0, east: 180.0, north: 90.0,
         selected_ids: None,
         marker_style: "pin".into(),
+        marker_color: None,
     };
     let buf = build_cell_render_buffers(&mut store, &req);
     assert!(!buf.is_empty());
@@ -1132,6 +1133,7 @@ fn arrow_render_angle_is_negated_heading() {
         west: -180.0, south: -90.0, east: 180.0, north: 90.0,
         selected_ids: None,
         marker_style: "arrow".into(),
+        marker_color: None,
     };
     let buf = build_cell_render_buffers(&mut store, &req);
 
@@ -1393,6 +1395,7 @@ fn render_buffer_with_selection_overlay() {
         west: -180.0, south: -90.0, east: 180.0, north: 90.0,
         selected_ids: None,
         marker_style: "pin".into(),
+        marker_color: None,
     };
     let buf = build_cell_render_buffers(&mut store, &req);
 

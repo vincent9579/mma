@@ -117,6 +117,7 @@ const DEFAULTS = {
 	nominatimApiKey: "",
 	panToImported: true,
 	followActiveInReview: true,
+	markerColor: { r: 42, g: 42, b: 42 },
 	activeLocationColor: { r: 200, g: 0, b: 0 },
 	importPreviewColor: { r: 217, g: 70, b: 239 },
 	panoDotColor: { r: 255, g: 0, b: 0 },

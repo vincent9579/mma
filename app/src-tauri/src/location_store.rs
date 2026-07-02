@@ -2474,6 +2474,7 @@ pub struct RenderRequest {
     pub north: f64,
     pub selected_ids: Option<Vec<u32>>,
     pub marker_style: String,
+    pub marker_color: Option<[u8; 3]>,
 }
 
 /// Build the full render binary: single linear pass over all alive locations, partitioned into
@@ -2501,6 +2502,8 @@ fn build_cell_render_buffers(store: &mut Store, req: &RenderRequest) -> Vec<u8> 
     let color_map = store.selections.color_map();
     let active_id = store.selections.active_id;
     let arrow_style = req.marker_style == "arrow";
+    let mc = req.marker_color.unwrap_or([42, 42, 42]);
+    let base_color = [mc[0], mc[1], mc[2], 255u8];
 
     // 32 cells indexed by render_cell_idx (0-31)
     struct CellOut { ids: Vec<u32>, positions: Vec<f32>, colors: Vec<u8>, angles: Vec<f32> }
@@ -2533,7 +2536,7 @@ fn build_cell_render_buffers(store: &mut Store, req: &RenderRequest) -> Vec<u8> 
         let angle = if arrow_style { -(heading as f32) } else { 0.0 };
         let is_hidden = selected_set.contains(id) || active_id == Some(id);
         if is_hidden { out.colors.extend_from_slice(&[0, 0, 0, 0]); }
-        else { out.colors.extend_from_slice(&[42, 42, 42, 255]); }
+        else { out.colors.extend_from_slice(&base_color); }
         out.angles.push(angle);
         out.ids.push(id);
         if let Some(&[r, g, b]) = color_map.get(&id) {
@@ -2556,7 +2559,7 @@ fn build_cell_render_buffers(store: &mut Store, req: &RenderRequest) -> Vec<u8> 
         out.positions.push(loc.lat as f32);
         let angle = if arrow_style { -(loc.heading as f32) } else { 0.0 };
         if is_hidden { out.colors.extend_from_slice(&[0, 0, 0, 0]); }
-        else { out.colors.extend_from_slice(&[42, 42, 42, 255]); }
+        else { out.colors.extend_from_slice(&base_color); }
         out.angles.push(angle);
         out.ids.push(id);
         if let Some(&[r, g, b]) = color_map.get(&id) {

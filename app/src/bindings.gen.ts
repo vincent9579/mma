@@ -894,6 +894,7 @@ export type RenderRequest = {
 	north?: number,
 	selectedIds?: number[] | null,
 	markerStyle?: string,
+	markerColor?: [number, number, number] | null,
 };
 
 /**

@@ -30,7 +30,11 @@ import { resolveStackForPrefs, CUSTOM_STYLES_KEY, type CustomStyle } from "@/lib
 import { type MapEmbedPrefs, DEFAULT_PREFS } from "@/store/mapEmbedPrefs";
 import { FpsCounter } from "@/components/editor/map/FpsCounter";
 
-export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLocation) => void | Promise<void> }) {
+export function MapEmbed({
+	onAddLocation,
+}: {
+	onAddLocation: (parsed: ParsedLocation) => void | Promise<void>;
+}) {
 	const map = useCurrentMap();
 	const containerRef = useRef<HTMLDivElement>(null);
 	const gMapRef = useRef<google.maps.Map>(null);
@@ -174,19 +178,20 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 
 	useEffect(() => {
 		if (!svLayerRef.current) return;
-		const blobbySingleType = svBlobby && mapZoom <= BLOBBY_ZOOM_THRESHOLD && svCoverageType !== "default";
+		const blobbySingleType =
+			svBlobby && mapZoom <= BLOBBY_ZOOM_THRESHOLD && svCoverageType !== "default";
 		svLayerRef.current.setOpacity(blobbySingleType ? svOpacity * 0.6 : svOpacity);
 	}, [svOpacity, svBlobby, mapZoom, svCoverageType]);
-
 
 	// The editor map drives the single scene engine (delta/selection/active subscriptions)
 	useEffect(() => startSceneEngine(), []);
 
-	// Full (re)load on open and on marker-style change; clear when the map isn't ready.
+	// Full (re)load on open and on marker-style/color change; clear when the map isn't ready.
+	const markerColor = useSetting("markerColor");
 	useEffect(() => {
-		if (mapReady) void loadScene(markerStyle);
+		if (mapReady) void loadScene(markerStyle, markerColor);
 		else clearScene();
-	}, [mapReady, markerStyle]);
+	}, [mapReady, markerStyle, markerColor]);
 
 	useEffect(() => {
 		if (svPreview?.url) return () => URL.revokeObjectURL(svPreview.url);
@@ -316,12 +321,10 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 		});
 	});
 
-
-
 	return (
 		<ContextMenu.Root modal={false}>
 			<div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
-				<div className="embed-controls">
+			<div className="embed-controls">
 				{/* TopLeft: Map dropdown, Search */}
 				<div
 					className="embed-controls__control"
@@ -402,14 +405,21 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 					/>
 					<div className="map-control sv-opacity-control">
 						<Tooltip
-							content={opacityTarget === "sv" ? "Adjusting Street View opacity" : "Adjusting marker opacity"}
+							content={
+								opacityTarget === "sv"
+									? "Adjusting Street View opacity"
+									: "Adjusting marker opacity"
+							}
 							side="left"
 						>
 							<button
 								className="opacity-target-toggle"
 								onClick={() => setOpacityTarget((t) => (t === "sv" ? "markers" : "sv"))}
 							>
-								<Icon path={opacityTarget === "sv" ? mdiGoogleStreetView : mdiMapMarker} size={20} />
+								<Icon
+									path={opacityTarget === "sv" ? mdiGoogleStreetView : mdiMapMarker}
+									size={20}
+								/>
 							</button>
 						</Tooltip>
 						<input
@@ -462,7 +472,12 @@ export function MapEmbed({ onAddLocation }: { onAddLocation: (parsed: ParsedLoca
 				<div className="embed-controls__control" style={{ bottom: 0, left: 0 }}>
 					<div className="map-control coordinate-control">
 						<span ref={coordDisplayRef} /> · zoom {mapZoom}
-						{showFps && <><span style={{ margin: "0 4px" }}>·</span><FpsCounter /></>}
+						{showFps && (
+							<>
+								<span style={{ margin: "0 4px" }}>·</span>
+								<FpsCounter />
+							</>
+						)}
 					</div>
 				</div>
 			</div>

@@ -21,7 +21,7 @@ import type { MarkerStyle } from "@/types";
 // (ignores bounds, rebuilds the picking index, shared file path).
 
 const ACTIVE_HIDDEN: [number, number, number, number] = [0, 0, 0, 0];
-const MARKER_DEFAULT: [number, number, number, number] = [42, 42, 42, 255];
+let markerDefault: [number, number, number, number] = [42, 42, 42, 255];
 
 const scene = new CellManager();
 let version = 0;
@@ -69,16 +69,32 @@ function patchMarker(id: number, rgba: [number, number, number, number]) {
 // it) and restore the previously-active one — unless it's selected. Fast path: no refetch.
 function applyActive() {
 	const activeId = getActiveLocation()?.id ?? null;
-	if (prevActiveId != null && prevActiveId !== activeId && !getSelectedLocationIds().has(prevActiveId)) {
-		patchMarker(prevActiveId, MARKER_DEFAULT);
+	if (
+		prevActiveId != null &&
+		prevActiveId !== activeId &&
+		!getSelectedLocationIds().has(prevActiveId)
+	) {
+		patchMarker(prevActiveId, markerDefault);
 	}
 	prevActiveId = activeId;
 	if (activeId != null) patchMarker(activeId, ACTIVE_HIDDEN);
 }
 
+export function setMarkerDefaultColor(r: number, g: number, b: number) {
+	markerDefault = [r, g, b, 255];
+}
+
+export function getMarkerDefaultColor(): [number, number, number, number] {
+	return markerDefault;
+}
+
 /** Full (re)load from Rust for the whole world. Editor-driven on open / marker-style change. */
-export async function loadScene(markerStyle: MarkerStyle): Promise<void> {
+export async function loadScene(
+	markerStyle: MarkerStyle,
+	mc?: { r: number; g: number; b: number },
+): Promise<void> {
 	lastMarkerStyle = markerStyle;
+	if (mc) setMarkerDefaultColor(mc.r, mc.g, mc.b);
 	const token = ++loadToken;
 	const t = trace("render", { summary: true });
 	try {
@@ -88,6 +104,7 @@ export async function loadScene(markerStyle: MarkerStyle): Promise<void> {
 			east: 180,
 			north: 90,
 			markerStyle,
+			markerColor: mc ? [mc.r, mc.g, mc.b] : undefined,
 		});
 		t.step("fill");
 		const resp = await fetch(mmaBufUrl(filePath));
@@ -127,7 +144,10 @@ export function startSceneEngine(): () => void {
 		const aid = getActiveLocation()?.id ?? null;
 		if (aid != null) patchMarker(aid, ACTIVE_HIDDEN);
 		if (delta.colorPatches.length > 0) {
-			const selPatches = delta.colorPatches.filter((cp) => !(cp.r === 42 && cp.g === 42 && cp.b === 42));
+			const selPatches = delta.colorPatches.filter(
+				(cp) =>
+					!(cp.r === markerDefault[0] && cp.g === markerDefault[1] && cp.b === markerDefault[2]),
+			);
 			scene.appendToSelectionOverlay(selPatches);
 		}
 		t.end({ affected: affected.size, added: delta.added.length, removed: delta.removed.length });
@@ -136,7 +156,8 @@ export function startSceneEngine(): () => void {
 
 	const unsubSel = selBitmaskBus.on((selColors, cellEntries, setIds) => {
 		const t = trace("selection", { summary: true });
-		const ids = scene.applySelectionBitmasks(selColors, cellEntries);
+		const [r, g, b] = markerDefault;
+		const ids = scene.applySelectionBitmasks(selColors, cellEntries, [r, g, b]);
 		setIds(ids);
 		t.end({ cells: cellEntries.length, sels: selColors.length, ids: ids.size });
 		bumpScene();

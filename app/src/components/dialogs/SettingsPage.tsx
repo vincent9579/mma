@@ -616,6 +616,25 @@ function NavigationSection() {
 	);
 }
 
+function MarkerColorSection() {
+	const s = useSettings();
+	return (
+		<fieldset className="fieldset">
+			<legend className="fieldset__header">
+				Markers <span className="fieldset__divider" />
+			</legend>
+			<div className="settings-popup__item">
+				Default marker color
+				<ColorPicker
+					color={s.markerColor}
+					onChange={(color) => setSetting("markerColor", color)}
+					ariaLabel="Default marker color"
+				/>
+			</div>
+		</fieldset>
+	);
+}
+
 function ActiveLocationSection() {
 	const s = useSettings();
 	return (
@@ -624,7 +643,7 @@ function ActiveLocationSection() {
 				Active location <span className="fieldset__divider" />
 			</legend>
 			<div className="settings-popup__item">
-				Marker color
+				Active marker color
 				<ColorPicker
 					color={s.activeLocationColor}
 					onChange={(color) => setSetting("activeLocationColor", color)}
@@ -785,6 +804,7 @@ function MapTab() {
 	return (
 		<>
 			<MapNavigationSection />
+			<MarkerColorSection />
 			<ActiveLocationSection />
 			<PanoDotsSection />
 			<ImportSection />
