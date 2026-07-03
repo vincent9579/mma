@@ -23,6 +23,7 @@ jobs:
         with:
           name: ocr-models
           path: plugins/copyright/sidecar/models/
+          if-no-files-found: error
 
   # Build sidecar binary for each platform (GPU backend where available)
   build-sidecar:
@@ -32,7 +33,6 @@ jobs:
       binary-name: mma-copyright
       features-windows-x64: directml
       features-macos-arm64: coreml
-      features-macos-x64: coreml
 
   # Bundle everything into release archives
   package:
@@ -46,8 +46,6 @@ jobs:
           - label: windows-x64
             suffix: .exe
           - label: macos-arm64
-            suffix: ''
-          - label: macos-x64
             suffix: ''
           - label: linux-x64
             suffix: ''
@@ -81,4 +79,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          # never steal the Latest badge from app releases (updater reads releases/latest)
+          make_latest: false
           files: mma-copyright-${{ matrix.label }}.zip

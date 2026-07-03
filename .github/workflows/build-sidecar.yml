@@ -31,11 +31,6 @@ on:
         required: false
         type: string
         default: ''
-      features-macos-x64:
-        description: 'Cargo --features value for the macos-x64 build'
-        required: false
-        type: string
-        default: ''
       features-linux-x64:
         description: 'Cargo --features value for the linux-x64 build'
         required: false
@@ -56,11 +51,8 @@ jobs:
             target: aarch64-apple-darwin
             suffix: ''
             label: macos-arm64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            suffix: ''
-            label: macos-x64
-          - os: ubuntu-22.04
+          # ubuntu-24.04: ort prebuilt onnxruntime needs glibc >= 2.38 (__isoc23_* symbols)
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             suffix: ''
             label: linux-x64
@@ -76,7 +68,13 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: ${{ inputs.crate-path }} -> target
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}-ort1
+          # ort-sys links against binaries it downloads here; a restored target
+          # without this dir fails at link time
+          cache-directories: |
+            ~/Library/Caches/ort.pyke.io
+            ~/.cache/ort.pyke.io
+            ~\AppData\Local\ort.pyke.io
 
       - uses: actions/setup-python@v5
         if: inputs.pre-build-python
@@ -95,7 +93,6 @@ jobs:
           case "${{ matrix.label }}" in
             windows-x64) f="${{ inputs.features-windows-x64 }}" ;;
             macos-arm64) f="${{ inputs.features-macos-arm64 }}" ;;
-            macos-x64) f="${{ inputs.features-macos-x64 }}" ;;
             linux-x64) f="${{ inputs.features-linux-x64 }}" ;;
           esac
           if [ -n "$f" ]; then

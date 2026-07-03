@@ -22,6 +22,7 @@ jobs:
         with:
           name: vision-models
           path: plugins/vision/sidecar/models/
+          if-no-files-found: error
 
   # Build sidecar binary for each platform (GPU backend where available)
   build-sidecar:
@@ -31,7 +32,6 @@ jobs:
       binary-name: mma-vision
       features-windows-x64: directml
       features-macos-arm64: coreml
-      features-macos-x64: coreml
 
   # Bundle everything into release archives
   package:
@@ -47,9 +47,6 @@ jobs:
             suffix: .exe
             models: vision_model_fp16.onnx text_model_fp16.onnx
           - label: macos-arm64
-            suffix: ''
-            models: vision_model_fp16.onnx text_model_fp16.onnx
-          - label: macos-x64
             suffix: ''
             models: vision_model_fp16.onnx text_model_fp16.onnx
           - label: linux-x64
@@ -92,4 +89,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          # never steal the Latest badge from app releases (updater reads releases/latest)
+          make_latest: false
           files: mma-vision-${{ matrix.label }}.zip

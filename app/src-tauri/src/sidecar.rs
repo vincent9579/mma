@@ -41,7 +41,10 @@ fn platform_tag() -> AppResult<&'static str> {
     Ok(match (std::env::consts::OS, std::env::consts::ARCH) {
         ("windows", "x86_64") => "windows-x64",
         ("macos", "aarch64") => "macos-arm64",
-        ("macos", "x86_64") => "macos-x64",
+        // No macos-x64: ort ships no prebuilt ONNX Runtime for x86_64-apple-darwin.
+        ("macos", "x86_64") => {
+            return Err(AppError("Sidecar plugins are not available on Intel Macs".into()));
+        }
         ("linux", "x86_64") => "linux-x64",
         (os, arch) => return Err(AppError(format!("Unsupported platform: {os}-{arch}"))),
     })
