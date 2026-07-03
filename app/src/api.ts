@@ -137,7 +137,12 @@ async function spawnSidecar(pluginId: string, name: string, args: string[]): Pro
 		}),
 	);
 
-	runId = await commands.sidecarSpawn(pluginId, name, args);
+	try {
+		runId = await commands.sidecarSpawn(pluginId, name, args);
+	} catch (e) {
+		cleanup();
+		throw e;
+	}
 	return {
 		runId,
 		onLine: (cb) => lineCbs.push(cb),
