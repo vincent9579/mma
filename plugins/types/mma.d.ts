@@ -455,6 +455,12 @@ export type PluginManifest = {
 	icon: string;
 	main: string;
 	version: string;
+	sidecar?: PluginSidecar | null;
+};
+/**  A plugin's declared sidecar binary (downloaded from GitHub Releases on install). */
+export type PluginSidecar = {
+	name: string;
+	version: string;
 };
 /**
  *  GeoJSON-like polygon geometry. `coordinates` is the primary polygon (outer ring +
@@ -515,6 +521,11 @@ export type RenderRequest = {
 	north?: number;
 	selectedIds?: number[] | null;
 	markerStyle?: string;
+	markerColor?: [
+		number,
+		number,
+		number
+	] | null;
 };
 /**
  *  Inbound payload for creating a session. `order` is the frozen worklist (must be non-empty);
@@ -1838,6 +1849,11 @@ declare const DEFAULTS: {
 	nominatimApiKey: string;
 	panToImported: boolean;
 	followActiveInReview: boolean;
+	markerColor: {
+		r: number;
+		g: number;
+		b: number;
+	};
 	activeLocationColor: {
 		r: number;
 		g: number;
@@ -1901,6 +1917,15 @@ export interface LocationStore {
 	destroy(): void;
 }
 declare function createLocationStore(): Promise<LocationStore>;
+/** A running sidecar process. Callbacks fire per line; listeners self-remove on exit. */
+export interface SidecarRun {
+	runId: number;
+	onLine(cb: (line: string) => void): void;
+	onStderr(cb: (line: string) => void): void;
+	onExit(cb: (code: number | null) => void): void;
+	kill(): void;
+}
+declare function spawnSidecar(pluginId: string, name: string, args: string[]): Promise<SidecarRun>;
 declare const mma: {
 	cmd: {
 		writeTempFile: (name: string, content: string) => Promise<string>;
@@ -1913,6 +1938,10 @@ declare const mma: {
 		listUserPlugins: () => Promise<PluginManifest[]>;
 		installPlugin: (id: string) => Promise<PluginManifest>;
 		uninstallPlugin: (id: string) => Promise<null>;
+		sidecarInstall: (pluginId: string, name: string, version: string) => Promise<null>;
+		sidecarInstalledVersion: (pluginId: string) => Promise<string | null>;
+		sidecarSpawn: (pluginId: string, name: string, args: string[]) => Promise<number>;
+		sidecarKill: (runId: number) => Promise<null>;
 		checkBorderFile: (level: string) => Promise<boolean>;
 		downloadBorderFile: (level: string) => Promise<null>;
 		borderLookup: (lat: number, lng: number, level: string) => Promise<PolygonGeometry | null>;
@@ -2014,6 +2043,10 @@ declare const mma: {
 		open: typeof open$1;
 		save: typeof save;
 	};
+	sidecar: {
+		installedVersion: (pluginId: string) => Promise<string | null>;
+		spawn: typeof spawnSidecar;
+	};
 	registerPlugin: typeof registerPlugin;
 	registerEnrichFields: typeof registerEnrichFields;
 	registerEnrichmentProvider: typeof registerEnrichmentProvider;
@@ -2078,6 +2111,11 @@ declare const mma: {
 		nominatimApiKey: string;
 		panToImported: boolean;
 		followActiveInReview: boolean;
+		markerColor: {
+			r: number;
+			g: number;
+			b: number;
+		};
 		activeLocationColor: {
 			r: number;
 			g: number;

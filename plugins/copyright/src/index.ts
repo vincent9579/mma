@@ -16,15 +16,9 @@ async function pluginDir(): Promise<string> {
 	return _pluginDir;
 }
 
+// Models ship inside the sidecar bundle, extracted next to the binary.
 async function modelDir(): Promise<string> {
-	return `${await pluginDir()}${SEP}models`;
-}
-
-interface SidecarProcess {
-	kill(): void;
-	onLine(cb: (line: string) => void): void;
-	onStderr(cb: (line: string) => void): void;
-	onClose(cb: (code: number | null) => void): void;
+	return `${await pluginDir()}${SEP}sidecar${SEP}models`;
 }
 
 let tempCounter = 0;
@@ -32,44 +26,6 @@ let tempCounter = 0;
 async function writeInputFile(data: unknown): Promise<string> {
 	const name = `mma_copyright_${Date.now()}_${tempCounter++}.json`;
 	return MMA.cmd.writeTempFile(name, JSON.stringify(data));
-}
-
-function spawnCommand(
-	args: string[],
-): { process: SidecarProcess; done: Promise<void> } {
-	const lineCallbacks: ((line: string) => void)[] = [];
-	const stderrCallbacks: ((line: string) => void)[] = [];
-	const closeCallbacks: ((code: number | null) => void)[] = [];
-	let child: { kill(): void } | null = null;
-
-	const proc: SidecarProcess = {
-		kill() { child?.kill(); },
-		onLine(cb) { lineCallbacks.push(cb); },
-		onStderr(cb) { stderrCallbacks.push(cb); },
-		onClose(cb) { closeCallbacks.push(cb); },
-	};
-
-	const done = (async () => {
-		const cmd = MMA.shell.Command.create(BINARY_NAME, args);
-		cmd.stdout.on("data", (line: string) => {
-			const trimmed = line.trim();
-			if (trimmed) lineCallbacks.forEach((cb) => cb(trimmed));
-		});
-		cmd.stderr.on("data", (line: string) => {
-			console.error("[copyright]", line);
-			const trimmed = line.trim();
-			if (trimmed) stderrCallbacks.forEach((cb) => cb(trimmed));
-		});
-		child = await cmd.spawn();
-		await new Promise<void>((resolve) => {
-			cmd.on("close", (ev: { code: number | null }) => {
-				closeCallbacks.forEach((cb) => cb(ev.code));
-				resolve();
-			});
-		});
-	})();
-
-	return { process: proc, done };
 }
 
 interface DetectResult {
@@ -121,12 +77,19 @@ async function enrich(
 
 	const inputPath = await writeInputFile({ panoIds });
 	const md = await modelDir();
-	const { process, done } = spawnCommand(["detect", "--input", inputPath, "--model-dir", md]);
+	const proc = await MMA.sidecar.spawn("copyright", BINARY_NAME, [
+		"detect",
+		"--input",
+		inputPath,
+		"--model-dir",
+		md,
+	]);
 
-	const abortHandler = () => process.kill();
+	const abortHandler = () => proc.kill();
 	ctx?.signal?.addEventListener("abort", abortHandler);
 
-	process.onLine((line) => {
+	proc.onStderr((line) => console.error("[copyright]", line));
+	proc.onLine((line) => {
 		let result: DetectResult;
 		try {
 			result = JSON.parse(line);
@@ -145,7 +108,7 @@ async function enrich(
 		}
 	});
 
-	await done;
+	await new Promise<void>((resolve) => proc.onExit(() => resolve()));
 	ctx?.signal?.removeEventListener("abort", abortHandler);
 
 	return patches;

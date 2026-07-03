@@ -47,6 +47,7 @@ mod review;
 mod vcs;
 mod vcs_delta;
 mod plugins;
+mod sidecar;
 
 #[cfg(feature = "web-serve")]
 pub mod serve;
@@ -140,6 +141,13 @@ fn open_data_folder() -> AppResult<()> {
     Ok(())
 }
 
+/// A plugin's declared sidecar binary (downloaded from GitHub Releases on install).
+#[derive(serde::Serialize, Clone, specta::Type)]
+struct PluginSidecar {
+    name: String,
+    version: String,
+}
+
 /// Metadata for a user-installed plugin, read from `plugins/{id}/manifest.json`.
 #[derive(serde::Serialize, specta::Type)]
 struct PluginManifest {
@@ -149,6 +157,17 @@ struct PluginManifest {
     icon: String,
     main: String,
     version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sidecar: Option<PluginSidecar>,
+}
+
+/// Parse the optional `sidecar` object out of a manifest JSON value.
+fn parse_sidecar(val: &serde_json::Value) -> Option<PluginSidecar> {
+    let s = val.get("sidecar")?;
+    Some(PluginSidecar {
+        name: s.get("name")?.as_str()?.to_string(),
+        version: s.get("version")?.as_str()?.to_string(),
+    })
 }
 
 /// Scan the `plugins/` directory under app data and return manifests for all installed plugins.
@@ -184,7 +203,8 @@ fn list_user_plugins() -> Vec<PluginManifest> {
                     .unwrap_or("index.js").to_string();
                 let version = val.get("version").and_then(|v| v.as_str())
                     .unwrap_or("").to_string();
-                plugins.push(PluginManifest { id, name, description, icon, main, version });
+                let sidecar = parse_sidecar(&val);
+                plugins.push(PluginManifest { id, name, description, icon, main, version, sidecar });
             }
         }
     }
@@ -195,7 +215,7 @@ fn list_user_plugins() -> Vec<PluginManifest> {
 const PLUGIN_REPO_BASE: &str =
     "https://raw.githubusercontent.com/ccmdi/mma/master/plugins";
 
-fn validate_plugin_id(id: &str) -> AppResult<()> {
+pub(crate) fn validate_plugin_id(id: &str) -> AppResult<()> {
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
         return Err(AppError(format!("Invalid plugin id: {id}")));
     }
@@ -240,8 +260,9 @@ fn install_plugin(id: String) -> AppResult<PluginManifest> {
         .unwrap_or("").to_string();
     let version = val.get("version").and_then(|v| v.as_str())
         .unwrap_or("").to_string();
+    let sidecar = parse_sidecar(&val);
 
-    Ok(PluginManifest { id, name, description, icon, main: main.to_string(), version })
+    Ok(PluginManifest { id, name, description, icon, main: main.to_string(), version, sidecar })
 }
 
 /// Remove a plugin by deleting its directory from the local plugins folder.
@@ -414,6 +435,10 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             list_user_plugins,
             install_plugin,
             uninstall_plugin,
+            sidecar::sidecar_install,
+            sidecar::sidecar_installed_version,
+            sidecar::sidecar_spawn,
+            sidecar::sidecar_kill,
             borders::check_border_file,
             borders::download_border_file,
             borders::border_lookup,

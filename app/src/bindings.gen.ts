@@ -32,6 +32,21 @@ export const commands = {
 	installPlugin: (id: string) => typedError<PluginManifest, string>(__TAURI_INVOKE("install_plugin", { id })),
 	/**  Remove a plugin by deleting its directory from the local plugins folder. */
 	uninstallPlugin: (id: string) => typedError<null, string>(__TAURI_INVOKE("uninstall_plugin", { id })),
+	/**
+	 *  Download a plugin's sidecar bundle from GitHub Releases and extract it under
+	 *  `{appData}/plugins/{plugin_id}/sidecar/`. Emits `sidecar-install-progress`.
+	 */
+	sidecarInstall: (pluginId: string, name: string, version: string) => typedError<null, string>(__TAURI_INVOKE("sidecar_install", { pluginId, name, version })),
+	/**  Installed sidecar version for a plugin (from `sidecar/version.txt`), or `None`. */
+	sidecarInstalledVersion: (pluginId: string) => typedError<string | null, string>(__TAURI_INVOKE("sidecar_installed_version", { pluginId })),
+	/**
+	 *  Spawn a plugin's installed sidecar binary. Streams stdout/stderr lines as
+	 *  `sidecar-stdout` / `sidecar-stderr` events and the exit as `sidecar-exit`,
+	 *  keyed by the returned run id. Runs in the sidecar dir so co-located dlls resolve.
+	 */
+	sidecarSpawn: (pluginId: string, name: string, args: string[]) => typedError<number, string>(__TAURI_INVOKE("sidecar_spawn", { pluginId, name, args })),
+	/**  Kill a running sidecar process by run id (no-op if already exited). */
+	sidecarKill: (runId: number) => typedError<null, string>(__TAURI_INVOKE("sidecar_kill", { runId })),
 	checkBorderFile: (level: string) => typedError<boolean, string>(__TAURI_INVOKE("check_border_file", { level })),
 	downloadBorderFile: (level: string) => typedError<null, string>(__TAURI_INVOKE("download_border_file", { level })),
 	borderLookup: (lat: number, lng: number, level: string) => typedError<PolygonGeometry | null, string>(__TAURI_INVOKE("border_lookup", { lat, lng, level })).then((v) => ((v.status === "ok" ? { ...v, data: v.data==null?v.data:({...v.data,coordinates:v.data.coordinates.map(i=>i.map(i=>i.map(i=>i))),extraPolygons:v.data.extraPolygons==null?v.data.extraPolygons:v.data.extraPolygons.map(i=>i.map(i=>i.map(i=>i.map(i=>i))))}) } : v) as typeof v)),
@@ -828,12 +843,32 @@ export type PartitionBucket = {
 };
 
 /**  Metadata for a user-installed plugin, read from `plugins/{id}/manifest.json`. */
+
+/**  Metadata for a user-installed plugin, read from `plugins/{id}/manifest.json`. */
+export type PluginManifest_Deserialize = {
+	id: string,
+	name: string,
+	description: string,
+	icon: string,
+	main: string,
+	version: string,
+	sidecar: PluginSidecar | null,
+};
+
+/**  Metadata for a user-installed plugin, read from `plugins/{id}/manifest.json`. */
 export type PluginManifest = {
 	id: string,
 	name: string,
 	description: string,
 	icon: string,
 	main: string,
+	version: string,
+	sidecar?: PluginSidecar | null,
+};
+
+/**  A plugin's declared sidecar binary (downloaded from GitHub Releases on install). */
+export type PluginSidecar = {
+	name: string,
 	version: string,
 };
 

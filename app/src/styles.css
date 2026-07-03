@@ -5467,6 +5467,12 @@ body {
 	gap: 4px;
 	flex-shrink: 0;
 }
+.plugin-card__progress {
+	align-self: center;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	color: #888;
+}
 .plugin-card__action-btn {
 	display: flex;
 	align-items: center;

@@ -23,6 +23,11 @@ export interface Plugin {
 	locationPanel?: ComponentType;
 }
 
+export interface PluginSidecarRef {
+	name: string;
+	version: string;
+}
+
 export interface PluginManifest {
 	id: string;
 	name: string;
@@ -30,6 +35,7 @@ export interface PluginManifest {
 	icon: string;
 	main: string;
 	version: string;
+	sidecar?: PluginSidecarRef | null;
 }
 
 export type PluginBehavior = Partial<Plugin> & {
@@ -44,6 +50,19 @@ export function isPluginUpdatable(
 	latestVersion: string | undefined,
 ): boolean {
 	return !!installedVersion && !!latestVersion && installedVersion !== latestVersion;
+}
+
+// A plugin needs updating when its JS version drifts OR its sidecar drifts. A registry
+// sidecar version that differs from what's installed (including a missing sidecar, where
+// the installed version is null/undefined) means the sidecar must be (re)downloaded.
+export function needsUpdate(
+	installedVersion: string | undefined,
+	latestVersion: string | undefined,
+	installedSidecarVersion: string | null | undefined,
+	latestSidecarVersion: string | undefined,
+): boolean {
+	if (isPluginUpdatable(installedVersion, latestVersion)) return true;
+	return !!latestSidecarVersion && installedSidecarVersion !== latestSidecarVersion;
 }
 
 // --- Registry ---

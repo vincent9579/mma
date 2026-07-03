@@ -11,52 +11,12 @@ async function pluginDir() {
   return _pluginDir;
 }
 async function modelDir() {
-  return `${await pluginDir()}${SEP}models`;
+  return `${await pluginDir()}${SEP}sidecar${SEP}models`;
 }
 var tempCounter = 0;
 async function writeInputFile(data) {
   const name = `mma_copyright_${Date.now()}_${tempCounter++}.json`;
   return MMA.cmd.writeTempFile(name, JSON.stringify(data));
-}
-function spawnCommand(args) {
-  const lineCallbacks = [];
-  const stderrCallbacks = [];
-  const closeCallbacks = [];
-  let child = null;
-  const proc = {
-    kill() {
-      child?.kill();
-    },
-    onLine(cb) {
-      lineCallbacks.push(cb);
-    },
-    onStderr(cb) {
-      stderrCallbacks.push(cb);
-    },
-    onClose(cb) {
-      closeCallbacks.push(cb);
-    }
-  };
-  const done = (async () => {
-    const cmd = MMA.shell.Command.create(BINARY_NAME, args);
-    cmd.stdout.on("data", (line) => {
-      const trimmed = line.trim();
-      if (trimmed) lineCallbacks.forEach((cb) => cb(trimmed));
-    });
-    cmd.stderr.on("data", (line) => {
-      console.error("[copyright]", line);
-      const trimmed = line.trim();
-      if (trimmed) stderrCallbacks.forEach((cb) => cb(trimmed));
-    });
-    child = await cmd.spawn();
-    await new Promise((resolve) => {
-      cmd.on("close", (ev) => {
-        closeCallbacks.forEach((cb) => cb(ev.code));
-        resolve();
-      });
-    });
-  })();
-  return { process: proc, done };
 }
 var FIELD_DEFS = {
   copyrightYear: { type: "number", label: "Copyright year" }
@@ -84,10 +44,17 @@ async function enrich(locations, enrichFields, ctx) {
   const panoIds = Array.from(idsByPano.keys());
   const inputPath = await writeInputFile({ panoIds });
   const md = await modelDir();
-  const { process, done } = spawnCommand(["detect", "--input", inputPath, "--model-dir", md]);
-  const abortHandler = () => process.kill();
+  const proc = await MMA.sidecar.spawn("copyright", BINARY_NAME, [
+    "detect",
+    "--input",
+    inputPath,
+    "--model-dir",
+    md
+  ]);
+  const abortHandler = () => proc.kill();
   ctx?.signal?.addEventListener("abort", abortHandler);
-  process.onLine((line) => {
+  proc.onStderr((line) => console.error("[copyright]", line));
+  proc.onLine((line) => {
     let result;
     try {
       result = JSON.parse(line);
@@ -105,7 +72,7 @@ async function enrich(locations, enrichFields, ctx) {
       ctx?.onUnit?.();
     }
   });
-  await done;
+  await new Promise((resolve) => proc.onExit(() => resolve()));
   ctx?.signal?.removeEventListener("abort", abortHandler);
   return patches;
 }

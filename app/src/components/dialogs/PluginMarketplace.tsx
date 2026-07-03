@@ -11,11 +11,12 @@ import {
 	activatePlugin,
 	deactivatePlugin,
 	unregisterPlugin,
-	isPluginUpdatable,
+	needsUpdate,
 } from "@/plugins/registry";
-import type { Plugin, PluginManifest } from "@/plugins/registry";
+import type { Plugin, PluginManifest, PluginSidecarRef } from "@/plugins/registry";
 import { loadAndActivatePlugin, loadUserPlugin } from "@/plugins/index";
 import { cmd } from "@/lib/commands";
+import { listen } from "@tauri-apps/api/event";
 import { log } from "@/lib/util/log";
 
 const REGISTRY_URL = "https://raw.githubusercontent.com/ccmdi/mma/master/plugins/registry.json";
@@ -28,6 +29,29 @@ interface RegistryEntry {
 	version: string;
 	main: string;
 	comingSoon?: boolean;
+	sidecar?: PluginSidecarRef | null;
+}
+
+// Download a plugin's sidecar (if declared), reporting progress via onProgress. Shared by
+// install + update so both paths fetch the binary the same way.
+async function installSidecar(
+	manifest: PluginManifest,
+	onProgress: (pct: number) => void,
+): Promise<void> {
+	if (!manifest.sidecar) return;
+	const unlisten = await listen<{ pluginId: string; downloaded: number; total: number }>(
+		"sidecar-install-progress",
+		(ev) => {
+			if (ev.payload.pluginId === manifest.id && ev.payload.total > 0) {
+				onProgress(Math.round((ev.payload.downloaded / ev.payload.total) * 100));
+			}
+		},
+	);
+	try {
+		await cmd.sidecarInstall(manifest.id, manifest.sidecar.name, manifest.sidecar.version);
+	} finally {
+		unlisten();
+	}
 }
 
 type Tab = "core" | "additional";
@@ -134,6 +158,7 @@ function AdditionalCard({
 	updatable,
 	latestVersion,
 	comingSoon,
+	installProgress,
 	onInstall,
 	onEnable,
 	onDisable,
@@ -149,6 +174,7 @@ function AdditionalCard({
 	updatable: boolean;
 	latestVersion?: string;
 	comingSoon?: boolean;
+	installProgress?: number;
 	onInstall: (id: string) => void;
 	onEnable: (id: string) => void;
 	onDisable: (id: string) => void;
@@ -192,6 +218,9 @@ function AdditionalCard({
 			</div>
 			{!comingSoon && (
 				<div className="plugin-card__actions">
+					{busy && installProgress !== undefined && (
+						<span className="plugin-card__progress">{installProgress}%</span>
+					)}
 					<button
 						className={`plugin-card__action-btn plugin-card__action-btn--${primaryMod}`}
 						onClick={handlePrimary}
@@ -253,12 +282,24 @@ export function PluginMarketplace({
 	const [registry, setRegistry] = useState<RegistryEntry[] | null>(registryCache);
 	const [fetchError, setFetchError] = useState<string | null>(null);
 	const [installedManifests, setInstalledManifests] = useState<PluginManifest[]>([]);
+	const [sidecarVersions, setSidecarVersions] = useState<Record<string, string | null>>({});
+	const [sidecarProgress, setSidecarProgress] = useState<Record<string, number>>({});
 	const [, rerender] = useState(0);
 
 	const corePlugins = getPlugins().filter((p) => p.core);
 
-	const refreshInstalled = useCallback(() => {
-		cmd.listUserPlugins().then((m: PluginManifest[]) => setInstalledManifests(m));
+	const refreshInstalled = useCallback(async () => {
+		const manifests = await cmd.listUserPlugins();
+		setInstalledManifests(manifests);
+		const versions: Record<string, string | null> = {};
+		await Promise.all(
+			manifests
+				.filter((m) => m.sidecar)
+				.map(async (m) => {
+					versions[m.id] = await cmd.sidecarInstalledVersion(m.id);
+				}),
+		);
+		setSidecarVersions(versions);
 	}, []);
 
 	useEffect(() => {
@@ -292,7 +333,9 @@ export function PluginMarketplace({
 			for (const r of registry) {
 				const manifest = installedById.get(r.id);
 				const isInstalled = !!manifest;
-				const updatable = isInstalled && isPluginUpdatable(manifest.version, r.version);
+				const updatable =
+					isInstalled &&
+					needsUpdate(manifest.version, r.version, sidecarVersions[r.id], r.sidecar?.version);
 				const entry: AdditionalEntry = {
 					id: r.id,
 					name: r.name,
@@ -325,19 +368,35 @@ export function PluginMarketplace({
 		return { installedEntries: installed, registryEntries: fromRegistry };
 	})();
 
+	const setProgress = useCallback((id: string, pct: number | null) => {
+		setSidecarProgress((p) => {
+			if (pct === null) {
+				const next = { ...p };
+				delete next[id];
+				return next;
+			}
+			return { ...p, [id]: pct };
+		});
+	}, []);
+
 	const handleInstall = useCallback(
 		async (id: string) => {
 			try {
 				const manifest = await cmd.installPlugin(id);
+				try {
+					await installSidecar(manifest, (pct) => setProgress(id, pct));
+				} finally {
+					setProgress(id, null);
+				}
 				await loadAndActivatePlugin(manifest);
 				setPluginEnabled(id, true);
-				refreshInstalled();
+				await refreshInstalled();
 				rerender((n) => n + 1);
 			} catch (e) {
 				log.error(`[marketplace] install failed for "${id}":`, e);
 			}
 		},
-		[refreshInstalled],
+		[refreshInstalled, setProgress],
 	);
 
 	const handleEnable = useCallback((id: string) => {
@@ -377,15 +436,20 @@ export function PluginMarketplace({
 				if (wasEnabled) deactivatePlugin(id);
 				unregisterPlugin(id);
 				const manifest = await cmd.installPlugin(id);
+				try {
+					await installSidecar(manifest, (pct) => setProgress(id, pct));
+				} finally {
+					setProgress(id, null);
+				}
 				await loadUserPlugin(manifest);
 				if (wasEnabled) activatePlugin(id);
-				refreshInstalled();
+				await refreshInstalled();
 				rerender((n) => n + 1);
 			} catch (e) {
 				log.error(`[marketplace] update failed for "${id}":`, e);
 			}
 		},
-		[refreshInstalled],
+		[refreshInstalled, setProgress],
 	);
 
 	return (
@@ -420,6 +484,7 @@ export function PluginMarketplace({
 							<AdditionalCard
 								key={e.id}
 								{...e}
+								installProgress={sidecarProgress[e.id]}
 								onInstall={handleInstall}
 								onEnable={handleEnable}
 								onDisable={handleDisable}
@@ -452,6 +517,7 @@ export function PluginMarketplace({
 							<AdditionalCard
 								key={e.id}
 								{...e}
+								installProgress={sidecarProgress[e.id]}
 								onInstall={handleInstall}
 								onEnable={handleEnable}
 								onDisable={handleDisable}

@@ -21,6 +21,26 @@ on:
         required: false
         type: boolean
         default: false
+      features-windows-x64:
+        description: 'Cargo --features value for the windows-x64 build'
+        required: false
+        type: string
+        default: ''
+      features-macos-arm64:
+        description: 'Cargo --features value for the macos-arm64 build'
+        required: false
+        type: string
+        default: ''
+      features-macos-x64:
+        description: 'Cargo --features value for the macos-x64 build'
+        required: false
+        type: string
+        default: ''
+      features-linux-x64:
+        description: 'Cargo --features value for the linux-x64 build'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -68,12 +88,31 @@ jobs:
         working-directory: ${{ inputs.crate-path }}
         run: ${{ inputs.pre-build }}
 
+      - name: Resolve features
+        id: features
+        shell: bash
+        run: |
+          case "${{ matrix.label }}" in
+            windows-x64) f="${{ inputs.features-windows-x64 }}" ;;
+            macos-arm64) f="${{ inputs.features-macos-arm64 }}" ;;
+            macos-x64) f="${{ inputs.features-macos-x64 }}" ;;
+            linux-x64) f="${{ inputs.features-linux-x64 }}" ;;
+          esac
+          if [ -n "$f" ]; then
+            echo "args=--features $f" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build
         working-directory: ${{ inputs.crate-path }}
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} ${{ steps.features.outputs.args }}
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.binary-name }}-${{ matrix.label }}
-          path: ${{ inputs.crate-path }}/target/${{ matrix.target }}/release/${{ inputs.binary-name }}${{ matrix.suffix }}
+          path: |
+            ${{ inputs.crate-path }}/target/${{ matrix.target }}/release/${{ inputs.binary-name }}${{ matrix.suffix }}
+            ${{ inputs.crate-path }}/target/${{ matrix.target }}/release/DirectML.dll
+          if-no-files-found: ignore
