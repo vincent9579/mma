@@ -10,7 +10,7 @@ export interface PluginSettingDef {
 	type: "boolean" | "string" | "number";
 	default: unknown;
 }
-interface Plugin$1 {
+interface Plugin {
 	id: string;
 	name: string;
 	description?: string;
@@ -27,10 +27,10 @@ interface Plugin$1 {
 	}>;
 	locationPanel?: ComponentType;
 }
-export type PluginBehavior = Partial<Plugin$1> & {
+export type PluginBehavior = Partial<Plugin> & {
 	activate(): void | (() => void);
 };
-declare function registerPlugin(plugin: Plugin$1 | PluginBehavior): void;
+declare function registerPlugin(plugin: Plugin | PluginBehavior): void;
 export interface PluginStorage {
 	get<T = unknown>(key: string, fallback?: T): T;
 	set(key: string, value: unknown): void;
@@ -64,8 +64,8 @@ export type ColorPatchEntry = {
  *  An updated location appears in both `created` (new) and `removed` (old).
  */
 export type CommitDelta = {
-	created: Location$1[];
-	removed: Location$1[];
+	created: Location[];
+	removed: Location[];
 };
 export type CommitDiff = {
 	added: number;
@@ -264,7 +264,7 @@ export type KeySpec =
 	part: DatePart;
 	tzLocal: boolean;
 };
-type Location$1 = {
+type Location = {
 	/**
 	 *  Monotonically increasing within a map. Zero is a sentinel meaning
 	 *  "not yet assigned" (used during import before IDs are allocated).
@@ -641,7 +641,7 @@ export type SeenWriteEntry = {
 	address: string | null;
 	thumbnail: string | null;
 };
-type Selection$1 = {
+type Selection = {
 	key: string;
 	color: [
 		number,
@@ -709,13 +709,13 @@ export type SelectionProps = {
 	mode: string;
 } | {
 	type: "Intersection";
-	selections: Selection$1[];
+	selections: Selection[];
 } | {
 	type: "Union";
-	selections: Selection$1[];
+	selections: Selection[];
 } | {
 	type: "Invert";
-	selections: Selection$1[];
+	selections: Selection[];
 } | {
 	type: "Filter";
 	field: string;
@@ -827,8 +827,8 @@ export type LatLng = google.maps.LatLngLiteral;
 /** A location you already hold in full, or just its id to fetch on demand.
  *  Lets the pick -> activate path carry "materialized or not" as plain data;
  *  `resolveLocation` (in the store) fetches only the id case. */
-export type MaybeLocation = Location$1 | number;
-declare function createLocation(partial: Partial<Location$1> & LatLng): Location$1;
+export type MaybeLocation = Location | number;
+declare function createLocation(partial: Partial<Location> & LatLng): Location;
 export type TagSortMode = "default" | "name" | "amount";
 export type WorkArea = "overview" | "location" | "duplicates" | "import" | "plugin" | "diff";
 /** When a move target already holds a value, which field's value survives. */
@@ -870,7 +870,7 @@ declare class SelectedIds {
 }
 /** Variants that wrap children — derived as exactly those carrying a `selections` array. */
 export type CompositeType = Extract<SelectionProps, {
-	selections: Selection$1[];
+	selections: Selection[];
 }>["type"];
 /** Composite variants that wrap exactly one child (operators, not bags). They never collapse — a
  *  one-child group is degenerate, but one child is a unary node's only valid arity. */
@@ -995,12 +995,12 @@ export interface EnrichmentProvider {
 	id: string;
 	/** Bulk progress label for slow providers; omit for instant ones. */
 	label?: string;
-	enrich(locations: Location$1[], enrichFields: string[] | null, ctx?: EnrichCtx): Promise<Map<number, Record<string, unknown>>>;
+	enrich(locations: Location[], enrichFields: string[] | null, ctx?: EnrichCtx): Promise<Map<number, Record<string, unknown>>>;
 	fieldDefs: Record<string, ExtraFieldDef>;
 	/** When set, this provider is auto-invoked after patchLocationExtra writes any of these fields. */
 	requires?: string[];
 	/** Progress units this provider would contribute in bulk (absent = instant). */
-	units?(locations: Location$1[], enrichFields: string[] | null, force?: boolean): number;
+	units?(locations: Location[], enrichFields: string[] | null, force?: boolean): number;
 }
 declare function registerEnrichmentProvider(provider: EnrichmentProvider): void;
 declare function getFieldDef(key: string): ExtraFieldDef | undefined;
@@ -1377,16 +1377,16 @@ export type PickerMode = "document" | "media" | "image" | "video";
  */
 export type FileAccessMode = "copy" | "scoped";
 export type OpenDialogReturn<T extends OpenDialogOptions> = T["directory"] extends true ? T["multiple"] extends true ? string[] | null : string | null : T["multiple"] extends true ? string[] | null : string | null;
-declare function open$1<T extends OpenDialogOptions>(options?: T): Promise<OpenDialogReturn<T>>;
+declare function open<T extends OpenDialogOptions>(options?: T): Promise<OpenDialogReturn<T>>;
 declare function save(options?: SaveDialogOptions): Promise<string | null>;
 declare const EVENT_DEFS: {
-	"location:add": Location$1[];
+	"location:add": Location[];
 	"location:remove": number[];
 	"location:update": Update<LocationPatch_Deserialize>[];
 	"tag:add": Tag[];
 	"tag:remove": number[];
 	"tag:update": Update<TagPatch>[];
-	"selection:change": Selection$1[];
+	"selection:change": Selection[];
 	"active:change": number | null;
 	"map:open": MapData;
 	"map:close": void;
@@ -1905,7 +1905,7 @@ declare function getSeenEntries(limit?: number, offset?: number, filter?: SeenFi
 declare function getSeenCount(filter?: SeenFilter): Promise<number>;
 declare function clearSeen(): Promise<void>;
 declare function loadSeenPano(entry: SeenEntry): Promise<void>;
-declare function needsEnrichment(loc: Location$1, enrichFields?: string[]): boolean;
+declare function needsEnrichment(loc: Location, enrichFields?: string[]): boolean;
 /** One summary row per pass that did work: the core metadata pass, then every
  *  provider that updated or failed at least one location. */
 export interface EnrichOutcome {
@@ -1917,18 +1917,18 @@ export interface EnrichOutcome {
 export type EnrichResult = EnrichOutcome[];
 export interface ValidationProgress {
 	progress: number;
-	results: Map<ValidationState, Location$1[]>;
+	results: Map<ValidationState, Location[]>;
 }
-declare function validateLocations(locations: Location$1[], opts?: {
+declare function validateLocations(locations: Location[], opts?: {
 	signal?: AbortSignal;
 	onProgress?: (p: ValidationProgress) => void;
-}): Promise<Map<ValidationState, Location$1[]>>;
+}): Promise<Map<ValidationState, Location[]>>;
 declare function fetchSvMetadata(panoIds: string[]): Promise<(google.maps.StreetViewResolvedPanoramaData | null)[]>;
 declare function mmaBufUrl(path: string): string;
 export interface LocationStore {
-	locations: Map<number, Location$1>;
+	locations: Map<number, Location>;
 	/** The materialized locations narrowed to a scope (defaults to all). */
-	get(scope?: Scope): Location$1[];
+	get(scope?: Scope): Location[];
 	onChange(cb: () => void): () => void;
 	destroy(): void;
 }
@@ -1976,12 +1976,17 @@ declare const mma: {
 		storeRenameFolder: (from: string, to: string) => Promise<null>;
 		storeDeleteFolder: (name: string) => Promise<null>;
 		storeDbTableInfo: () => Promise<DbTableInfo[]>;
-		storeAddLocations: (locations: Location$1[]) => Promise<MutationResult>;
+		storeAddLocations: (locations: Location[]) => Promise<MutationResult>;
 		storeRemoveLocations: (ids: number[]) => Promise<MutationResult>;
 		storeUpdateLocations: (updates: Update<LocationPatch_Deserialize>[], recordUndo: boolean | null) => Promise<MutationResult>;
 		storeSetActive: (id: number | null) => Promise<null>;
-		storeGetLocation: (id: number) => Promise<Location$1 | null>;
-		storeGetLocationsByIds: (ids: number[]) => Promise<Location$1[]>;
+		storeSetMarkerColor: (color: [
+			number,
+			number,
+			number
+		]) => Promise<null>;
+		storeGetLocation: (id: number) => Promise<Location | null>;
+		storeGetLocationsByIds: (ids: number[]) => Promise<Location[]>;
 		storeGetAllLocations: () => Promise<string>;
 		storeCountryDistribution: (level: string) => Promise<[
 			string,
@@ -1994,7 +1999,7 @@ declare const mma: {
 			number,
 			number
 		] | null>;
-		storeFindNearby: (lat: number, lng: number, radiusM: number) => Promise<Location$1[]>;
+		storeFindNearby: (lat: number, lng: number, radiusM: number) => Promise<Location[]>;
 		storeNearAny: (lats: number[], lngs: number[], radiusM: number) => Promise<boolean[]>;
 		storeExtraFieldValues: (field: string) => Promise<string[]>;
 		storeCreateTags: (names: string[]) => Promise<MutationResult>;
@@ -2023,7 +2028,7 @@ declare const mma: {
 		bulkImportCancel: () => Promise<null>;
 		storeImportPreview: (path: string) => Promise<EditorImportPreview>;
 		storeImportPastePreview: (text: string) => Promise<EditorImportPreview>;
-		storeImportStagedLocation: (index: number) => Promise<Location$1>;
+		storeImportStagedLocation: (index: number) => Promise<Location>;
 		storeImportFile: (droppedFields: string[], tagName: string | null) => Promise<EditorImportResult>;
 		storeExportJson: (opts: ExportOpts) => Promise<string>;
 		storeExportCsv: (scope: number[] | null) => Promise<string>;
@@ -2056,7 +2061,7 @@ declare const mma: {
 		Command: typeof Command;
 	};
 	dialog: {
-		open: typeof open$1;
+		open: typeof open;
 		save: typeof save;
 	};
 	sidecar: {
@@ -2189,7 +2194,7 @@ declare const mma: {
 	isCurrentReviewed(s: ReviewSession): boolean;
 	useReviewSession(): ReviewSession | null;
 	getReviewSession(): ReviewSession | null;
-	beginReview(ids: number[], source?: Selection$1): Promise<void>;
+	beginReview(ids: number[], source?: Selection): Promise<void>;
 	resumeReview(s: ReviewSession): Promise<void>;
 	reviewNext(): Promise<void>;
 	reviewPrev(): Promise<void>;
@@ -2224,12 +2229,12 @@ declare const mma: {
 	getCurrentMapId(): string | null;
 	getCurrentMap(): MapData | null;
 	getKnownFieldKeys(): ReadonlySet<string>;
-	getActiveLocation(): Location$1 | null;
-	fetchAllLocations(): Promise<Location$1[]>;
-	fetchLocation(id: number): Promise<Location$1 | null>;
-	fetchLocationsByIds(ids: number[]): Promise<Location$1[]>;
-	getAllSelections(): Selection$1[];
-	getSelections(): Selection$1[];
+	getActiveLocation(): Location | null;
+	fetchAllLocations(): Promise<Location[]>;
+	fetchLocation(id: number): Promise<Location | null>;
+	fetchLocationsByIds(ids: number[]): Promise<Location[]>;
+	getAllSelections(): Selection[];
+	getSelections(): Selection[];
 	getSelectedLocationIds(): SelectedIds;
 	setSelectedLocationIds(ids: SelectedIds): void;
 	syncSelections(): Promise<{
@@ -2252,7 +2257,7 @@ declare const mma: {
 	setMapExtraFields(fields: Record<string, ExtraFieldDef>): Promise<void>;
 	emitBitmask(bytes: number[]): void;
 	mutate(p: Promise<MutationResult>): Promise<MutationResult>;
-	addLocations(locs: Location$1[], opts?: {
+	addLocations(locs: Location[], opts?: {
 		hideInDelta?: boolean;
 	}): Promise<void>;
 	duplicateLocation(id: number): Promise<number | null>;
@@ -2262,7 +2267,7 @@ declare const mma: {
 	}): Promise<void>;
 	renameField(from: string, to: string, winner?: MergeWinner): Promise<void>;
 	deleteField(key: string): Promise<void>;
-	patchLocationExtra(loc: Location$1, extraPatch: Record<string, unknown>, replace?: boolean): Promise<void>;
+	patchLocationExtra(loc: Location, extraPatch: Record<string, unknown>, replace?: boolean): Promise<void>;
 	getSelectionCounts(): Record<string, number>;
 	toggleGhostSelection(key: string): Promise<void>;
 	isolateSelection(key: string): Promise<void>;
@@ -2306,10 +2311,10 @@ declare const mma: {
 	toggleTagSelections(tagIds: number[]): void;
 	useSelectedTagIds(): Set<number>;
 	openStagedLocation(index: number): Promise<void>;
-	previewVirtualLocation(loc: Location$1): void;
-	resolveLocation(m: MaybeLocation): Promise<Location$1 | null>;
+	previewVirtualLocation(loc: Location): void;
+	resolveLocation(m: MaybeLocation): Promise<Location | null>;
 	setActiveLocation(target: MaybeLocation | null, checkDuplicates?: boolean): Promise<void>;
-	openDuplicateLocation(loc: Location$1): void;
+	openDuplicateLocation(loc: Location): void;
 	removeDuplicate(id: number): void;
 	closeDuplicates(): void;
 	setWorkArea(area: WorkArea): void;
@@ -2373,16 +2378,16 @@ declare const mma: {
 	useVisibleTags: () => Tag[];
 	useMapVersion: () => number;
 	useSelectedLocationIds: () => SelectedIds;
-	useActiveLocation: () => Location$1 | null;
-	useDuplicateLocations: () => Location$1[];
+	useActiveLocation: () => Location | null;
+	useDuplicateLocations: () => Location[];
 	useWorkArea: () => WorkArea;
 	useImportStaging: () => ImportStaging | null;
 	useImportMarkerVersion: () => number;
 	useCommitDiffPreview: () => CommitDiffPreview | null;
 	useDiffMarkerVersion: () => number;
 	useKnownFieldKeys: () => ReadonlySet<string>;
-	useAllSelections: () => Selection$1[];
-	useSelections: () => Selection$1[];
+	useAllSelections: () => Selection[];
+	useSelections: () => Selection[];
 	useSelectionCounts: () => Record<string, number>;
 	useGhostedSelections: () => Set<string>;
 	useActivePluginId: () => string | null;
@@ -2392,11 +2397,11 @@ declare const mma: {
 	};
 	ready: boolean;
 };
-type MMA$1 = typeof mma;
+type MMA = typeof mma;
 
 export {
-	MMA$1 as MMAApi,
-	Plugin$1 as MMAPlugin,
+	MMA as MMAApi,
+	Plugin as MMAPlugin,
 };
 
 export {};
