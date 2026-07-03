@@ -1419,3 +1419,18 @@ textarea.border-destructive:focus-visible {
 		column-gap: 1.5rem;
 	}
 }
+html.host-mma footer {
+	display: none;
+}
+html.host-mma .container {
+	max-width: none;
+	padding-left: 0.75rem;
+	padding-right: 0.75rem;
+}
+html.host-mma {
+	overflow-y: auto;
+	scrollbar-width: none;
+}
+html.host-mma::-webkit-scrollbar {
+	display: none;
+}
