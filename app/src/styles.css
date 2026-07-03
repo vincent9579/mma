@@ -5463,28 +5463,60 @@ body {
 }
 .plugin-card__actions {
 	display: flex;
-	align-items: center;
-	gap: 6px;
+	flex-direction: column;
+	gap: 4px;
 	flex-shrink: 0;
 }
-.plugin-card__toggle {
-	font-size: 0.8rem;
-	padding: 0 12px;
-}
-.plugin-card__uninstall {
+.plugin-card__action-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 32px;
-	align-self: stretch;
-	color: #aaa;
+	width: 30px;
+	height: 30px;
 	background: #f0f0f0;
 	border: 1px solid #ddd;
 	cursor: pointer;
 	padding: 0;
 	border-radius: 4px;
+	transition:
+		background 0.1s,
+		border-color 0.1s;
 }
-.plugin-card__uninstall:hover {
+.plugin-card__action-btn--enable {
+	color: #aaa;
+}
+.plugin-card__action-btn--enable:hover {
+	color: #16a34a;
+	background: #dcfce7;
+	border-color: #86efac;
+}
+.plugin-card__action-btn--disable {
+	color: #16a34a;
+}
+.plugin-card__action-btn--disable:hover {
+	color: #c00;
+	background: rgba(200, 0, 0, 0.08);
+	border-color: #c00;
+}
+.plugin-card__action-btn--update {
+	color: #16a34a;
+}
+.plugin-card__action-btn--update:hover {
+	background: #dcfce7;
+	border-color: #86efac;
+}
+.plugin-card__action-btn--install {
+	color: #888;
+}
+.plugin-card__action-btn--install:hover {
+	color: #2563eb;
+	background: #dbeafe;
+	border-color: #93c5fd;
+}
+.plugin-card__action-btn--uninstall {
+	color: #aaa;
+}
+.plugin-card__action-btn--uninstall:hover {
 	color: #c00;
 	background: rgba(200, 0, 0, 0.08);
 	border-color: #c00;

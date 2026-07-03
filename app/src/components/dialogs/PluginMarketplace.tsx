@@ -76,6 +76,14 @@ function PluginSettings({ pluginId }: { pluginId: string }) {
 	);
 }
 
+import {
+	mdiCheckCircle,
+	mdiCloseCircle,
+	mdiDownload,
+	mdiRefresh,
+	mdiTrashCanOutline,
+} from "@mdi/js";
+
 function CoreCard({ plugin }: { plugin: Plugin }) {
 	const [enabled, setEnabled] = useState(() => isPluginEnabled(plugin.id));
 
@@ -100,12 +108,16 @@ function CoreCard({ plugin }: { plugin: Plugin }) {
 				{plugin.description && <div className="plugin-card__desc">{plugin.description}</div>}
 			</div>
 			{!plugin.comingSoon && (
-				<button
-					className={`button plugin-card__toggle ${enabled ? "button--danger" : "button--primary"}`}
-					onClick={toggle}
-				>
-					{enabled ? "Disable" : "Enable"}
-				</button>
+				<div className="plugin-card__actions">
+					<button
+						className={`plugin-card__action-btn plugin-card__action-btn--${enabled ? "disable" : "enable"}`}
+						onClick={toggle}
+						title={enabled ? "Disable" : "Enable"}
+						aria-label={enabled ? "Disable" : "Enable"}
+					>
+						<Icon path={enabled ? mdiCheckCircle : mdiCloseCircle} size={16} />
+					</button>
+				</div>
 			)}
 			{enabled && <PluginSettings pluginId={plugin.id} />}
 		</div>
@@ -165,14 +177,9 @@ function AdditionalCard({
 		}
 	};
 
-	const primaryLabel = !installed ? "Install" : enabled ? "Disable" : "Enable";
-	const primaryClass = !installed
-		? "button--primary"
-		: enabled
-			? "button--danger"
-			: "button--primary";
-
-	const TRASH = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z";
+	const primaryIcon = !installed ? mdiDownload : enabled ? mdiCheckCircle : mdiCloseCircle;
+	const primaryTitle = !installed ? "Install" : enabled ? "Disable" : "Enable";
+	const primaryMod = !installed ? "install" : enabled ? "disable" : "enable";
 
 	return (
 		<div
@@ -185,31 +192,35 @@ function AdditionalCard({
 			</div>
 			{!comingSoon && (
 				<div className="plugin-card__actions">
+					<button
+						className={`plugin-card__action-btn plugin-card__action-btn--${primaryMod}`}
+						onClick={handlePrimary}
+						disabled={busy}
+						title={primaryTitle}
+						aria-label={primaryTitle}
+					>
+						<Icon path={primaryIcon} size={16} />
+					</button>
 					{installed && updatable && (
 						<button
-							className="button plugin-card__toggle button--primary"
+							className="plugin-card__action-btn plugin-card__action-btn--update"
 							onClick={handleUpdate}
 							disabled={busy}
 							title={latestVersion ? `Update to v${latestVersion}` : "Update"}
+							aria-label="Update"
 						>
-							{busy ? "..." : "Update"}
+							<Icon path={mdiRefresh} size={16} />
 						</button>
 					)}
-					<button
-						className={`button plugin-card__toggle ${primaryClass}`}
-						onClick={handlePrimary}
-						disabled={busy}
-					>
-						{busy ? "..." : primaryLabel}
-					</button>
 					{installed && (
 						<button
-							className="plugin-card__uninstall"
+							className="plugin-card__action-btn plugin-card__action-btn--uninstall"
 							onClick={() => onUninstall(id)}
 							disabled={busy}
+							title="Uninstall"
 							aria-label="Uninstall"
 						>
-							<Icon path={TRASH} size={16} />
+							<Icon path={mdiTrashCanOutline} size={16} />
 						</button>
 					)}
 				</div>
