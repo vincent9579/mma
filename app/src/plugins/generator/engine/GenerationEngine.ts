@@ -10,6 +10,7 @@ import {
 	pointInGeoJsonGeometry,
 	poissonDiskSample,
 } from "./geo";
+import { blueLineSample } from "./blueLineSampler";
 import { passesInitialFilters, passesDateFilters, isPanoGood, computeHeading } from "./filters";
 import { distMeters } from "@/lib/geo/geo";
 import { searchCoverage } from "../searchCoverage";
@@ -42,6 +43,8 @@ export class GenerationEngine {
 	private flushTimer: ReturnType<typeof setTimeout> | null = null;
 	private poissonPoints = new Map<string, LatLng[]>();
 	private poissonIndex = new Map<string, number>();
+	private bluelinePoints = new Map<string, LatLng[]>();
+	private bluelineIndex = new Map<string, number>();
 
 	constructor(
 		google: Google,
@@ -190,11 +193,10 @@ export class GenerationEngine {
 	}
 
 	private async generateRegion(region: GeneratorRegion): Promise<void> {
-		if (this.settings.samplingMode === "poisson") {
-			await this.generateRegionPoisson(region);
-		} else {
-			await this.generateRegionRandom(region);
-		}
+		const mode = this.settings.samplingMode;
+		if (mode === "poisson") await this.generateRegionPoisson(region);
+		else if (mode === "blueline") await this.generateRegionBlueline(region);
+		else await this.generateRegionRandom(region);
 
 		region.isProcessing = false;
 		this.callbacks.onRegionComplete(region.id);
@@ -254,6 +256,61 @@ export class GenerationEngine {
 
 		this.poissonPoints.delete(region.id);
 		this.poissonIndex.delete(region.id);
+	}
+
+	private async generateRegionBlueline(region: GeneratorRegion): Promise<void> {
+		if (!this.bluelinePoints.has(region.id)) {
+			const points = await blueLineSample(region.feature);
+			this.bluelinePoints.set(region.id, points);
+			this.bluelineIndex.set(region.id, 0);
+		}
+		const allPoints = this.bluelinePoints.get(region.id)!;
+
+		while (
+			region.found.length < region.target &&
+			this.running &&
+			!this.cancelledRegions.has(region.id)
+		) {
+			await this.waitIfPaused();
+			if (!this.running || this.cancelledRegions.has(region.id)) break;
+
+			region.isProcessing = true;
+			const startIdx = this.bluelineIndex.get(region.id) ?? 0;
+			const endIdx = Math.min(startIdx + this.settings.speed, allPoints.length);
+			this.bluelineIndex.set(region.id, endIdx);
+			let coords = allPoints.slice(startIdx, endIdx);
+			if (coords.length === 0) break;
+
+			if (this.settings.skipExisting) {
+				try {
+					// eslint-disable-next-line local/no-ipc-in-loop -- bulk form: one IPC per batch
+					const near = await cmd.storeNearAny(
+						coords.map((c) => c.lat),
+						coords.map((c) => c.lng),
+						this.settings.skipExistingRadius,
+					);
+					coords = coords.filter((_, i) => !near[i]);
+				} catch (e) {
+					log.warn("[generator] storeNearAny failed, probing unfiltered:", e);
+				}
+			}
+			if (coords.length === 0) continue;
+
+			const batchSize = this.settings.findRegions ? 1 : 75;
+			for (const batch of chunk(coords, batchSize)) {
+				if (
+					!this.running ||
+					this.cancelledRegions.has(region.id) ||
+					region.found.length >= region.target
+				)
+					break;
+				await this.waitIfPaused();
+				await Promise.allSettled(batch.map((coord) => this.getLoc(coord, region)));
+			}
+		}
+
+		this.bluelinePoints.delete(region.id);
+		this.bluelineIndex.delete(region.id);
 	}
 
 	private async generateRegionRandom(region: GeneratorRegion): Promise<void> {

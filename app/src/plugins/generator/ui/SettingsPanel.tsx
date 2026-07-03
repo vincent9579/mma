@@ -294,6 +294,7 @@ export function SettingsPanel({
 						options={[
 							{ value: "random", label: "Random" },
 							{ value: "poisson", label: "Uniform" },
+							{ value: "blueline", label: "Coverage" },
 						]}
 					/>
 				</label>

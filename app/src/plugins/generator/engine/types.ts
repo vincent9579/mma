@@ -49,7 +49,7 @@ export interface GeneratorSettings {
 	samplingMode: SamplingMode;
 }
 
-export type SamplingMode = "random" | "poisson";
+export type SamplingMode = "random" | "poisson" | "blueline";
 
 export type SearchMode = "contains" | "fullword" | "startswith" | "endswith" | "sectionmatch";
 
