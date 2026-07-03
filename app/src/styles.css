@@ -772,7 +772,7 @@ summary.button {
 .welcome-dialog {
 	background: #2a2a26;
 	color: #eee;
-	max-width: 400px;
+	max-width: 480px;
 }
 .welcome-dialog .modal__title {
 	color: #eee;

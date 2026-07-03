@@ -49,6 +49,7 @@ const Blank = () => <div style={BLANK_STYLE} />;
 // The window label only adds Tauri's "close my window when I back out" behavior.
 export default function App() {
 	const targetMapId = useTargetMapId();
+	const manualOpen = useManualChapter() !== null;
 	// A Tauri map window whose map was backed out of: focus the list window, persist this
 	// window's geometry, then destroy it. Never true on web (no sub-window to close).
 	const closing = isEditorWindow && !targetMapId;
@@ -59,7 +60,7 @@ export default function App() {
 
 	return (
 		<TooltipProvider>
-			{closing ? <Blank /> : targetMapId ? <EditorRoot /> : <MapList />}
+			{closing ? <Blank /> : targetMapId ? <EditorRoot /> : !manualOpen && <MapList />}
 			{!closing && <AppChrome />}
 			<ToastContainer />
 		</TooltipProvider>
