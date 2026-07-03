@@ -12,6 +12,7 @@ import {
 } from "./geo";
 import { blueLineSample } from "./blueLineSampler";
 import { passesInitialFilters, passesDateFilters, isPanoGood, computeHeading } from "./filters";
+import { fetchSvMetadata } from "@/lib/sv/svMeta";
 import { distMeters } from "@/lib/geo/geo";
 import { searchCoverage } from "../searchCoverage";
 import { cmd } from "@/lib/commands";
@@ -196,6 +197,7 @@ export class GenerationEngine {
 		const mode = this.settings.samplingMode;
 		if (mode === "poisson") await this.generateRegionPoisson(region);
 		else if (mode === "blueline") await this.generateRegionBlueline(region);
+		else if (mode === "kernels") await this.generateRegionKernels(region);
 		else await this.generateRegionRandom(region);
 
 		region.isProcessing = false;
@@ -311,6 +313,102 @@ export class GenerationEngine {
 
 		this.bluelinePoints.delete(region.id);
 		this.bluelineIndex.delete(region.id);
+	}
+
+	private async generateRegionKernels(region: GeneratorRegion): Promise<void> {
+		const [west, south, east, north] = getBoundingBox(region.feature);
+		const centroidLat = (south + north) / 2;
+		const centroidLng = (west + east) / 2;
+		const coveringRadius = distMeters(
+			{ lat: centroidLat, lng: centroidLng },
+			{ lat: north, lng: east },
+		);
+
+		let seeds: string[];
+		try {
+			const locs = await cmd.storeFindNearby(centroidLat, centroidLng, coveringRadius);
+			seeds = locs
+				.filter((l) => l.panoId && pointInGeoJsonGeometry(l.lng, l.lat, region.feature.geometry))
+				.map((l) => l.panoId!);
+		} catch (e) {
+			log.warn("[generator] Failed to fetch seed locations:", e);
+			return;
+		}
+
+		if (seeds.length === 0) {
+			log.warn(`[generator] Kernels: no existing locations with panoId in ${region.name}`);
+			return;
+		}
+		log.info(`[generator] Kernels: ${seeds.length} seeds in ${region.name}`);
+
+		const visited = region.checkedPanos;
+		const depthMap = new Map<string, number>();
+		const queue: string[] = [];
+		for (const id of seeds) {
+			if (!visited.has(id)) {
+				visited.add(id);
+				queue.push(id);
+				depthMap.set(id, 0);
+			}
+		}
+
+		const maxDepth = this.settings.linksDepth;
+		const s = this.settings;
+
+		while (
+			queue.length > 0 &&
+			region.found.length < region.target &&
+			this.running &&
+			!this.cancelledRegions.has(region.id)
+		) {
+			await this.waitIfPaused();
+			if (!this.running || this.cancelledRegions.has(region.id)) break;
+
+			region.isProcessing = true;
+			const frontier = queue.splice(0, Math.max(s.speed, 50));
+			const results = await fetchSvMetadata(frontier);
+
+			for (let i = 0; i < results.length; i++) {
+				if (region.found.length >= region.target) break;
+
+				const pano = results[i];
+				if (!pano) continue;
+
+				if (pano.extra?.drivingDirection != null && pano.tiles) {
+					pano.tiles.centerHeading = pano.extra.drivingDirection;
+				}
+
+				const lat = pano.location.latLng.lat();
+				const lng = pano.location.latLng.lng();
+				if (!pointInGeoJsonGeometry(lng, lat, region.feature.geometry)) continue;
+
+				const depth = depthMap.get(frontier[i]) ?? 0;
+
+				if (isPanoGood(pano, s)) {
+					await this.finalizeLoc(pano, region);
+				}
+
+				// Enqueue linked panos
+				if (depth < maxDepth) {
+					for (const link of pano.links) {
+						if (link.pano && !visited.has(link.pano)) {
+							visited.add(link.pano);
+							queue.push(link.pano);
+							depthMap.set(link.pano, depth + 1);
+						}
+					}
+					if (s.checkAllDates && pano.time) {
+						for (const entry of pano.time) {
+							if (entry.pano && !visited.has(entry.pano)) {
+								visited.add(entry.pano);
+								queue.push(entry.pano);
+								depthMap.set(entry.pano, depth + 1);
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	private async generateRegionRandom(region: GeneratorRegion): Promise<void> {

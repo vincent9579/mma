@@ -295,6 +295,7 @@ export function SettingsPanel({
 							{ value: "random", label: "Random" },
 							{ value: "poisson", label: "Uniform" },
 							{ value: "blueline", label: "Coverage" },
+							{ value: "kernels", label: "Grow" },
 						]}
 					/>
 				</label>
