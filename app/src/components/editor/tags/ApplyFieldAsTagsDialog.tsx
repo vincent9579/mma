@@ -1,5 +1,11 @@
 import { useState, useMemo } from "react";
-import type { ExtraFieldDef, KeySpec, DatePart, Update, LocationPatch_Deserialize as LocationPatch } from "@/bindings.gen";
+import type {
+	ExtraFieldDef,
+	KeySpec,
+	DatePart,
+	Update,
+	LocationPatch_Deserialize as LocationPatch,
+} from "@/bindings.gen";
 import { getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { projectionsForType, partitionKeyOptions, RANGE_ID } from "@/lib/data/fieldOps";
 import {
@@ -8,7 +14,7 @@ import {
 	partition,
 	useScope,
 	createTags,
-    updateLocations,
+	updateLocations,
 } from "@/store/useMapStore";
 import { ScopeSelector } from "@/components/primitives/ScopeSelector";
 import { useSetting } from "@/store/settings";
@@ -105,32 +111,35 @@ export function ApplyFieldAsTagsDialog({
 					style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: 4 }}
 				>
 					<ScopeSelector ctl={scopeCtl} />
-					<select
-						className="nselect nselect--compact"
-						value={field}
-						onChange={(e) => handleFieldChange(e.target.value)}
-						autoFocus
-					>
-						<option value="">Select a field...</option>
-						{fields.map((f) => (
-							<option key={f.key} value={f.key}>
-								{f.label}
-							</option>
-						))}
-					</select>
-					{field && projOptions.length > 1 && (
+					<div style={{ display: "flex", gap: "0.5rem" }}>
 						<select
 							className="nselect nselect--compact"
-							value={projectionId}
-							onChange={(e) => setProjectionId(e.target.value)}
+							value={field}
+							onChange={(e) => handleFieldChange(e.target.value)}
+							style={{ flex: 1 }}
+							autoFocus
 						>
-							{projOptions.map((p) => (
-								<option key={p.id} value={p.id}>
-									{p.label}
+							<option value="">Select a field...</option>
+							{fields.map((f) => (
+								<option key={f.key} value={f.key}>
+									{f.label}
 								</option>
 							))}
 						</select>
-					)}
+						{field && projOptions.length > 1 && (
+							<select
+								className="nselect nselect--compact"
+								value={projectionId}
+								onChange={(e) => setProjectionId(e.target.value)}
+							>
+								{projOptions.map((p) => (
+									<option key={p.id} value={p.id}>
+										{p.label}
+									</option>
+								))}
+							</select>
+						)}
+					</div>
 					{showWidth && (
 						<input
 							className="input"
