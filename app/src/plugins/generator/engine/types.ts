@@ -46,6 +46,7 @@ export interface GeneratorSettings {
 	adjustZoom: boolean;
 	zoomLevel: number;
 	speed: number;
+	poissonSampling: boolean;
 }
 
 export type SearchMode = "contains" | "fullword" | "startswith" | "endswith" | "sectionmatch";
@@ -101,6 +102,7 @@ export const DEFAULT_SETTINGS: GeneratorSettings = {
 	adjustZoom: false,
 	zoomLevel: 0,
 	speed: 1000,
+	poissonSampling: false,
 };
 
 export interface GeneratorRegionMeta {

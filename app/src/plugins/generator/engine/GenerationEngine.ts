@@ -4,7 +4,12 @@ import type {
 	GeneratedLocation,
 	GenerationCallbacks,
 } from "./types";
-import { randomPointInBounds, getBoundingBox, pointInGeoJsonGeometry } from "./geo";
+import {
+	randomPointInBounds,
+	getBoundingBox,
+	pointInGeoJsonGeometry,
+	poissonDiskSample,
+} from "./geo";
 import { passesInitialFilters, passesDateFilters, isPanoGood, computeHeading } from "./filters";
 import { distMeters } from "@/lib/geo/geo";
 import { searchCoverage } from "../searchCoverage";
@@ -35,6 +40,8 @@ export class GenerationEngine {
 	private globalFoundPanoIds = new Set<string>();
 	private pendingBatch: GeneratedLocation[] = [];
 	private flushTimer: ReturnType<typeof setTimeout> | null = null;
+	private poissonPoints = new Map<string, LatLng[]>();
+	private poissonIndex = new Map<string, number>();
 
 	constructor(
 		google: Google,
@@ -183,9 +190,74 @@ export class GenerationEngine {
 	}
 
 	private async generateRegion(region: GeneratorRegion): Promise<void> {
+		if (this.settings.poissonSampling) {
+			await this.generateRegionPoisson(region);
+		} else {
+			await this.generateRegionRandom(region);
+		}
+
+		region.isProcessing = false;
+		this.callbacks.onRegionComplete(region.id);
+	}
+
+	private async generateRegionPoisson(region: GeneratorRegion): Promise<void> {
+		if (!this.poissonPoints.has(region.id)) {
+			const points = poissonDiskSample(region.feature, 2 * this.settings.radius);
+			this.poissonPoints.set(region.id, points);
+			this.poissonIndex.set(region.id, 0);
+			log.info(`[generator] Poisson disk: ${points.length} probes for ${region.name}`);
+		}
+		const allPoints = this.poissonPoints.get(region.id)!;
+
+		while (
+			region.found.length < region.target &&
+			this.running &&
+			!this.cancelledRegions.has(region.id)
+		) {
+			await this.waitIfPaused();
+			if (!this.running || this.cancelledRegions.has(region.id)) break;
+
+			region.isProcessing = true;
+			const startIdx = this.poissonIndex.get(region.id) ?? 0;
+			const endIdx = Math.min(startIdx + this.settings.speed, allPoints.length);
+			this.poissonIndex.set(region.id, endIdx);
+			let coords = allPoints.slice(startIdx, endIdx);
+			if (coords.length === 0) break;
+
+			if (this.settings.skipExisting) {
+				try {
+					// eslint-disable-next-line local/no-ipc-in-loop -- bulk form: one IPC per batch
+					const near = await cmd.storeNearAny(
+						coords.map((c) => c.lat),
+						coords.map((c) => c.lng),
+						this.settings.skipExistingRadius,
+					);
+					coords = coords.filter((_, i) => !near[i]);
+				} catch (e) {
+					log.warn("[generator] storeNearAny failed, probing unfiltered:", e);
+				}
+			}
+			if (coords.length === 0) continue;
+
+			const batchSize = this.settings.findRegions ? 1 : 75;
+			for (const batch of chunk(coords, batchSize)) {
+				if (
+					!this.running ||
+					this.cancelledRegions.has(region.id) ||
+					region.found.length >= region.target
+				)
+					break;
+				await this.waitIfPaused();
+				await Promise.allSettled(batch.map((coord) => this.getLoc(coord, region)));
+			}
+		}
+
+		this.poissonPoints.delete(region.id);
+		this.poissonIndex.delete(region.id);
+	}
+
+	private async generateRegionRandom(region: GeneratorRegion): Promise<void> {
 		const [west, south, east, north] = getBoundingBox(region.feature);
-		// Consecutive rounds where skip-existing filtered every probe: the region is
-		// blanketed by existing locations — give up instead of spinning forever.
 		let coveredRounds = 0;
 
 		while (
@@ -199,8 +271,6 @@ export class GenerationEngine {
 			region.isProcessing = true;
 			const n = Math.min(region.target * 100, this.settings.speed);
 			let randomCoords: LatLng[] = [];
-			// Cap attempts so a degenerate/near-zero-area polygon can never spin forever.
-			// The bbox reject in pointInGeoJsonGeometry keeps each attempt cheap.
 			let attempts = 0;
 			const maxAttempts = n * 200;
 			while (randomCoords.length < n && attempts < maxAttempts) {
@@ -210,11 +280,9 @@ export class GenerationEngine {
 					randomCoords.push(pt);
 				}
 			}
-			// Skip-existing: drop probes already covered by map locations before any SV
-			// request is spent on them. One bulk IPC per probe batch (spatial index).
 			if (this.settings.skipExisting && randomCoords.length > 0) {
 				try {
-					// eslint-disable-next-line local/no-ipc-in-loop -- already the bulk form: one IPC per probe batch (up to `speed` coords), not per point
+					// eslint-disable-next-line local/no-ipc-in-loop -- bulk form: one IPC per batch
 					const near = await cmd.storeNearAny(
 						randomCoords.map((c) => c.lat),
 						randomCoords.map((c) => c.lng),
@@ -244,9 +312,6 @@ export class GenerationEngine {
 				await Promise.allSettled(batch.map((coord) => this.getLoc(coord, region)));
 			}
 		}
-
-		region.isProcessing = false;
-		this.callbacks.onRegionComplete(region.id);
 	}
 
 	private getLoc(coord: LatLng, region: GeneratorRegion): Promise<void> {

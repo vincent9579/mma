@@ -286,6 +286,12 @@ export function SettingsPanel({
 					min={10}
 					max={1000000}
 				/>
+				<Check
+					label="Uniform spacing"
+					checked={settings.poissonSampling}
+					onChange={(v) => set("poissonSampling", v)}
+					title="Pre-compute evenly spaced probes (Poisson disk). Spacing = 2x radius."
+				/>
 				<NumberInput
 					label="Generators"
 					value={settings.numGenerators}
