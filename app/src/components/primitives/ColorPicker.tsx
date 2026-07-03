@@ -1,6 +1,7 @@
 import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { RgbColorPicker } from "react-colorful";
+import { useDebouncedCallback } from "@/lib/hooks/useDebouncedCallback";
 
 type Rgb = { r: number; g: number; b: number };
 
@@ -15,6 +16,7 @@ export function ColorPicker({
 	ariaLabel?: string;
 }) {
 	const [open, setOpen] = useState(false);
+	const debouncedOnChange = useDebouncedCallback(onChange, 60, { flush: true });
 	return (
 		<Popover.Root open={open} onOpenChange={setOpen}>
 			<Popover.Trigger asChild>
@@ -32,7 +34,7 @@ export function ColorPicker({
 					align="start"
 					collisionPadding={8}
 				>
-					<RgbColorPicker color={color} onChange={onChange} />
+					<RgbColorPicker color={color} onChange={debouncedOnChange} />
 				</Popover.Content>
 			</Popover.Portal>
 		</Popover.Root>

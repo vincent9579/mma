@@ -23,6 +23,7 @@ import { toast } from "@/lib/util/toast";
 import { stepFilterWindow } from "@/lib/data/fieldOps";
 import { cmd } from "@/lib/commands";
 import { RgbColorPicker } from "react-colorful";
+import { useDebouncedCallback } from "@/lib/hooks/useDebouncedCallback";
 import type { Selection } from "@/bindings.gen";
 import { selectionDisplayName } from "@/store/selections";
 import {
@@ -134,11 +135,15 @@ export function SelectionRow({
 	const drag = useDragState();
 	const isDragging = drag?.key === selection.key;
 	const isDropTarget = drag != null && drag.key !== selection.key;
-	const handleColorChange = useCallback(
-		(c: { r: number; g: number; b: number }) => {
-			setSelectionColors([{ key: selection.key, color: [c.r, c.g, c.b] }]);
-		},
-		[selection.key],
+	const handleColorChange = useDebouncedCallback(
+		useCallback(
+			(c: { r: number; g: number; b: number }) => {
+				setSelectionColors([{ key: selection.key, color: [c.r, c.g, c.b] }]);
+			},
+			[selection.key],
+		),
+		60,
+		{ flush: true },
 	);
 
 	const fieldEntries = useExtraFieldKeys();

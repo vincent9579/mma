@@ -1121,8 +1121,6 @@ export function setPolygonName(key: string, name: string) {
 	return applySelectionUpdate((sels) => renamePolygonSel(sels, key, name));
 }
 
-// TODO: debounce — color picker fires this on every drag tick, triggering a full
-// store_sync_selections IPC each time. Laggy on large maps.
 export function setSelectionColors(entries: { key: string; color: [number, number, number] }[]) {
 	applySelectionUpdate((sels) => {
 		let result = sels;
