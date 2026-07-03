@@ -2,29 +2,41 @@ use super::*;
 
 #[test]
 fn extract_year_finds_valid_year() {
-    assert_eq!(extract_year("© 2019 Google"), Some(2019));
+    assert_eq!(extract_year("© 2019 Google", 2026), Some(2019));
 }
 
 #[test]
 fn extract_year_finds_year_in_garbage_ocr_text() {
-    assert_eq!(extract_year("32019 Gnogle"), Some(2019));
+    assert_eq!(extract_year("32019 Gnogle", 2026), Some(2019));
 }
 
 #[test]
 fn extract_year_supports_2030s() {
-    assert_eq!(extract_year("© 2031 Google"), Some(2031));
+    assert_eq!(extract_year("© 2031 Google", 2035), Some(2031));
 }
 
 #[test]
 fn extract_year_no_match_returns_none() {
-    assert_eq!(extract_year("no year here"), None);
-    assert_eq!(extract_year(""), None);
+    assert_eq!(extract_year("no year here", 2026), None);
+    assert_eq!(extract_year("", 2026), None);
 }
 
 #[test]
 fn extract_year_rejects_out_of_range_decade() {
-    assert_eq!(extract_year("© 2050 Google"), None);
-    assert_eq!(extract_year("© 1999 Google"), None);
+    assert_eq!(extract_year("© 2050 Google", 2060), None);
+    assert_eq!(extract_year("© 1999 Google", 2026), None);
+}
+
+#[test]
+fn extract_year_rejects_future_year() {
+    assert_eq!(extract_year("© 2028 Google", 2026), None);
+    assert_eq!(extract_year("© 2026 Google", 2026), Some(2026));
+}
+
+#[test]
+fn current_year_is_sane() {
+    let y = current_year();
+    assert!((2026..2100).contains(&y), "current_year() = {y}");
 }
 
 #[test]

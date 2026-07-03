@@ -225,9 +225,27 @@ fn recognize_batch(
         .collect()
 }
 
-fn extract_year(text: &str) -> Option<u32> {
+fn extract_year(text: &str, max_year: u32) -> Option<u32> {
     let re = Regex::new(r"(20[0-4]\d)").unwrap();
-    re.captures(text).and_then(|c| c[1].parse().ok())
+    re.captures(text)
+        .and_then(|c| c[1].parse().ok())
+        .filter(|&y| y <= max_year)
+}
+
+fn current_year() -> u32 {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    // Civil-from-days (Howard Hinnant); exact at year boundaries.
+    let z = (secs / 86400) as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }) as u32
 }
 
 // Preprocesses one crop per pid, stacks in groups of OCR_BATCH_SIZE, runs recognize_batch,
@@ -240,6 +258,7 @@ fn ocr_group<'a>(
     images: &HashMap<&'a str, RgbImage>,
     pids: &[&'a str],
     crop: [u32; 4],
+    max_year: u32,
 ) -> OcrOutput<'a> {
     let mut results = HashMap::new();
     let mut inferences = 0usize;
@@ -272,7 +291,7 @@ fn ocr_group<'a>(
         for (&pid, text) in batch_pids.iter().zip(texts) {
             inferences += 1;
             if let Some(text) = text {
-                let year = extract_year(&text);
+                let year = extract_year(&text, max_year);
                 results.insert(pid, (year, text));
             }
         }
@@ -287,6 +306,7 @@ fn ocr_batch<'a>(
     images: &HashMap<&'a str, RgbImage>,
     pids: &[&'a str],
     crop: [u32; 4],
+    max_year: u32,
 ) -> OcrOutput<'a> {
     let group_size = pids.len().div_ceil(sessions.len()).max(1);
     let groups: Vec<&[&str]> = pids.chunks(group_size).collect();
@@ -296,7 +316,7 @@ fn ocr_batch<'a>(
             .iter_mut()
             .zip(&groups)
             .map(|(session, group)| {
-                scope.spawn(move || ocr_group(session, char_dict, images, group, crop))
+                scope.spawn(move || ocr_group(session, char_dict, images, group, crop, max_year))
             })
             .collect();
         handles.into_iter().map(|h| h.join().expect("ocr thread panicked")).collect()
@@ -320,6 +340,7 @@ pub fn run(
     model_dir: &str,
     mut emit: impl FnMut(DetectResult),
 ) {
+    let max_year = current_year();
     let pool_size = std::thread::available_parallelism().map_or(4, |n| n.get()).min(2);
     let mut sessions = load_rec_sessions(model_dir, pool_size);
     let char_dict = load_char_dict(model_dir);
@@ -367,7 +388,7 @@ pub fn run(
             }
 
             let ids: Vec<&str> = chunk.iter().copied().filter(|pid| images.contains_key(pid)).collect();
-            let (results, _, _, _) = ocr_batch(&mut sessions, &char_dict, &images, &ids, crop);
+            let (results, _, _, _) = ocr_batch(&mut sessions, &char_dict, &images, &ids, crop, max_year);
 
             for &pid in chunk {
                 done += 1;
@@ -431,7 +452,7 @@ pub fn run(
                 }
                 let crop = shift_crop(cand.crop, SHIFTS[shift_idx]);
                 let (round_results, round_inferences, round_prep, round_run) =
-                    ocr_batch(&mut sessions, &char_dict, &images, &unresolved, crop);
+                    ocr_batch(&mut sessions, &char_dict, &images, &unresolved, crop, max_year);
                 inferences += round_inferences;
                 prep_ms += round_prep;
                 run_ms += round_run;
