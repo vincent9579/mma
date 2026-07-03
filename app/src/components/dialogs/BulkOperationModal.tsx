@@ -7,9 +7,14 @@ import {
 	useScope,
 	applyScope,
 	type ScopeController,
-    updateLocations,
+	updateLocations,
 } from "@/store/useMapStore";
-import type { Scope, Location, Update, LocationPatch_Deserialize as LocationPatch } from "@/bindings.gen";
+import type {
+	Scope,
+	Location,
+	Update,
+	LocationPatch_Deserialize as LocationPatch,
+} from "@/bindings.gen";
 import { ScopeSelector } from "@/components/primitives/ScopeSelector";
 import { isPinnedToPano } from "@/types";
 import { getFieldDef, getAllFieldDefs } from "@/lib/data/fieldDefRegistry";
@@ -101,7 +106,9 @@ function ValidateSetup({ scopeCtl, onReady }: SetupProps) {
 									state,
 								}));
 							if (batch.length > 0) addSelections(batch);
-							return { doneMessage: `Done -- ${fmt.format(locations.length)} locations validated.` };
+							return {
+								doneMessage: `Done -- ${fmt.format(locations.length)} locations validated.`,
+							};
 						})
 					}
 				>
@@ -143,17 +150,17 @@ function EnrichSetup({ scopeCtl, locs, onReady }: SetupProps) {
 					<tbody>
 						{coverage.map((c) => {
 							const missing = total - c.have;
+							const pct = Math.round((c.have / total) * 100);
 							return (
 								<tr key={c.key} className={missing > 0 ? "is-incomplete" : ""}>
 									<td className="bulk-operation__coverage-label">{c.label}</td>
 									<td className="bulk-operation__coverage-bar">
-										<span
-											className="bulk-operation__coverage-fill"
-											style={{ width: `${(c.have / total) * 100}%` }}
-										/>
+										<span className="bulk-operation__coverage-fill" style={{ width: `${pct}%` }} />
 									</td>
-									<td className="bulk-operation__coverage-stat">
-										{missing > 0 ? `${fmt.format(missing)} missing` : "complete"}
+									<td
+										className={`bulk-operation__coverage-stat ${missing > 0 ? "is-incomplete" : "is-complete"}`}
+									>
+										{missing > 0 ? `${pct}%` : "100%"}
 									</td>
 								</tr>
 							);
@@ -213,7 +220,11 @@ function PinPanoSetup({ scopeCtl, locs, onReady }: SetupProps) {
 				Re-pin already pinned locations
 			</label>
 			<label className="bulk-operation__option">
-				<input type="checkbox" checked={useLatest} onChange={(e) => setUseLatest(e.target.checked)} />
+				<input
+					type="checkbox"
+					checked={useLatest}
+					onChange={(e) => setUseLatest(e.target.checked)}
+				/>
 				Use latest timeline coverage
 			</label>
 			<div className="bulk-operation__actions">
@@ -302,7 +313,9 @@ function ClearFieldsSetup({ locs, scopedLocs, scopeCtl, onReady }: SetupProps) {
 								updates.push({ id: loc.id, patch: { extra: cleaned } });
 							}
 							if (updates.length > 0) await updateLocations(updates);
-							return { doneMessage: `Cleared fields from ${fmt.format(updates.length)} locations.` };
+							return {
+								doneMessage: `Cleared fields from ${fmt.format(updates.length)} locations.`,
+							};
 						});
 					}}
 					disabled={selected.size === 0}
@@ -332,7 +345,9 @@ function SetFieldSetup({ locs, scopeCtl, onReady }: SetupProps) {
 	const [raw, setRaw] = useState("");
 
 	const effectiveKey = (creatingNew ? newKey : key).trim();
-	const def = effectiveKey ? (getFieldDef(effectiveKey) ?? TOP_LEVEL_SET_FIELDS[effectiveKey]) : undefined;
+	const def = effectiveKey
+		? (getFieldDef(effectiveKey) ?? TOP_LEVEL_SET_FIELDS[effectiveKey])
+		: undefined;
 	const isNumber = def?.type === "number";
 	const isEnum = def?.type === "enum" && def.values;
 	const exprError = useMemo(() => {
@@ -427,7 +442,8 @@ function SetFieldSetup({ locs, scopeCtl, onReady }: SetupProps) {
 							if (useExpr) {
 								const { updates, skipped } = planFieldExpr(locations, ek, parseFieldExpr(rv));
 								if (updates.length > 0) await updateLocations(updates);
-								const msg = `Set field on ${fmt.format(updates.length)} locations.` +
+								const msg =
+									`Set field on ${fmt.format(updates.length)} locations.` +
 									(skipped > 0 ? ` ${fmt.format(skipped)} skipped (missing source fields).` : "");
 								return { doneMessage: msg };
 							}
@@ -592,7 +608,10 @@ function BulkProgress({
 			<div className="bulk-operation__status">
 				{status === "running" &&
 					`${phaseLabel ? `${phaseLabel}: ` : ""}${fmt.format(done)} / ${fmt.format(total)} (${pct}%)`}
-				{status === "done" && (result.doneContent ?? result.doneMessage ?? `Done -- ${fmt.format(total)} locations processed.`)}
+				{status === "done" &&
+					(result.doneContent ??
+						result.doneMessage ??
+						`Done -- ${fmt.format(total)} locations processed.`)}
 				{status === "cancelled" && `Cancelled at ${fmt.format(done)} / ${fmt.format(total)}.`}
 				{status === "error" && `Error: ${error}`}
 			</div>
@@ -653,18 +672,9 @@ export function BulkOperationModal({ operation, onClose }: Props) {
 		>
 			<DialogContent title={TITLES[operation]} className="bulk-operation-modal">
 				{runner ? (
-					<BulkProgress
-						runner={runner}
-						scope={scopeCtl.scope}
-						onClose={onClose}
-					/>
+					<BulkProgress runner={runner} scope={scopeCtl.scope} onClose={onClose} />
 				) : (
-					<Setup
-						scopeCtl={scopeCtl}
-						locs={locs}
-						scopedLocs={scopedLocs}
-						onReady={onReady}
-					/>
+					<Setup scopeCtl={scopeCtl} locs={locs} scopedLocs={scopedLocs} onReady={onReady} />
 				)}
 			</DialogContent>
 		</Dialog>
