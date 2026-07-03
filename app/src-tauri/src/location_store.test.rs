@@ -1946,7 +1946,7 @@ fn selection_cell_segment_adapts_format() {
         id_order: (0..n as u32).collect(),
         id_to_index: (0..n as u32).map(|i| (i, i as usize)).collect::<HashMap<_, _>>(),
     });
-    let render = RenderState { cells, id_to_cell_idx: vec![0u8; n], arrow_style: false };
+    let render = RenderState { cells, id_to_cell_idx: vec![0u8; n], arrow_style: false, marker_color: [42, 42, 42] };
     let cr = render.cells[0].as_ref().unwrap();
     // header = 1 base32 byte + 4-byte loc count; per selection a format byte follows.
     let parse_header = |seg: &[u8]| u32::from_le_bytes(seg[1..5].try_into().unwrap());
