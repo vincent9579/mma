@@ -4795,6 +4795,11 @@ body {
 	display: flex;
 	align-items: center;
 	gap: 0.5rem;
+	padding: 1px 0;
+}
+.settings-page .color-picker__swatch {
+	width: 20px;
+	height: 20px;
 }
 .settings-popup__sub {
 	padding-left: 1.5rem;
