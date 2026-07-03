@@ -75,36 +75,37 @@ import { toggleSeenOverlay } from "@/lib/seen/seenOverlay";
 import { selectReviewedHistory } from "@/lib/review/review";
 
 const COMMANDS = {
-	"save": {
+	save: {
 		label: "Commit map",
 		icon: mdiContentSave,
 		group: "Map",
 		defaultBinding: "Mod+s",
+		aliases: ["save", "snapshot"],
 		execute: () => commitMap(),
 		enabled: () => getCurrentMap() !== null && hasCommitDiff(),
 	},
-	"import": {
+	import: {
 		label: "Import file",
 		icon: mdiFileImportOutline,
 		group: "Map",
 		execute: () => document.dispatchEvent(new CustomEvent("open-import")),
 		enabled: () => getCurrentMap() !== null,
 	},
-	"copyToMap": {
+	copyToMap: {
 		label: "Copy location to map via hotkeys...",
 		icon: mdiMapPlus,
 		group: "Map",
 		execute: () => document.dispatchEvent(new CustomEvent("open-copy-to-map")),
 		enabled: () => getCurrentMap() !== null,
 	},
-	"quickCopyToMap": {
+	quickCopyToMap: {
 		label: "Copy location to map...",
 		icon: mdiMapMarkerPlus,
 		group: "Map",
 		execute: () => document.dispatchEvent(new CustomEvent("open-quick-copy-to-map")),
 		enabled: () => getCurrentMap() !== null,
 	},
-	"undo": {
+	undo: {
 		label: "Undo",
 		icon: mdiUndo,
 		group: "Map",
@@ -112,7 +113,7 @@ const COMMANDS = {
 		execute: undo,
 		enabled: () => getUndoRedoState().canUndo,
 	},
-	"redo": {
+	redo: {
 		label: "Redo",
 		icon: mdiRedo,
 		group: "Map",
@@ -120,7 +121,7 @@ const COMMANDS = {
 		execute: redo,
 		enabled: () => getUndoRedoState().canRedo,
 	},
-	"export": {
+	export: {
 		label: "Export",
 		icon: mdiFileExportOutline,
 		group: "Map",
@@ -148,7 +149,7 @@ const COMMANDS = {
 		execute: () => toggleSeenOverlay(),
 		enabled: () => getCurrentMap() !== null,
 	},
-	"selectAll": {
+	selectAll: {
 		label: "Select everything",
 		icon: mdiSelectAll,
 		group: "Selections",
@@ -159,6 +160,7 @@ const COMMANDS = {
 		label: "Select untagged locations",
 		icon: mdiTagOffOutline,
 		group: "Selections",
+		aliases: ["find untagged", "missing tags"],
 		execute: selectUntagged,
 	},
 	"select-unpanned": {
@@ -214,6 +216,7 @@ const COMMANDS = {
 		label: "Load shapes from GeoJSON as selection",
 		icon: mdiCodeJson,
 		group: "Selections",
+		aliases: ["import polygon", "load polygon"],
 		execute: loadGeoJSON,
 	},
 	"download-polygon-geojson": {
@@ -231,7 +234,9 @@ const COMMANDS = {
 					geometry: { type: "Polygon", coordinates: sel.props.polygon.coordinates },
 				});
 			}
-			const blob = new Blob([JSON.stringify({ type: "FeatureCollection", features })], { type: "application/geo+json" });
+			const blob = new Blob([JSON.stringify({ type: "FeatureCollection", features })], {
+				type: "application/geo+json",
+			});
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement("a");
 			a.href = url;
@@ -240,7 +245,7 @@ const COMMANDS = {
 			URL.revokeObjectURL(url);
 		},
 	},
-	"deselectAll": {
+	deselectAll: {
 		label: "Deselect everything",
 		icon: mdiSelectRemove,
 		group: "Selections",
@@ -252,25 +257,33 @@ const COMMANDS = {
 		label: "Find duplicates...",
 		icon: mdiMapSearchOutline,
 		group: "Selections",
-		execute: () => document.dispatchEvent(new CustomEvent("open-inline-panel", { detail: "find-duplicates" })),
+		aliases: ["dedupe", "duplicate check"],
+		execute: () =>
+			document.dispatchEvent(new CustomEvent("open-inline-panel", { detail: "find-duplicates" })),
 	},
 	"merge-duplicates": {
 		label: "Merge duplicates...",
 		icon: mdiCallMerge,
 		group: "Selections",
+		aliases: ["dedupe", "combine duplicates"],
 		execute: () => document.dispatchEvent(new CustomEvent("open-merge-duplicates")),
 	},
 	"filter-by-metadata": {
 		label: "Filter by metadata...",
 		icon: mdiFilterOutline,
 		group: "Selections",
-		execute: () => document.dispatchEvent(new CustomEvent("open-inline-panel", { detail: "filter-by-metadata" })),
+		aliases: ["search by field", "field filter"],
+		execute: () =>
+			document.dispatchEvent(
+				new CustomEvent("open-inline-panel", { detail: "filter-by-metadata" }),
+			),
 	},
 	"top-k": {
 		label: "Select top/bottom K...",
 		icon: mdiPodium,
 		group: "Selections",
-		execute: () => document.dispatchEvent(new CustomEvent("open-inline-panel", { detail: "top-k" })),
+		execute: () =>
+			document.dispatchEvent(new CustomEvent("open-inline-panel", { detail: "top-k" })),
 	},
 	"review-selected": {
 		label: "Review selected locations",
@@ -289,13 +302,16 @@ const COMMANDS = {
 		label: "Pick random locations from selection",
 		icon: mdiDiceMultiple,
 		group: "Selections",
-		execute: () => document.dispatchEvent(new CustomEvent("open-inline-panel", { detail: "select-random" })),
+		aliases: ["sample", "random sample"],
+		execute: () =>
+			document.dispatchEvent(new CustomEvent("open-inline-panel", { detail: "select-random" })),
 		enabled: () => getSelectedLocationIds().size > 0,
 	},
 	"ghost-selections": {
 		label: "Ghost selections",
 		icon: mdiGhostOutline,
 		group: "Selections",
+		aliases: ["hide selections", "dim selections"],
 		execute: () => toggleGhostAllSelections(),
 		enabled: () => getAllSelections().length > 0,
 	},
@@ -326,44 +342,56 @@ const COMMANDS = {
 		label: "Validate locations",
 		icon: mdiCheckDecagram,
 		group: "Bulk Operations",
+		aliases: ["check locations", "verify"],
 		execute: () => document.dispatchEvent(new CustomEvent("open-bulk-op", { detail: "validate" })),
 	},
 	"bulk-enrich": {
 		label: "Enrich metadata fields",
 		icon: mdiDatabaseArrowUp,
 		group: "Bulk Operations",
+		aliases: ["autotag", "fetch metadata", "auto-enrich"],
 		execute: () => document.dispatchEvent(new CustomEvent("open-bulk-op", { detail: "enrich" })),
 	},
 	"bulk-set-field": {
 		label: "Set metadata field value",
 		icon: mdiDatabaseEditOutline,
 		group: "Bulk Operations",
+		aliases: ["edit field", "assign field"],
 		execute: () => document.dispatchEvent(new CustomEvent("open-bulk-op", { detail: "setField" })),
 	},
 	"bulk-clear-fields": {
 		label: "Clear metadata fields",
 		icon: mdiDatabaseRemoveOutline,
 		group: "Bulk Operations",
-		execute: () => document.dispatchEvent(new CustomEvent("open-bulk-op", { detail: "clearFields" })),
+		aliases: ["remove fields", "strip metadata"],
+		execute: () =>
+			document.dispatchEvent(new CustomEvent("open-bulk-op", { detail: "clearFields" })),
 	},
 	"bulk-pin-pano": {
 		label: "Pin locations to pano ID",
 		icon: mdiMapMarkerCheck,
 		group: "Bulk Operations",
+		aliases: ["snap to pano", "lock pano"],
 		execute: () => document.dispatchEvent(new CustomEvent("open-bulk-op", { detail: "pinPano" })),
 	},
 	"bulk-heading-road": {
 		label: "Pan headings along road",
 		icon: mdiCompassOutline,
 		group: "Bulk Operations",
-		execute: () => document.dispatchEvent(new CustomEvent("open-bulk-op", { detail: "headingRoad" })),
+		aliases: ["align headings", "road direction"],
+		execute: () =>
+			document.dispatchEvent(new CustomEvent("open-bulk-op", { detail: "headingRoad" })),
 	},
 	"delete-selected-tags": {
 		label: "Delete selected tags",
 		icon: mdiTagRemove,
 		group: "Tags",
 		execute: async () => {
-			await deleteTags(getSelections().filter((s) => s.props.type === "Tag").map((s) => (s.props as { type: "Tag"; tagId: number }).tagId));
+			await deleteTags(
+				getSelections()
+					.filter((s) => s.props.type === "Tag")
+					.map((s) => (s.props as { type: "Tag"; tagId: number }).tagId),
+			);
 		},
 		enabled: () => getSelections().some((s) => s.props.type === "Tag"),
 	},
@@ -378,7 +406,8 @@ const COMMANDS = {
 			const rows = Object.entries(counts)
 				.map(([id, count]) => ({ name: map.meta.tags[id]?.name ?? id, count }))
 				.sort((a, b) => b.count - a.count);
-			const csv = "name,count\n" + rows.map((r) => `"${r.name.replace(/"/g, '""')}",${r.count}`).join("\n");
+			const csv =
+				"name,count\n" + rows.map((r) => `"${r.name.replace(/"/g, '""')}",${r.count}`).join("\n");
 			const blob = new Blob([csv], { type: "text/csv" });
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement("a");
@@ -392,6 +421,7 @@ const COMMANDS = {
 		label: "Find and replace in tag names",
 		icon: mdiFindReplace,
 		group: "Tags",
+		aliases: ["rename tags", "bulk rename"],
 		execute: () => document.dispatchEvent(new CustomEvent("open-tag-find-replace")),
 		enabled: () => getCurrentMap() !== null,
 	},
@@ -399,6 +429,7 @@ const COMMANDS = {
 		label: "Apply metadata as tags",
 		icon: mdiTagMultipleOutline,
 		group: "Tags",
+		aliases: ["group by field", "metadata to tags"],
 		execute: () => document.dispatchEvent(new CustomEvent("open-apply-field-as-tags")),
 		enabled: () => getCurrentMap() !== null,
 	},
