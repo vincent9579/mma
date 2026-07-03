@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import {
 	setMapExtraFields,
@@ -40,10 +40,14 @@ function compToToken(c: ExtraFieldDef["comparison"]): CompToken {
 
 function tokenToComp(t: CompToken, period: number): Comparison | undefined {
 	switch (t) {
-		case "auto": return undefined;
-		case "linear": return { type: "linear" };
-		case "categorical": return { type: "categorical" };
-		case "circular": return { type: "circular", period };
+		case "auto":
+			return undefined;
+		case "linear":
+			return { type: "linear" };
+		case "categorical":
+			return { type: "categorical" };
+		case "circular":
+			return { type: "circular", period };
 	}
 }
 
@@ -58,12 +62,7 @@ interface FieldRow {
 function CoverageIcon({ ratio }: { ratio: number }) {
 	const pct = Math.round(ratio * 100);
 	return (
-		<svg
-			className="manage-fields-table__coverage"
-			width="14"
-			height="14"
-			viewBox="0 0 14 14"
-		>
+		<svg className="manage-fields-table__coverage" width="14" height="14" viewBox="0 0 14 14">
 			<title>{pct}% of locations</title>
 			<circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.3" />
 			{ratio > 0 && (
@@ -111,6 +110,8 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 	const [busy, setBusy] = useState(false);
 	const [periodPrompt, setPeriodPrompt] = useState<{ key: string; value: string } | null>(null);
 	const [coverage, setCoverage] = useState<Map<string, number>>(new Map());
+	const [editingKey, setEditingKey] = useState<string | null>(null);
+	const skipBlurRef = useRef(false);
 
 	useEffect(() => {
 		const total = getCurrentMap()?.meta.locationCount ?? 0;
@@ -139,7 +140,10 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 		if (!periodPrompt) return;
 		const period = parseFloat(periodPrompt.value);
 		updateRow(periodPrompt.key, {
-			comparison: { type: "circular", period: Number.isFinite(period) && period > 0 ? period : DEFAULT_PERIOD },
+			comparison: {
+				type: "circular",
+				period: Number.isFinite(period) && period > 0 ? period : DEFAULT_PERIOD,
+			},
 		});
 		setPeriodPrompt(null);
 	};
@@ -233,14 +237,40 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 										<CoverageIcon ratio={coverage.get(row.key) ?? 0} />
 									</td>
 									<td className="manage-fields-table__key">
-										<input
-											className="input"
-											value={row.draftKey}
-											disabled={busy}
-											onChange={(e) => updateRow(row.key, { draftKey: e.target.value })}
-											onBlur={() => proposeRename(row)}
-											onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-										/>
+										{editingKey === row.key ? (
+											<input
+												className="input"
+												value={row.draftKey}
+												disabled={busy}
+												autoFocus
+												onChange={(e) => updateRow(row.key, { draftKey: e.target.value })}
+												onFocus={(e) => e.target.select()}
+												onBlur={() => {
+													if (skipBlurRef.current) {
+														skipBlurRef.current = false;
+														updateRow(row.key, { draftKey: row.key });
+														setEditingKey(null);
+														return;
+													}
+													setEditingKey(null);
+													proposeRename(row);
+												}}
+												onKeyDown={(e) => {
+													if (e.key === "Enter") e.currentTarget.blur();
+													else if (e.key === "Escape") {
+														skipBlurRef.current = true;
+														e.currentTarget.blur();
+													}
+												}}
+											/>
+										) : (
+											<span
+												className="manage-fields-table__key-text"
+												onClick={() => setEditingKey(row.key)}
+											>
+												{row.key}
+											</span>
+										)}
 									</td>
 									<td>
 										<input
@@ -273,10 +303,15 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 												// Circular needs a period: prompt for it instead of committing inline,
 												// so the cell never grows. Cancelling leaves the select on its old value.
 												if (token === "circular") {
-													const current = row.comparison?.type === "circular" ? row.comparison.period : DEFAULT_PERIOD;
+													const current =
+														row.comparison?.type === "circular"
+															? row.comparison.period
+															: DEFAULT_PERIOD;
 													setPeriodPrompt({ key: row.key, value: String(current) });
 												} else {
-													updateRow(row.key, { comparison: tokenToComp(token, DEFAULT_PERIOD) ?? null });
+													updateRow(row.key, {
+														comparison: tokenToComp(token, DEFAULT_PERIOD) ?? null,
+													});
 												}
 											}}
 										>
@@ -291,12 +326,23 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 									</td>
 									<td className="manage-fields-table__actions">
 										<button
-											className="button button--small button--danger"
+											className="manage-fields-table__delete"
 											type="button"
+											title="Delete field"
 											disabled={busy}
 											onClick={() => setDeleteKey(row.key)}
 										>
-											Delete
+											<svg
+												width="18"
+												height="18"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												strokeWidth="2"
+												strokeLinecap="round"
+											>
+												<path d="M18 6 6 18M6 6l12 12" />
+											</svg>
 										</button>
 									</td>
 								</tr>
@@ -306,7 +352,10 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 				)}
 
 				<Dialog open={renamePrompt !== null} onOpenChange={(open) => !open && cancelRename()}>
-					<DialogContent title={renamePrompt?.merge ? "Merge field" : "Rename field"} className="period-prompt">
+					<DialogContent
+						title={renamePrompt?.merge ? "Merge field" : "Rename field"}
+						className="period-prompt"
+					>
 						{renamePrompt && (
 							<>
 								<p className="period-prompt__help">
@@ -318,9 +367,9 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 										</>
 									) : (
 										<>
-											Rename <code>{renamePrompt.key}</code> to <code>{renamePrompt.target}</code> across{" "}
-											{renamePrompt.affected} location{renamePrompt.affected === 1 ? "" : "s"}. This cannot be
-											undone.
+											Rename <code>{renamePrompt.key}</code> to <code>{renamePrompt.target}</code>{" "}
+											across {renamePrompt.affected} location
+											{renamePrompt.affected === 1 ? "" : "s"}. This cannot be undone.
 										</>
 									)}
 								</p>
@@ -346,7 +395,12 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 									</fieldset>
 								)}
 								<div className="period-prompt__actions">
-									<button className="button button--primary" type="button" disabled={busy} onClick={confirmRename}>
+									<button
+										className="button button--primary"
+										type="button"
+										disabled={busy}
+										onClick={confirmRename}
+									>
 										{renamePrompt.merge ? "Merge" : "Rename"}
 									</button>
 									<button className="button" type="button" disabled={busy} onClick={cancelRename}>
@@ -361,14 +415,24 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 				<Dialog open={deleteKey !== null} onOpenChange={(open) => !open && setDeleteKey(null)}>
 					<DialogContent title="Delete field" className="period-prompt">
 						<p className="period-prompt__help">
-							Delete <code>{deleteKey}</code> and clear its values from every location? This cannot be
-							undone.
+							Delete <code>{deleteKey}</code> and clear its values from every location? This cannot
+							be undone.
 						</p>
 						<div className="period-prompt__actions">
-							<button className="button button--danger" type="button" disabled={busy} onClick={confirmDelete}>
+							<button
+								className="button button--danger"
+								type="button"
+								disabled={busy}
+								onClick={confirmDelete}
+							>
 								Delete field
 							</button>
-							<button className="button" type="button" disabled={busy} onClick={() => setDeleteKey(null)}>
+							<button
+								className="button"
+								type="button"
+								disabled={busy}
+								onClick={() => setDeleteKey(null)}
+							>
 								Cancel
 							</button>
 						</div>
@@ -376,7 +440,12 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 				</Dialog>
 
 				<div className="manage-fields-modal__actions">
-					<button className="button button--primary" type="button" disabled={busy} onClick={handleSave}>
+					<button
+						className="button button--primary"
+						type="button"
+						disabled={busy}
+						onClick={handleSave}
+					>
 						Save
 					</button>
 					<button className="button" type="button" disabled={busy} onClick={onClose}>
@@ -384,10 +453,14 @@ export function ManageFieldsModal({ onClose }: { onClose: () => void }) {
 					</button>
 				</div>
 
-				<Dialog open={periodPrompt !== null} onOpenChange={(open) => !open && setPeriodPrompt(null)}>
+				<Dialog
+					open={periodPrompt !== null}
+					onOpenChange={(open) => !open && setPeriodPrompt(null)}
+				>
 					<DialogContent title="Circular period" className="period-prompt">
 						<p className="period-prompt__help">
-							Value at which this field wraps around (e.g. 360 for degrees, 24 for hours, 12 for months).
+							Value at which this field wraps around (e.g. 360 for degrees, 24 for hours, 12 for
+							months).
 						</p>
 						<form
 							onSubmit={(e) => {
