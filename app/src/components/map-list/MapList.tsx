@@ -11,7 +11,6 @@ import {
 	updateMapLabels,
 } from "@/store/useMapStore";
 import { openMapWindow } from "@/lib/window";
-import { openManual } from "@/store/router";
 import { log, fireAndForget } from "@/lib/util/log";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { cmd } from "@/lib/commands";
@@ -1282,23 +1281,6 @@ export function MapList() {
 								here
 							</a>
 							.
-						</p>
-					</li>
-					<li className="updates__item updates__item--manual">
-						<span className="updates__circle" />
-						<time className="updates__time">Manual</time>
-						<p>
-							New here?{" "}
-							<a
-								href="#"
-								onClick={(e) => {
-									e.preventDefault();
-									openManual();
-								}}
-							>
-								Open the manual
-							</a>{" "}
-							for a guide to every feature.
 						</p>
 					</li>
 					<WhatsNew />

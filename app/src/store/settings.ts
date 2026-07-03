@@ -147,6 +147,7 @@ const DEFAULTS = {
 		"---",
 		"bulk-enrich",
 	] as PinnedEntry[],
+	hasSeenWelcome: false,
 };
 export type AppSettings = typeof DEFAULTS;
 

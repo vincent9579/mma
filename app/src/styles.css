@@ -769,6 +769,30 @@ summary.button {
 		animation: none;
 	}
 }
+.welcome-dialog {
+	background: #2a2a26;
+	color: #eee;
+	max-width: 400px;
+}
+.welcome-dialog .modal__title {
+	color: #eee;
+}
+.welcome-dialog .modal__close {
+	color: #777;
+}
+.welcome-dialog .modal__close:hover {
+	color: #ccc;
+}
+.welcome-dialog .modal__content p {
+	margin: 0 0 0.75rem;
+	line-height: 1.5;
+	color: #bbb;
+}
+.welcome-dialog .modal__content a,
+.welcome-dialog .modal__content a:active,
+.welcome-dialog .modal__content a:visited {
+	color: #7c9;
+}
 .edit-map-modal {
 	width: 540px;
 	max-height: 90vh;
