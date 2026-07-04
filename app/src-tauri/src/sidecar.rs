@@ -185,13 +185,18 @@ pub fn sidecar_spawn(plugin_id: String, name: String, args: Vec<String>) -> AppR
     let bin_name = if cfg!(windows) { format!("{name}.exe") } else { name };
     let bin = dir.join(&bin_name);
 
-    let mut child = std::process::Command::new(&bin)
-        .args(&args)
+    let mut cmd = std::process::Command::new(&bin);
+    cmd.args(&args)
         .current_dir(&dir)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+        .stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let mut child = cmd.spawn()
         .map_err(|e| AppError(format!("Failed to spawn {}: {e}", bin.display())))?;
 
     let run_id = RUN_COUNTER.fetch_add(1, Ordering::SeqCst);
