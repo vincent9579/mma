@@ -5,6 +5,8 @@
 //! under `{appData}/plugins/{plugin_id}/sidecar/`, and spawned by `sidecar_spawn`.
 //! Process I/O is streamed to the frontend as `sidecar-stdout` / `sidecar-stderr` /
 //! `sidecar-exit` events; download progress as `sidecar-install-progress`.
+//! stderr (the sidecar diagnostics channel) is also forwarded to the app log;
+//! stdout is not (it is the data channel, one JSON line per unit of work).
 
 use crate::types::{AppError, AppResult};
 use crate::{emit_event, validate_plugin_id, validate_sidecar_name};
@@ -234,6 +236,7 @@ pub fn sidecar_spawn(plugin_id: String, name: String, args: Vec<String>) -> AppR
         .map_err(|e| AppError(format!("Failed to spawn {}: {e}", bin.display())))?;
 
     let run_id = RUN_COUNTER.fetch_add(1, Ordering::SeqCst);
+    log::info!("[sidecar] spawned {bin_name} for {plugin_id} (run_id={run_id})");
 
     if let Some(out) = child.stdout.take() {
         std::thread::spawn(move || {
@@ -243,8 +246,10 @@ pub fn sidecar_spawn(plugin_id: String, name: String, args: Vec<String>) -> AppR
         });
     }
     if let Some(err) = child.stderr.take() {
+        let pid = plugin_id.clone();
         std::thread::spawn(move || {
             for line in BufReader::new(err).lines().map_while(Result::ok) {
+                log::info!("[sidecar:{pid}] {line}");
                 emit_event("sidecar-stderr", SidecarLine { run_id, line });
             }
         });
@@ -265,6 +270,8 @@ pub fn sidecar_spawn(plugin_id: String, name: String, args: Vec<String>) -> AppR
         if let Ok(mut map) = children().lock() {
             map.remove(&run_id);
         }
+        let desc = code.map_or("unknown".into(), |c| c.to_string());
+        log::info!("[sidecar] run_id={run_id} exited (code {desc})");
         emit_event("sidecar-exit", SidecarExit { run_id, code });
     });
 
