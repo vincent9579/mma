@@ -36,7 +36,7 @@ export const commands = {
 	 *  Download a plugin's sidecar bundle from GitHub Releases and extract it under
 	 *  `{appData}/plugins/{plugin_id}/sidecar/`. Emits `sidecar-install-progress`.
 	 */
-	sidecarInstall: (pluginId: string, name: string, version: string) => typedError<null, string>(__TAURI_INVOKE("sidecar_install", { pluginId, name, version })),
+	sidecarInstall: (pluginId: string, name: string, version: string, sha256: string | null) => typedError<null, string>(__TAURI_INVOKE("sidecar_install", { pluginId, name, version, sha256 })),
 	/**  Installed sidecar version for a plugin (from `sidecar/version.txt`), or `None`. */
 	sidecarInstalledVersion: (pluginId: string) => typedError<string | null, string>(__TAURI_INVOKE("sidecar_installed_version", { pluginId })),
 	/**
@@ -859,7 +859,7 @@ export type PluginManifest_Deserialize = {
 	icon: string,
 	main: string,
 	version: string,
-	sidecar: PluginSidecar | null,
+	sidecar: PluginSidecar_Deserialize | null,
 };
 
 /**  Metadata for a user-installed plugin, read from `plugins/{id}/manifest.json`. */
@@ -874,9 +874,21 @@ export type PluginManifest = {
 };
 
 /**  A plugin's declared sidecar binary (downloaded from GitHub Releases on install). */
+
+/**  A plugin's declared sidecar binary (downloaded from GitHub Releases on install). */
+export type PluginSidecar_Deserialize = {
+	name: string,
+	version: string,
+	/**  Expected SHA-256 hex digest of the platform-specific zip archive. */
+	sha256: string | null,
+};
+
+/**  A plugin's declared sidecar binary (downloaded from GitHub Releases on install). */
 export type PluginSidecar = {
 	name: string,
 	version: string,
+	/**  Expected SHA-256 hex digest of the platform-specific zip archive. */
+	sha256?: string | null,
 };
 
 /**

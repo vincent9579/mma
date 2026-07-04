@@ -7,9 +7,10 @@
 //! `sidecar-exit` events; download progress as `sidecar-install-progress`.
 
 use crate::types::{AppError, AppResult};
-use crate::{emit_event, validate_plugin_id};
+use crate::{emit_event, validate_plugin_id, validate_sidecar_name};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Child;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -37,7 +38,7 @@ struct SidecarExit {
 }
 
 /// GitHub release asset platform tag for the running target.
-fn platform_tag() -> AppResult<&'static str> {
+pub(crate) fn platform_tag() -> AppResult<&'static str> {
     Ok(match (std::env::consts::OS, std::env::consts::ARCH) {
         ("windows", "x86_64") => "windows-x64",
         ("macos", "aarch64") => "macos-arm64",
@@ -57,12 +58,21 @@ fn sidecar_dir(plugin_id: &str) -> AppResult<std::path::PathBuf> {
         .join("sidecar"))
 }
 
-fn install_blocking(plugin_id: String, name: String, version: String) -> AppResult<()> {
+fn install_blocking(
+    plugin_id: String,
+    name: String,
+    version: String,
+    expected_sha256: Option<String>,
+) -> AppResult<()> {
     let platform = platform_tag()?;
     let url = format!(
         "https://github.com/ccmdi/mma/releases/download/{plugin_id}-v{version}/{name}-{platform}.zip"
     );
     log::info!("[sidecar] downloading {url}");
+
+    let final_dir = sidecar_dir(&plugin_id)?;
+    let plugin_root = final_dir.parent().unwrap().to_path_buf();
+    std::fs::create_dir_all(&plugin_root)?;
 
     let client = reqwest::blocking::Client::builder()
         .use_rustls_tls()
@@ -71,7 +81,10 @@ fn install_blocking(plugin_id: String, name: String, version: String) -> AppResu
     let mut resp = client.get(&url).send()?.error_for_status()?;
     let total = resp.content_length().unwrap_or(0);
 
-    let mut buf = Vec::with_capacity(total as usize);
+    // Stream the download to a temp file instead of buffering in RAM.
+    let zip_path = plugin_root.join(".sidecar-download.zip");
+    let mut zip_file = std::io::BufWriter::new(std::fs::File::create(&zip_path)?);
+    let mut hasher = Sha256::new();
     let mut chunk = [0u8; 65536];
     let mut downloaded = 0u64;
     let mut last_emit = 0u64;
@@ -80,9 +93,9 @@ fn install_blocking(plugin_id: String, name: String, version: String) -> AppResu
         if n == 0 {
             break;
         }
-        buf.extend_from_slice(&chunk[..n]);
+        zip_file.write_all(&chunk[..n])?;
+        hasher.update(&chunk[..n]);
         downloaded += n as u64;
-        // Throttle to ~every 256KB so we don't flood the event channel.
         if downloaded - last_emit >= 262_144 {
             emit_event("sidecar-install-progress", SidecarProgress {
                 plugin_id: plugin_id.clone(),
@@ -92,23 +105,36 @@ fn install_blocking(plugin_id: String, name: String, version: String) -> AppResu
             last_emit = downloaded;
         }
     }
+    zip_file.flush()?;
+    drop(zip_file);
+
     emit_event("sidecar-install-progress", SidecarProgress {
         plugin_id: plugin_id.clone(),
         downloaded,
         total: total.max(downloaded),
     });
 
-    let final_dir = sidecar_dir(&plugin_id)?;
-    let plugin_root = final_dir.parent().unwrap().to_path_buf();
-    std::fs::create_dir_all(&plugin_root)?;
+    let actual_sha = format!("{:x}", hasher.finalize());
+    if let Some(ref expected) = expected_sha256 {
+        if !expected.eq_ignore_ascii_case(&actual_sha) {
+            let _ = std::fs::remove_file(&zip_path);
+            return Err(AppError(format!(
+                "Sidecar integrity check failed for {name}: expected {expected}, got {actual_sha}"
+            )));
+        }
+        log::info!("[sidecar] SHA-256 verified: {actual_sha}");
+    } else {
+        log::warn!("[sidecar] no SHA-256 in manifest, skipping integrity check (hash: {actual_sha})");
+    }
+
     let tmp_dir = plugin_root.join(".sidecar-tmp");
     if tmp_dir.exists() {
         std::fs::remove_dir_all(&tmp_dir)?;
     }
     std::fs::create_dir_all(&tmp_dir)?;
 
-    // Archive root holds the binary, models/, and any dlls flat.
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(buf))?;
+    let zip_reader = std::fs::File::open(&zip_path)?;
+    let mut archive = zip::ZipArchive::new(std::io::BufReader::new(zip_reader))?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
         let rel = match entry.enclosed_name() {
@@ -126,6 +152,8 @@ fn install_blocking(plugin_id: String, name: String, version: String) -> AppResu
         let mut f = std::fs::File::create(&out)?;
         std::io::copy(&mut entry, &mut f)?;
     }
+    drop(archive);
+    let _ = std::fs::remove_file(&zip_path);
 
     std::fs::write(tmp_dir.join("version.txt"), &version)?;
 
@@ -138,7 +166,6 @@ fn install_blocking(plugin_id: String, name: String, version: String) -> AppResu
         }
     }
 
-    // temp-then-rename: replace the live dir atomically-ish once fully extracted.
     if final_dir.exists() {
         std::fs::remove_dir_all(&final_dir)?;
     }
@@ -151,9 +178,15 @@ fn install_blocking(plugin_id: String, name: String, version: String) -> AppResu
 /// `{appData}/plugins/{plugin_id}/sidecar/`. Emits `sidecar-install-progress`.
 #[tauri::command]
 #[specta::specta]
-pub async fn sidecar_install(plugin_id: String, name: String, version: String) -> AppResult<()> {
+pub async fn sidecar_install(
+    plugin_id: String,
+    name: String,
+    version: String,
+    sha256: Option<String>,
+) -> AppResult<()> {
     validate_plugin_id(&plugin_id)?;
-    tokio::task::spawn_blocking(move || install_blocking(plugin_id, name, version))
+    validate_sidecar_name(&name)?;
+    tokio::task::spawn_blocking(move || install_blocking(plugin_id, name, version, sha256))
         .await
         .map_err(|e| AppError(format!("sidecar install task failed: {e}")))?
 }
@@ -181,6 +214,7 @@ static RUN_COUNTER: AtomicU32 = AtomicU32::new(1);
 #[specta::specta]
 pub fn sidecar_spawn(plugin_id: String, name: String, args: Vec<String>) -> AppResult<u32> {
     validate_plugin_id(&plugin_id)?;
+    validate_sidecar_name(&name)?;
     let dir = sidecar_dir(&plugin_id)?;
     let bin_name = if cfg!(windows) { format!("{name}.exe") } else { name };
     let bin = dir.join(&bin_name);
@@ -245,4 +279,16 @@ pub fn sidecar_kill(run_id: u32) -> AppResult<()> {
         let _ = child.lock()?.kill();
     }
     Ok(())
+}
+
+/// Kill all tracked sidecar processes. Called on app exit to prevent orphans.
+pub fn kill_all_sidecars() {
+    let Ok(mut map) = children().lock() else { return };
+    for (run_id, child) in map.drain() {
+        if let Ok(mut c) = child.lock() {
+            log::info!("[sidecar] killing orphaned sidecar (run_id={run_id})");
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+    }
 }

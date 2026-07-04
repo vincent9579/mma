@@ -26,6 +26,7 @@ export interface Plugin {
 export interface PluginSidecarRef {
 	name: string;
 	version: string;
+	sha256?: string | null;
 }
 
 export interface PluginManifest {

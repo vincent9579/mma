@@ -146,6 +146,9 @@ fn open_data_folder() -> AppResult<()> {
 struct PluginSidecar {
     name: String,
     version: String,
+    /// Expected SHA-256 hex digest of the platform-specific zip archive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha256: Option<String>,
 }
 
 /// Metadata for a user-installed plugin, read from `plugins/{id}/manifest.json`.
@@ -164,10 +167,22 @@ struct PluginManifest {
 /// Parse the optional `sidecar` object out of a manifest JSON value.
 fn parse_sidecar(val: &serde_json::Value) -> Option<PluginSidecar> {
     let s = val.get("sidecar")?;
+    let platform = sidecar::platform_tag().ok()?;
+    let sha_key = format!("sha256-{platform}");
     Some(PluginSidecar {
         name: s.get("name")?.as_str()?.to_string(),
         version: s.get("version")?.as_str()?.to_string(),
+        sha256: s.get(&sha_key).and_then(|v| v.as_str()).map(|s| s.to_string()),
     })
+}
+
+fn validate_sidecar_name(name: &str) -> AppResult<()> {
+    if name.is_empty()
+        || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(AppError(format!("Invalid sidecar name: {name}")));
+    }
+    Ok(())
 }
 
 /// Scan the `plugins/` directory under app data and return manifests for all installed plugins.
@@ -688,6 +703,7 @@ pub fn run() {
     #[cfg(feature = "e2e")]
     let builder = builder.plugin(tauri_plugin_webdriver::init());
 
-    builder.run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    let result = builder.run(tauri::generate_context!());
+    sidecar::kill_all_sidecars();
+    result.expect("error while running tauri application");
 }
