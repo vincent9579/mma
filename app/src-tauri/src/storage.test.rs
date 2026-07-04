@@ -57,6 +57,40 @@ fn location_data_id_defaults_to_zero() {
     assert_eq!(loc.id, 0);
 }
 
+// -----------------------------------------------------------------------
+// Connection setup
+// -----------------------------------------------------------------------
+
+// The bundled sqlite happens to compile with SQLITE_DEFAULT_FOREIGN_KEYS=1, but the
+// invariant must not depend on a dependency's build flag (system sqlite defaults OFF).
+#[test]
+fn configure_connection_enables_foreign_keys() {
+    let conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    let fk: i32 = conn.pragma_query_value(None, "foreign_keys", |r| r.get(0)).unwrap();
+    assert_eq!(fk, 1);
+}
+
+#[test]
+fn configured_connection_cascades_on_map_delete() {
+    let conn = Connection::open_in_memory().unwrap();
+    configure_connection(&conn).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE maps (id TEXT PRIMARY KEY NOT NULL);
+         CREATE TABLE review_sessions (
+           id TEXT PRIMARY KEY NOT NULL,
+           map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE
+         );
+         INSERT INTO maps VALUES ('m1');
+         INSERT INTO review_sessions VALUES ('r1', 'm1');",
+    ).unwrap();
+    conn.execute("DELETE FROM maps WHERE id = 'm1'", []).unwrap();
+    let orphans: i64 = conn
+        .query_row("SELECT COUNT(*) FROM review_sessions", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(orphans, 0, "ON DELETE CASCADE must fire on configured connections");
+}
+
 #[test]
 fn sha256_hex_deterministic() {
     let a = sha256_hex(b"hello");

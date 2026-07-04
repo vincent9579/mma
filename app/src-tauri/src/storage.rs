@@ -138,7 +138,7 @@ pub(crate) fn db_path() -> AppResult<std::path::PathBuf> {
 }
 
 /// Open (or create) the SQLite database, ensuring the parent directory exists.
-/// The one place that owns per-connection setup (busy timeout, future pragmas).
+/// The one place that owns per-connection setup (busy timeout, pragmas).
 pub(crate) fn open_db() -> AppResult<Connection> {
     let path = db_path()?;
     if let Some(parent) = path.parent() {
@@ -146,10 +146,18 @@ pub(crate) fn open_db() -> AppResult<Connection> {
             .map_err(|e| format!("failed to create app data dir: {e}"))?;
     }
     let conn = Connection::open(path)?;
+    configure_connection(&conn)?;
+    Ok(conn)
+}
+
+/// Per-connection setup applied to every open. FK enforcement is per-connection and
+/// defaults OFF in SQLite; without it every ON DELETE CASCADE in the schema is dead.
+fn configure_connection(conn: &Connection) -> AppResult<()> {
     // Default busy timeout is 0: any write-lock contention (second window, lingering
     // process) fails instantly with "database is locked" instead of waiting.
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
-    Ok(conn)
+    conn.pragma_update(None, "foreign_keys", true)?;
+    Ok(())
 }
 
 /// Apply all pending schema migrations from [`MIGRATIONS`] in order.
