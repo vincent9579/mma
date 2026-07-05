@@ -96,8 +96,29 @@ jobs:
           pattern: mma-vision-bundle-*
           merge-multiple: true
 
+      - name: Compute SHA-256 digests
+        id: sha
+        run: |
+          for f in mma-vision-*.zip; do
+            platform="${f#mma-vision-}"
+            platform="${platform%.zip}"
+            hash=$(sha256sum "$f" | cut -d' ' -f1)
+            echo "sha256-${platform}=${hash}" >> "$GITHUB_OUTPUT"
+            echo "${hash}  ${f}" >> checksums.txt
+          done
+          cat checksums.txt
+
       - uses: softprops/action-gh-release@v2
         with:
           # never steal the Latest badge from app releases (updater reads releases/latest)
           make_latest: false
-          files: mma-vision-*.zip
+          files: |
+            mma-vision-*.zip
+            checksums.txt
+          body: |
+            **SHA-256 digests** (copy into manifest.json / registry.json):
+            ```
+            "sha256-windows-x64": "${{ steps.sha.outputs.sha256-windows-x64 }}",
+            "sha256-macos-arm64": "${{ steps.sha.outputs.sha256-macos-arm64 }}",
+            "sha256-linux-x64": "${{ steps.sha.outputs.sha256-linux-x64 }}"
+            ```

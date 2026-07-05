@@ -167,12 +167,13 @@ struct PluginManifest {
 /// Parse the optional `sidecar` object out of a manifest JSON value.
 fn parse_sidecar(val: &serde_json::Value) -> Option<PluginSidecar> {
     let s = val.get("sidecar")?;
-    let platform = sidecar::platform_tag().ok()?;
-    let sha_key = format!("sha256-{platform}");
+    let sha256 = sidecar::platform_tag()
+        .ok()
+        .and_then(|p| s.get(format!("sha256-{p}"))?.as_str().map(|s| s.to_string()));
     Some(PluginSidecar {
         name: s.get("name")?.as_str()?.to_string(),
         version: s.get("version")?.as_str()?.to_string(),
-        sha256: s.get(&sha_key).and_then(|v| v.as_str()).map(|s| s.to_string()),
+        sha256,
     })
 }
 
