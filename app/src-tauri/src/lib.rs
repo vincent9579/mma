@@ -703,7 +703,12 @@ pub fn run() {
     #[cfg(feature = "e2e")]
     let builder = builder.plugin(tauri_plugin_webdriver::init());
 
-    let result = builder.run(tauri::generate_context!());
-    sidecar::kill_all_sidecars();
-    result.expect("error while running tauri application");
+    builder
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                sidecar::kill_all_sidecars();
+            }
+        });
 }
