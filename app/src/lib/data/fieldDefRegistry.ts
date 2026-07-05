@@ -115,7 +115,7 @@ export function fieldLabel(key: string): string {
 	return (
 		getFieldDef(key)?.label ??
 		key
-			.replace(/([a-z])([A-Z])/g, "$1 $2")
+			.replace(/([a-z])([A-Z])/g, (_, a, b) => `${a} ${b.toLowerCase()}`)
 			.replace(/_/g, " ")
 			.replace(/^./, (c) => c.toUpperCase())
 	);
