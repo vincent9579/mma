@@ -48,12 +48,7 @@ async function installSidecar(
 		},
 	);
 	try {
-		await cmd.sidecarInstall(
-			manifest.id,
-			manifest.sidecar.name,
-			manifest.sidecar.version,
-			manifest.sidecar.sha256 ?? null,
-		);
+		await cmd.sidecarInstall(manifest.id, manifest.sidecar.name, manifest.sidecar.version);
 	} finally {
 		unlisten();
 	}

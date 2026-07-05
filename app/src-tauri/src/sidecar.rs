@@ -46,7 +46,9 @@ pub(crate) fn platform_tag() -> AppResult<&'static str> {
         ("macos", "aarch64") => "macos-arm64",
         // No macos-x64: ort ships no prebuilt ONNX Runtime for x86_64-apple-darwin.
         ("macos", "x86_64") => {
-            return Err(AppError("Sidecar plugins are not available on Intel Macs".into()));
+            return Err(AppError(
+                "Sidecar plugins are not available on Intel Macs".into(),
+            ));
         }
         ("linux", "x86_64") => "linux-x64",
         (os, arch) => return Err(AppError(format!("Unsupported platform: {os}-{arch}"))),
@@ -60,16 +62,41 @@ fn sidecar_dir(plugin_id: &str) -> AppResult<std::path::PathBuf> {
         .join("sidecar"))
 }
 
-fn install_blocking(
-    plugin_id: String,
-    name: String,
-    version: String,
-    expected_sha256: Option<String>,
-) -> AppResult<()> {
-    let platform = platform_tag()?;
+/// Fetch the expected SHA-256 for `asset` from the release's `checksums.txt`
+/// (lines are `<hash>  <filename>`). None if the file or line is absent.
+fn fetch_expected_sha(
+    client: &reqwest::blocking::Client,
+    plugin_id: &str,
+    version: &str,
+    asset: &str,
+) -> Option<String> {
     let url = format!(
-        "https://github.com/ccmdi/mma/releases/download/{plugin_id}-v{version}/{name}-{platform}.zip"
+        "https://github.com/ccmdi/mma/releases/download/{plugin_id}-v{version}/checksums.txt"
     );
+    let text = client
+        .get(&url)
+        .send()
+        .ok()?
+        .error_for_status()
+        .ok()?
+        .text()
+        .ok()?;
+    for line in text.lines() {
+        let mut it = line.split_whitespace();
+        if let (Some(hash), Some(file)) = (it.next(), it.next()) {
+            if file == asset {
+                return Some(hash.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn install_blocking(plugin_id: String, name: String, version: String) -> AppResult<()> {
+    let platform = platform_tag()?;
+    let asset = format!("{name}-{platform}.zip");
+    let url =
+        format!("https://github.com/ccmdi/mma/releases/download/{plugin_id}-v{version}/{asset}");
     log::info!("[sidecar] downloading {url}");
 
     let final_dir = sidecar_dir(&plugin_id)?;
@@ -80,6 +107,10 @@ fn install_blocking(
         .use_rustls_tls()
         .timeout(std::time::Duration::from_secs(600))
         .build()?;
+
+    // checksums.txt (per-release, computed from the shipped zips) is the sole source
+    // of truth for integrity. Absent (older releases) -> no verification.
+    let expected_sha256 = fetch_expected_sha(&client, &plugin_id, &version, &asset);
     let mut resp = client.get(&url).send()?.error_for_status()?;
     let total = resp.content_length().unwrap_or(0);
 
@@ -99,22 +130,28 @@ fn install_blocking(
         hasher.update(&chunk[..n]);
         downloaded += n as u64;
         if downloaded - last_emit >= 262_144 {
-            emit_event("sidecar-install-progress", SidecarProgress {
-                plugin_id: plugin_id.clone(),
-                downloaded,
-                total,
-            });
+            emit_event(
+                "sidecar-install-progress",
+                SidecarProgress {
+                    plugin_id: plugin_id.clone(),
+                    downloaded,
+                    total,
+                },
+            );
             last_emit = downloaded;
         }
     }
     zip_file.flush()?;
     drop(zip_file);
 
-    emit_event("sidecar-install-progress", SidecarProgress {
-        plugin_id: plugin_id.clone(),
-        downloaded,
-        total: total.max(downloaded),
-    });
+    emit_event(
+        "sidecar-install-progress",
+        SidecarProgress {
+            plugin_id: plugin_id.clone(),
+            downloaded,
+            total: total.max(downloaded),
+        },
+    );
 
     let actual_sha = format!("{:x}", hasher.finalize());
     if let Some(ref expected) = expected_sha256 {
@@ -124,9 +161,9 @@ fn install_blocking(
                 "Sidecar integrity check failed for {name}: expected {expected}, got {actual_sha}"
             )));
         }
-        log::info!("[sidecar] SHA-256 verified: {actual_sha}");
+        log::info!("[sidecar] SHA-256 verified against checksums.txt: {actual_sha}");
     } else {
-        log::warn!("[sidecar] no SHA-256 in manifest, skipping integrity check (hash: {actual_sha})");
+        log::warn!("[sidecar] no checksums.txt for this release, skipping integrity check (hash: {actual_sha})");
     }
 
     let tmp_dir = plugin_root.join(".sidecar-tmp");
@@ -180,15 +217,10 @@ fn install_blocking(
 /// `{appData}/plugins/{plugin_id}/sidecar/`. Emits `sidecar-install-progress`.
 #[tauri::command]
 #[specta::specta]
-pub async fn sidecar_install(
-    plugin_id: String,
-    name: String,
-    version: String,
-    sha256: Option<String>,
-) -> AppResult<()> {
+pub async fn sidecar_install(plugin_id: String, name: String, version: String) -> AppResult<()> {
     validate_plugin_id(&plugin_id)?;
     validate_sidecar_name(&name)?;
-    tokio::task::spawn_blocking(move || install_blocking(plugin_id, name, version, sha256))
+    tokio::task::spawn_blocking(move || install_blocking(plugin_id, name, version))
         .await
         .map_err(|e| AppError(format!("sidecar install task failed: {e}")))?
 }
@@ -199,7 +231,9 @@ pub async fn sidecar_install(
 pub fn sidecar_installed_version(plugin_id: String) -> AppResult<Option<String>> {
     validate_plugin_id(&plugin_id)?;
     let path = sidecar_dir(&plugin_id)?.join("version.txt");
-    Ok(std::fs::read_to_string(&path).ok().map(|s| s.trim().to_string()))
+    Ok(std::fs::read_to_string(&path)
+        .ok()
+        .map(|s| s.trim().to_string()))
 }
 
 fn children() -> &'static Mutex<HashMap<u32, Arc<Mutex<Child>>>> {
@@ -218,7 +252,11 @@ pub fn sidecar_spawn(plugin_id: String, name: String, args: Vec<String>) -> AppR
     validate_plugin_id(&plugin_id)?;
     validate_sidecar_name(&name)?;
     let dir = sidecar_dir(&plugin_id)?;
-    let bin_name = if cfg!(windows) { format!("{name}.exe") } else { name };
+    let bin_name = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name
+    };
     let bin = dir.join(&bin_name);
 
     let mut cmd = std::process::Command::new(&bin);
@@ -232,7 +270,8 @@ pub fn sidecar_spawn(plugin_id: String, name: String, args: Vec<String>) -> AppR
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| AppError(format!("Failed to spawn {}: {e}", bin.display())))?;
 
     let run_id = RUN_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -290,7 +329,9 @@ pub fn sidecar_kill(run_id: u32) -> AppResult<()> {
 
 /// Kill all tracked sidecar processes. Called on app exit to prevent orphans.
 pub fn kill_all_sidecars() {
-    let Ok(mut map) = children().lock() else { return };
+    let Ok(mut map) = children().lock() else {
+        return;
+    };
     for (run_id, child) in map.drain() {
         if let Ok(mut c) = child.lock() {
             log::info!("[sidecar] killing orphaned sidecar (run_id={run_id})");

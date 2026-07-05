@@ -36,7 +36,7 @@ export const commands = {
 	 *  Download a plugin's sidecar bundle from GitHub Releases and extract it under
 	 *  `{appData}/plugins/{plugin_id}/sidecar/`. Emits `sidecar-install-progress`.
 	 */
-	sidecarInstall: (pluginId: string, name: string, version: string, sha256: string | null) => typedError<null, string>(__TAURI_INVOKE("sidecar_install", { pluginId, name, version, sha256 })),
+	sidecarInstall: (pluginId: string, name: string, version: string) => typedError<null, string>(__TAURI_INVOKE("sidecar_install", { pluginId, name, version })),
 	/**  Installed sidecar version for a plugin (from `sidecar/version.txt`), or `None`. */
 	sidecarInstalledVersion: (pluginId: string) => typedError<string | null, string>(__TAURI_INVOKE("sidecar_installed_version", { pluginId })),
 	/**
@@ -66,8 +66,12 @@ export const commands = {
 	 */
 	storeCloseMap: () => typedError<null, string>(__TAURI_INVOKE("store_close_map")),
 	/**
-	 *  Delta-only autosave: writes only dirty geohash chunks to disk (~17ms).
-	 *  Does NOT bake the overlay — `store_commit` does a full merge.
+	 *  Autosave: serialize the overlay (uncommitted changes) to the delta sidecar, plus
+	 *  dirty tags and the location count. Skips entirely when nothing changed since the
+	 *  last save. Does NOT bake the overlay — `store_commit` does the full merge.
+	 *  `overlay.dirty` is cleared only after the write lands, and only if the overlay
+	 *  wasn't mutated while the write was in flight (rev guard), so a failed or raced
+	 *  save keeps the data flagged for the next attempt.
 	 */
 	storeSaveDirty: () => typedError<SaveResult, string>(__TAURI_INVOKE("store_save_dirty")),
 	/**
@@ -214,8 +218,10 @@ export const commands = {
 	/**  Clear both undo and redo stacks. Called after a commit to start fresh. */
 	storeResetUndo: () => typedError<null, string>(__TAURI_INVOKE("store_reset_undo")),
 	/**
-	 *  Compute the net diff since last commit by walking the undo stack.
-	 *  Returns (added, removed, modified) counts for the commit dialog.
+	 *  Net diff since last commit for the commit dialog, derived from the overlay --
+	 *  the same changeset `store_commit` will record. The undo stack is NOT consulted:
+	 *  it is capped, and non-undoable edits (enrichment, field renames, plugin batches)
+	 *  bypass it entirely while still being part of the commit.
 	 */
 	storeCommitDiff: () => typedError<[number, number, number], string>(__TAURI_INVOKE("store_commit_diff")),
 	/**
@@ -994,9 +1000,9 @@ export type ReviewUpdate = {
 	status: string | null,
 };
 
-/**  Result of `store_save_dirty`: how many bytes were written to the delta file. */
+/**  Result of `store_save_dirty`: bytes written to the delta sidecar (0 = skipped). */
 export type SaveResult = {
-	savedChunks: number,
+	savedBytes: number,
 };
 
 /**
