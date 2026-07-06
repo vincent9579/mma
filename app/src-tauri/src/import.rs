@@ -523,6 +523,33 @@ fn match_bracket(b: &[u8], open: usize) -> usize {
     b.len()
 }
 
+/// Visit each depth-1 key of a raw JSON object `s` (string/escape aware). Used to count
+/// extra field presence without building a map per location.
+fn for_each_top_level_key(s: &str, mut f: impl FnMut(&str)) {
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    let mut depth = 0i32;
+    while i < b.len() {
+        match b[i] {
+            b'{' | b'[' => { depth += 1; i += 1; }
+            b'}' | b']' => { depth -= 1; i += 1; }
+            b'"' => {
+                let start = i;
+                let end = skip_string(b, i + 1);
+                if depth == 1 {
+                    let mut j = end;
+                    while j < b.len() && is_ws(b[j]) { j += 1; }
+                    if j < b.len() && b[j] == b':' {
+                        f(&s[start + 1..end - 1]);
+                    }
+                }
+                i = end;
+            }
+            _ => i += 1,
+        }
+    }
+}
+
 /// Fast path: strip the top-level `tags` array from raw extra JSON `s`, interning its
 /// strings into the chunk-local tag table, and return the remaining object as `RawExtra`
 /// (the exact bytes minus the `tags` member; `None` if nothing is left). `tags` are
@@ -1116,7 +1143,12 @@ fn build_preview(parsed: ParsedMap) -> AppResult<EditorImportPreview> {
         if loc.pano_id.is_some() { pano_c += 1; }
         if !loc.tags.is_empty() { tag_c += 1; }
         if let Some(extra) = &loc.extra {
-            for k in extra.shallow().into_keys() { *extra_counts.entry(k).or_default() += 1; }
+            // Byte key-scan (no per-loc map alloc); only allocate a String the first
+            // time each distinct key is seen.
+            for_each_top_level_key(extra.as_str(), |k| {
+                if let Some(c) = extra_counts.get_mut(k) { *c += 1; }
+                else { extra_counts.insert(k.to_owned(), 1); }
+            });
         }
         pos_buf.extend_from_slice(&(loc.lng as f32).to_le_bytes());
         pos_buf.extend_from_slice(&(loc.lat as f32).to_le_bytes());
