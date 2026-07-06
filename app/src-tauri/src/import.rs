@@ -470,6 +470,147 @@ fn parallel_find_object_boundaries(bytes: &[u8]) -> (Vec<(usize, usize)>, usize)
     (ranges, last_close.unwrap_or(len))
 }
 
+// ---------------------------------------------------------------------------
+// Raw extra fast path: strip `tags` from an object's raw JSON without building a
+// map. All scans are string/escape aware (a `[`/`]`/`"` inside a value never counts
+// as structure), so this is correct on arbitrary extra content.
+// ---------------------------------------------------------------------------
+
+/// Within object bytes `b` (`{...}`), find a depth-1 key equal to `key`. Returns
+/// `(key_quote_start, value_start)` where `value_start` is the first non-ws byte after
+/// the `:`. Skips string bodies and nested objects/arrays, so a matching key inside a
+/// value or a nested object is not mistaken for a top-level one.
+fn find_top_level_key(b: &[u8], key: &[u8]) -> Option<(usize, usize)> {
+    let mut i = 0usize;
+    let mut depth = 0i32;
+    while i < b.len() {
+        match b[i] {
+            b'{' | b'[' => { depth += 1; i += 1; }
+            b'}' | b']' => { depth -= 1; i += 1; }
+            b'"' => {
+                let start = i;
+                let end = skip_string(b, i + 1); // index just past the closing quote
+                if depth == 1 && end >= start + 2 && &b[start + 1..end - 1] == key {
+                    let mut j = end;
+                    while j < b.len() && is_ws(b[j]) { j += 1; }
+                    if j < b.len() && b[j] == b':' {
+                        let mut v = j + 1;
+                        while v < b.len() && is_ws(b[v]) { v += 1; }
+                        return Some((start, v));
+                    }
+                }
+                i = end;
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Given `b[open] == '['` (or `'{'`), return the index just past the matching close,
+/// honoring strings/escapes. Returns `b.len()` if unterminated.
+fn match_bracket(b: &[u8], open: usize) -> usize {
+    let mut i = open + 1;
+    let mut depth = 1i32;
+    while i < b.len() {
+        match b[i] {
+            b'"' => { i = skip_string(b, i + 1); }
+            b'[' | b'{' => { depth += 1; i += 1; }
+            b']' | b'}' => { depth -= 1; i += 1; if depth == 0 { return i; } }
+            _ => i += 1,
+        }
+    }
+    b.len()
+}
+
+/// Fast path: strip the top-level `tags` array from raw extra JSON `s`, interning its
+/// strings into the chunk-local tag table, and return the remaining object as `RawExtra`
+/// (the exact bytes minus the `tags` member; `None` if nothing is left). `tags` are
+/// parsed with serde so escapes are handled correctly. Returns `Err(())` if `tags` isn't
+/// a clean top-level string array, so the caller can fall back to the map path.
+fn strip_tags_fast(
+    s: &str,
+    names: &mut Vec<String>,
+    name_to_local: &mut rustc_hash::FxHashMap<String, u32>,
+    tags: &mut Vec<u32>,
+) -> Result<Option<crate::types::RawExtra>, ()> {
+    let b = s.as_bytes();
+    let Some((kstart, vstart)) = find_top_level_key(b, b"tags") else {
+        // No tags key: keep the extra bytes verbatim.
+        return Ok(crate::types::RawExtra::from_string(s.to_owned()));
+    };
+    if b.get(vstart) != Some(&b'[') { return Err(()); }
+    let vend = match_bracket(b, vstart);
+    let Ok(list) = serde_json::from_str::<Vec<&str>>(&s[vstart..vend]) else { return Err(()) };
+    for name in list {
+        let id = match name_to_local.get(name) {
+            Some(&id) => id,
+            None => {
+                let id = names.len() as u32;
+                names.push(name.to_owned());
+                name_to_local.insert(name.to_owned(), id);
+                id
+            }
+        };
+        tags.push(id);
+    }
+    // Strip `"tags":[...]` plus one adjacent comma.
+    let (mut mstart, mut mend) = (kstart, vend);
+    let mut p = mstart;
+    while p > 0 && is_ws(b[p - 1]) { p -= 1; }
+    if p > 0 && b[p - 1] == b',' {
+        mstart = p - 1;
+    } else {
+        let mut q = mend;
+        while q < b.len() && is_ws(b[q]) { q += 1; }
+        if q < b.len() && b[q] == b',' { mend = q + 1; }
+    }
+    let mut out = String::with_capacity(s.len() - (mend - mstart));
+    out.push_str(&s[..mstart]);
+    out.push_str(&s[mend..]);
+    Ok(crate::types::RawExtra::from_string(out))
+}
+
+/// Slow path: build a `serde_json::Map` from raw `extra`, fold in non-null top-level
+/// `countryCode`/`stateCode`, intern + strip `tags`, and pull a nested `panoId` fallback
+/// into `out_pano`. Used only when the fast byte path can't apply (rare).
+fn build_extra_via_map(
+    extra_str: Option<&str>,
+    country_code: Option<&serde_json::value::RawValue>,
+    state_code: Option<&serde_json::value::RawValue>,
+    names: &mut Vec<String>,
+    name_to_local: &mut rustc_hash::FxHashMap<String, u32>,
+    tags: &mut Vec<u32>,
+    out_pano: &mut Option<String>,
+) -> Option<crate::types::RawExtra> {
+    let mut m: serde_json::Map<String, Value> = extra_str
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    if let Some(cc) = country_code {
+        m.entry("countryCode").or_insert_with(|| serde_json::from_str(cc.get()).unwrap_or(Value::Null));
+    }
+    if let Some(sc) = state_code {
+        m.entry("stateCode").or_insert_with(|| serde_json::from_str(sc.get()).unwrap_or(Value::Null));
+    }
+    if let Some(Value::Array(arr)) = m.remove("tags") {
+        for v in arr {
+            let Value::String(s) = v else { continue };
+            let id = match name_to_local.get(s.as_str()) {
+                Some(&id) => id,
+                None => {
+                    let id = names.len() as u32;
+                    names.push(s.clone());
+                    name_to_local.insert(s, id);
+                    id
+                }
+            };
+            tags.push(id);
+        }
+    }
+    *out_pano = m.remove("panoId").and_then(|v| match v { Value::String(s) => Some(s), _ => None });
+    crate::types::RawExtra::from_map(&m)
+}
+
 /// Core JSON parser. Three-phase pipeline:
 /// 1. **Scan** -- find metadata keys (`name`, `folder`) in the first 4-8KB,
 ///    then locate the coordinate array (`customCoordinates` or `locations`).
@@ -578,11 +719,14 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
         zoom: f64,
         #[serde(borrow, rename = "panoId", alias = "pano", alias = "pano_id")]
         pano_id: Option<Cow<'a, str>>,
-        #[serde(rename = "countryCode")]
-        country_code: Option<Value>,
-        #[serde(rename = "stateCode")]
-        state_code: Option<Value>,
-        extra: Option<serde_json::Map<String, Value>>,
+        // Raw slices (no value tree). `null` deserializes to `None`, so `Some` means a
+        // real value that must be folded into `extra`.
+        #[serde(borrow, rename = "countryCode")]
+        country_code: Option<&'a serde_json::value::RawValue>,
+        #[serde(borrow, rename = "stateCode")]
+        state_code: Option<&'a serde_json::value::RawValue>,
+        #[serde(borrow)]
+        extra: Option<&'a serde_json::value::RawValue>,
     }
 
     // Each worker parses a contiguous chunk and dedups tag names *locally*: the
@@ -611,31 +755,30 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
 
             let has_top_pano = raw.pano_id.is_some();
             let top_pano = raw.pano_id.map(|c| c.into_owned());
-            let mut extra_map = raw.extra.unwrap_or_default();
-            if let Some(v) = raw.country_code { extra_map.entry("countryCode").or_insert(v); }
-            if let Some(v) = raw.state_code { extra_map.entry("stateCode").or_insert(v); }
+            let extra_str = raw.extra.map(|rv| rv.get());
+
+            // Fast path unless we must edit `extra` beyond stripping tags: folding a
+            // non-null top-level country/state code, or a `panoId` nested in `extra`.
+            let need_map = raw.country_code.is_some()
+                || raw.state_code.is_some()
+                || extra_str.is_some_and(|s| memchr::memmem::find(s.as_bytes(), b"\"panoId\"").is_some());
 
             let mut tags: Vec<u32> = Vec::new();
-            if let Some(Value::Array(arr)) = extra_map.remove("tags") {
-                for v in arr {
-                    let Value::String(s) = v else { continue };
-                    // Hit (common): borrow-lookup, drop the duplicate string here
-                    // (parallel free). Miss (rare): clone into names, move into map.
-                    let id = match name_to_local.get(s.as_str()) {
-                        Some(&id) => id,
-                        None => {
-                            let id = names.len() as u32;
-                            names.push(s.clone());
-                            name_to_local.insert(s, id);
-                            id
-                        }
-                    };
-                    tags.push(id);
+            let mut extra_pano: Option<String> = None;
+            let fast = !need_map && extra_str.is_some();
+            let extra = if fast {
+                match strip_tags_fast(extra_str.unwrap(), &mut names, &mut name_to_local, &mut tags) {
+                    Ok(extra) => extra,
+                    Err(()) => build_extra_via_map(extra_str, raw.country_code, raw.state_code,
+                        &mut names, &mut name_to_local, &mut tags, &mut extra_pano),
                 }
-            }
+            } else if need_map {
+                build_extra_via_map(extra_str, raw.country_code, raw.state_code,
+                    &mut names, &mut name_to_local, &mut tags, &mut extra_pano)
+            } else {
+                None // no extra at all
+            };
 
-            let extra_pano = extra_map.remove("panoId")
-                .and_then(|v| match v { Value::String(s) => Some(s), _ => None });
             let pano_id = top_pano.or(extra_pano);
             let flags = if has_top_pano { LocationFlags::LOAD_AS_PANO_ID } else { LocationFlags::empty() };
 
@@ -648,7 +791,7 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
                 pano_id,
                 flags,
                 tags,
-                extra: if extra_map.is_empty() { None } else { Some(extra_map) },
+                extra,
                 created_at: now,
                 modified_at: None,
             });
@@ -962,7 +1105,7 @@ pub struct EditorImportPreview {
 fn build_preview(parsed: ParsedMap) -> AppResult<EditorImportPreview> {
     let n = parsed.locations.len();
     let (mut h, mut p, mut z, mut pano_c, mut tag_c) = (0u32, 0u32, 0u32, 0u32, 0u32);
-    let mut extra_counts: HashMap<&str, u32> = HashMap::new();
+    let mut extra_counts: HashMap<String, u32> = HashMap::new();
     let mut pos_buf: Vec<u8> = Vec::with_capacity(n * 8);
     let (mut west, mut south, mut east, mut north) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
 
@@ -973,7 +1116,7 @@ fn build_preview(parsed: ParsedMap) -> AppResult<EditorImportPreview> {
         if loc.pano_id.is_some() { pano_c += 1; }
         if !loc.tags.is_empty() { tag_c += 1; }
         if let Some(extra) = &loc.extra {
-            for k in extra.keys() { *extra_counts.entry(k.as_str()).or_default() += 1; }
+            for k in extra.shallow().into_keys() { *extra_counts.entry(k).or_default() += 1; }
         }
         pos_buf.extend_from_slice(&(loc.lng as f32).to_le_bytes());
         pos_buf.extend_from_slice(&(loc.lat as f32).to_le_bytes());
@@ -1150,7 +1293,7 @@ fn add_parsed_to_store(
 
     // Discover new extra-field defs from the locations now, before we consume them.
     let new_field_defs = {
-        let extras: Vec<&serde_json::Map<String, serde_json::Value>> = parsed.locations.iter()
+        let extras: Vec<&crate::types::RawExtra> = parsed.locations.iter()
             .filter_map(|l| l.extra.as_ref())
             .collect();
         crate::map_meta::auto_register_field_defs(&store.known_field_keys, &extras)
@@ -1210,9 +1353,10 @@ pub async fn store_import_file(
             if drop_set.contains("zoom") { loc.zoom = 0.0; }
             if drop_set.contains("panoId") { loc.pano_id = None; loc.flags.remove(LocationFlags::LOAD_AS_PANO_ID); }
             if drop_set.contains("tags") { loc.tags.clear(); }
-            if let Some(extra) = &mut loc.extra {
-                extra.retain(|k, _| !drop_set.contains(format!("extra.{k}").as_str()));
-                if extra.is_empty() { loc.extra = None; }
+            if let Some(extra) = &loc.extra {
+                let mut m = extra.to_map();
+                m.retain(|k, _| !drop_set.contains(format!("extra.{k}").as_str()));
+                loc.extra = crate::types::RawExtra::from_map(&m);
             }
         }
         if drop_set.contains("tags") { parsed.tags.clear(); }

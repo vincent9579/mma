@@ -32,6 +32,106 @@ fn default_visible() -> bool {
     true
 }
 
+/// `Location.extra` stored as its raw JSON bytes instead of a parsed map.
+///
+/// Serializes *transparently* -- the object is emitted inline over IPC and into the
+/// Arrow `extra` string column exactly as a `Map` would, so the wire format and the
+/// on-disk format are unchanged (no migration; existing files load as-is). Parsing to
+/// a map happens only when a consumer needs keyed access, via [`RawExtra::to_map`] (deep)
+/// or [`RawExtra::shallow`]/[`RawExtra::get`] (cheap, no value tree).
+#[derive(Clone, Debug)]
+pub struct RawExtra(Box<serde_json::value::RawValue>);
+
+impl RawExtra {
+    /// Wrap an existing JSON string (e.g. from the Arrow column). Returns `None` for
+    /// an empty object or an invalid JSON value, matching the `Option<...>` "no extra".
+    pub fn from_string(s: String) -> Option<Self> {
+        let rv = serde_json::value::RawValue::from_string(s).ok()?;
+        if is_empty_object(rv.get()) {
+            return None;
+        }
+        Some(RawExtra(rv))
+    }
+
+    /// Build from a JSON value (an object). `None` if not an object or empty.
+    pub fn from_value(v: &serde_json::Value) -> Option<Self> {
+        v.as_object().and_then(Self::from_map)
+    }
+
+    /// Build from a map. `None` if the map is empty.
+    pub fn from_map(m: &serde_json::Map<String, serde_json::Value>) -> Option<Self> {
+        if m.is_empty() {
+            return None;
+        }
+        let s = serde_json::to_string(m).ok()?;
+        serde_json::value::RawValue::from_string(s)
+            .ok()
+            .map(RawExtra)
+    }
+
+    /// The raw JSON bytes -- what gets written to the Arrow column.
+    pub fn as_str(&self) -> &str {
+        self.0.get()
+    }
+
+    /// Deep-parse into an owned map. Use only when full values are actually needed.
+    pub fn to_map(&self) -> serde_json::Map<String, serde_json::Value> {
+        serde_json::from_str(self.0.get()).unwrap_or_default()
+    }
+
+    /// Shallow parse: keys mapped to their raw JSON value slices (no deep value tree).
+    /// Cheap -- use for key discovery or single-field extraction.
+    pub fn shallow(&self) -> std::collections::HashMap<String, Box<serde_json::value::RawValue>> {
+        serde_json::from_str(self.0.get()).unwrap_or_default()
+    }
+
+    /// One field's value, parsed on demand.
+    pub fn get(&self, key: &str) -> Option<serde_json::Value> {
+        self.shallow()
+            .get(key)
+            .and_then(|rv| serde_json::from_str(rv.get()).ok())
+    }
+}
+
+fn is_empty_object(s: &str) -> bool {
+    let t = s.trim();
+    t == "{}" || (t.starts_with('{') && t.ends_with('}') && t[1..t.len() - 1].trim().is_empty())
+}
+
+impl PartialEq for RawExtra {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.get() == other.0.get()
+    }
+}
+
+// `RawValue` only round-trips through serde_json (its serialize/deserialize use a
+// private magic token that only serde_json honors). So for human-readable formats
+// (serde_json -- IPC to JS, on-disk JSON) we emit/read the object transparently, and
+// for binary formats (rmp_serde -- delta overlay + undo stack persistence) we fall
+// back to a plain string carrying the same raw JSON.
+impl serde::Serialize for RawExtra {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        if s.is_human_readable() {
+            self.0.serialize(s)
+        } else {
+            s.serialize_str(self.0.get())
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for RawExtra {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        if d.is_human_readable() {
+            Box::<serde_json::value::RawValue>::deserialize(d).map(RawExtra)
+        } else {
+            let s = String::deserialize(d)?;
+            serde_json::value::RawValue::from_string(s)
+                .map(RawExtra)
+                .map_err(serde::de::Error::custom)
+        }
+    }
+}
+
 /// A single Street View location on a map.
 ///
 /// This is the atomic unit of data in the system. Locations are stored columnar
@@ -54,8 +154,9 @@ pub struct Location {
     /// Tag IDs applied to this location. References `Tag.id`.
     pub tags: Vec<u32>,
     /// Arbitrary key-value metadata
+    // Stored as raw JSON bytes; see [`RawExtra`].
     #[specta(type = Option<specta_typescript::Any>)]
-    pub extra: Option<serde_json::Map<String, serde_json::Value>>,
+    pub extra: Option<RawExtra>,
     /// Unix timestamp (seconds)
     pub created_at: u32,
     pub modified_at: Option<u32>,
@@ -79,7 +180,9 @@ impl serde::Serialize for LocationFlags {
 
 impl<'de> serde::Deserialize<'de> for LocationFlags {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        Ok(Self::from_bits_retain(<u32 as serde::Deserialize>::deserialize(d)?))
+        Ok(Self::from_bits_retain(
+            <u32 as serde::Deserialize>::deserialize(d)?,
+        ))
     }
 }
 
@@ -117,11 +220,15 @@ impl specta::Type for AppError {
 }
 
 impl From<String> for AppError {
-    fn from(s: String) -> Self { AppError(s) }
+    fn from(s: String) -> Self {
+        AppError(s)
+    }
 }
 
 impl From<&str> for AppError {
-    fn from(s: &str) -> Self { AppError(s.to_string()) }
+    fn from(s: &str) -> Self {
+        AppError(s.to_string())
+    }
 }
 
 macro_rules! impl_app_error_from {
@@ -147,5 +254,7 @@ impl_app_error_from!(
 
 // `PoisonError<T>` is generic; Display is unconditional, so one blanket covers all lock types.
 impl<T> From<std::sync::PoisonError<T>> for AppError {
-    fn from(e: std::sync::PoisonError<T>) -> Self { AppError(e.to_string()) }
+    fn from(e: std::sync::PoisonError<T>) -> Self {
+        AppError(e.to_string())
+    }
 }
