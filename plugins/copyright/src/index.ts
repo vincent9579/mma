@@ -1,6 +1,4 @@
-import type { ExtraFieldDef, EnrichCtx } from "mma-plugin-types";
-
-type Location = Awaited<ReturnType<typeof MMA.fetchAllLocations>>[number];
+import type { Location, ExtraFieldDef, EnrichCtx } from "mma-plugin-types";
 
 const BINARY_NAME = "mma-copyright";
 
