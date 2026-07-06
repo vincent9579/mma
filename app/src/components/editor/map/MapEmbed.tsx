@@ -12,7 +12,7 @@ import { getSettings, useSetting } from "@/store/settings";
 import { useMeasure } from "@/lib/sv/measure";
 import { MeasurementBar } from "@/components/primitives/MeasurementBar";
 import { MapContextMenuContent } from "@/components/editor/map/MapContextMenu";
-import { useCurrentMap, selectPolygon, mapOpenMark } from "@/store/useMapStore";
+import { useCurrentMap, selectPolygon, mapOpen } from "@/store/useMapStore";
 import { loadOpenSV, google } from "@/lib/sv/opensv";
 import { BLOBBY_ZOOM_THRESHOLD } from "@/lib/sv/constants";
 import { setGoogleMap as setGoogleMapInstance, tryInterceptDraw } from "@/lib/map/mapState";
@@ -108,7 +108,7 @@ export function MapEmbed({
 
 	useEffect(() => {
 		if (!containerRef.current || !map) return;
-		mapOpenMark("mounted");
+		mapOpen.mark("mounted");
 		let cancelled = false;
 
 		loadOpenSV().then(() => {
@@ -154,9 +154,9 @@ export function MapEmbed({
 					setMapZoom(gMapRef.current?.getZoom() ?? 0);
 				});
 				setMapReady(true);
-				mapOpenMark("map-ready");
+				mapOpen.mark("map-ready");
 				google.maps.event.addListenerOnce(gMapRef.current, "tilesloaded", () =>
-					mapOpenMark("tiles"),
+					mapOpen.mark("tiles"),
 				);
 
 				if (map.meta.locationCount > 0) {

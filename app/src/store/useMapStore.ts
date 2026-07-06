@@ -219,7 +219,6 @@ function bump() {
 export function refreshAfterMutation() {
 	if (!currentMap) {
 		selections = [];
-
 		selectedLocationIds = SelectedIds.EMPTY;
 		bump();
 		return;
@@ -251,22 +250,15 @@ export function getTag(id: number): Tag | undefined {
 	return currentMap?.meta.tags[id];
 }
 
-/** Reactive map version counter. Bumps on every mutation. */
 export const useMapVersion = makeStoreHook(() => mapVersion);
-
 export const useSelectedLocationIds = makeStoreHook(() => selectedLocationIds);
 
 let cachedActiveLocation: Location | null = null;
-
 export const useActiveLocation = makeStoreHook((): Location | null => cachedActiveLocation);
-
 export const useDuplicateLocations = makeStoreHook(() => duplicateLocations);
 
 export const useWorkArea = makeStoreHook(() => workArea);
-
 export const useImportStaging = makeStoreHook(() => importStaging);
-
-/** Reactive counter for the staged import preview markers. */
 export const useImportMarkerVersion = makeStoreHook(() => importMarkerVersion);
 
 export function getImportPreviewPositions() {
@@ -274,8 +266,6 @@ export function getImportPreviewPositions() {
 }
 
 export const useCommitDiffPreview = makeStoreHook(() => commitDiffPreview);
-
-/** Reactive counter for the commit-diff overlay markers. */
 export const useDiffMarkerVersion = makeStoreHook(() => diffMarkerVersion);
 
 export function getCommitDiffPreview() {
@@ -325,9 +315,17 @@ export function scheduleSave() {
 	}, AUTOSAVE_DELAY_MS);
 }
 
+function cancelAutosave() {
+	if (autosaveTimer) {
+		clearTimeout(autosaveTimer);
+		autosaveTimer = null;
+	}
+}
+
 async function doSave(): Promise<void> {
 	if (!currentMapId || !currentMap) return;
-	if (inflightPersist) await inflightPersist;
+	await inflightPersist;
+
 	const t = trace("save");
 	inflightPersist = cmd
 		.storeSaveDirty()
@@ -346,9 +344,7 @@ async function doSave(): Promise<void> {
 }
 
 export async function flushSave(): Promise<void> {
-	if (autosaveTimer) clearTimeout(autosaveTimer);
-	autosaveTimer = null;
-	if (inflightPersist) await inflightPersist;
+	cancelAutosave();
 	await doSave();
 }
 
@@ -359,23 +355,28 @@ export async function initStore() {
 	listen("map-list-changed", () => reloadMapList());
 }
 
-let mapOpenT0 = 0;
-let mapOpenSeen = new Set<string>();
-export function mapOpenMark(phase: string) {
-	if (mapOpenT0 === 0 || mapOpenSeen.has(phase)) return;
-	mapOpenSeen.add(phase);
-	log.info(`[map-open] ${phase}=${Math.round(performance.now() - mapOpenT0)}ms`);
-}
+/** Cross-module stopwatch for map-open latency. */
+export const mapOpen = {
+	start: 0,
+	seen: new Set<string>(),
+	begin() {
+		this.start = performance.now();
+		this.seen.clear();
+	},
+	mark(phase: string) {
+		if (!this.start || this.seen.has(phase)) return;
+		this.seen.add(phase);
+		log.info(`[map-open] ${phase}=${Math.round(performance.now() - this.start)}ms`);
+	},
+};
 
 // --- Actions ---
 export async function openMap(id: string) {
-	mapOpenT0 = performance.now();
-	mapOpenSeen = new Set();
-	if (autosaveTimer) {
-		clearTimeout(autosaveTimer);
-		autosaveTimer = null;
-	}
-	if (inflightPersist) await inflightPersist;
+	mapOpen.begin();
+
+	cancelAutosave();
+	await inflightPersist;
+
 	const t = trace("openMap");
 	currentMapId = id;
 	currentMap = null;
@@ -387,7 +388,7 @@ export async function openMap(id: string) {
 		try {
 			const openResult = await cmd.storeOpenMap(id);
 			t.step("store_open_map");
-			mapOpenMark("data");
+			mapOpen.mark("data");
 			currentMap = meta;
 			tagCounts = openResult.tagCounts;
 			undoRedoState = { canUndo: openResult.canUndo, canRedo: openResult.canRedo };
@@ -446,8 +447,7 @@ export async function closeMap() {
 
 /* Drop the open map without persisting anything */
 export function discardOpenMap() {
-	if (autosaveTimer) clearTimeout(autosaveTimer);
-	autosaveTimer = null;
+	cancelAutosave();
 	resetMapState();
 }
 
@@ -514,6 +514,7 @@ export async function syncSelections(): Promise<{ ids: number[] }> {
 	const ids = await cmd.storeGetSelectedIdsList();
 	return { ids };
 }
+
 export interface ScopeController {
 	scope: Scope;
 	setScope: (s: Scope) => void;
@@ -741,7 +742,7 @@ function applySelectionSync(sync: SelectionSync) {
 /** Await a mutation IPC, emit its render delta, sync JS state, and schedule a save. */
 export async function mutate(p: Promise<MutationResult>): Promise<MutationResult> {
 	const r = await p;
-	if (inflightPersist) await inflightPersist;
+	await inflightPersist;
 	renderDeltaBus.emit(r.delta);
 	syncMutationResult(r);
 	refreshAfterMutation();
@@ -806,8 +807,7 @@ export async function updateLocations(
 	}
 }
 
-// --- Bulk metadata-field operations (rare; intentionally NOT undoable, since the
-//     definition/selection migration below isn't part of the undo system) ---
+// --- Bulk metadata-field operations ---
 
 /** Rename or merge extra-field `from` into `to` across all locations, then migrate
  *  its definition and every selection that references it. Merge ≡ rename; `winner`
@@ -1184,9 +1184,8 @@ export function useSelectedTagIds() {
 	return ids;
 }
 
-// Each preview gets a fresh negative id so its identity changes between previews (the pano
-// viewer re-resolves on active-id change). The kind lives in the location's flags, not the id.
 let virtualIdSeq = 0;
+/** Each preview gets a fresh negative id so its identity changes between previews (the pano viewer re-resolves on active-id change). */
 const freshVirtualId = () => --virtualIdSeq;
 
 /** Open a staged-import location read-only, "as if" it were active. The location becomes
@@ -1235,9 +1234,11 @@ export async function setActiveLocation(target: MaybeLocation | null, checkDupli
 		const wasStaged = isImportPreview(cachedActiveLocation);
 		if (id == null) {
 			cachedActiveLocation = null;
+
 			if (wasStaged) workArea = "import";
 			else if (activePluginId) workArea = "plugin";
 			else workArea = "overview";
+
 			bump();
 			emitEvent("active:change", null);
 			t.end();
@@ -1417,8 +1418,12 @@ async function setImportStaging(preview: EditorImportPreview, source: "file" | "
 
 /** Import from a known file path. Used by file picker and drag-and-drop. */
 export async function beginImportFromPath(path: string) {
-	const preview = await cmd.storeImportPreview(path);
-	await setImportStaging(preview, "file");
+	await setImportStaging(await cmd.storeImportPreview(path), "file");
+}
+
+/** Stage pasted text for preview. Throws if no locations are found. */
+export async function beginImportPaste(text: string) {
+	await setImportStaging(await cmd.storeImportPastePreview(text), "paste");
 }
 
 /** Pick a file, stage it for preview. No-op if the picker is cancelled. */
@@ -1431,19 +1436,15 @@ export async function beginImportFile() {
 	await beginImportFromPath(path);
 }
 
-/** Stage pasted text for preview. Throws if no locations are found. */
-export async function beginImportPaste(text: string) {
-	const preview = await cmd.storeImportPastePreview(text);
-	await setImportStaging(preview, "paste");
-}
-
 /** Commit the staged import, optionally dropping fields and applying a bulk tag. */
 export async function confirmImport(droppedFields: string[], tagName?: string) {
 	if (!importStaging) return null;
-	if (inflightPersist) await inflightPersist; // don't overlap a prior import's backgrounded commit
+	await inflightPersist; // don't overlap a prior import's backgrounded commit
+
 	const r = await cmd.storeImportFile(droppedFields, tagName?.trim() || null);
 	cancelImport();
 	await mutate(Promise.resolve(r));
+
 	// Overlay any settings the import carried (extra.settings) onto the open map's
 	// settings. Generic: imported keys win, untouched keys are preserved.
 	if (currentMap && r.settings && Object.keys(r.settings).length) {
@@ -1456,10 +1457,7 @@ export async function confirmImport(droppedFields: string[], tagName?: string) {
 		// otherwise the commit's ~1s of Arrow writes stall the render-buffer fetch and the
 		// map stays blank for seconds after the import "returns".
 		await whenSceneSettled();
-		if (autosaveTimer) {
-			clearTimeout(autosaveTimer);
-			autosaveTimer = null;
-		}
+		cancelAutosave();
 
 		if (inflightPersist) await inflightPersist;
 		inflightPersist = cmd
@@ -1526,11 +1524,8 @@ export const useUndoRedo = makeStoreHook(() => undoRedoState);
 export async function commitMap(message?: string): Promise<string> {
 	if (!currentMapId) throw new Error("No map open");
 	const t = trace("commit");
-	if (autosaveTimer) {
-		clearTimeout(autosaveTimer);
-		autosaveTimer = null;
-	}
-	if (inflightPersist) await inflightPersist;
+	cancelAutosave();
+	await inflightPersist;
 
 	const id = await cmd.storeCommit(currentMapId, message ?? null);
 	t.step("commit");

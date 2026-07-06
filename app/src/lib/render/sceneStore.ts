@@ -8,7 +8,7 @@ import { trace } from "@/lib/util/debug";
 import {
 	getActiveLocation,
 	getSelectedLocationIds,
-	mapOpenMark,
+	mapOpen,
 	renderDeltaBus,
 	selBitmaskBus,
 	setSelectedLocationIds,
@@ -152,7 +152,7 @@ async function doLoadScene(markerStyle: MarkerStyle, mc?: RGB): Promise<void> {
 		if (token !== loadToken) return; // superseded by a newer load
 		scene.initFromBinary(buf);
 		t.step("parse");
-		mapOpenMark("markers");
+		mapOpen.mark("markers");
 		applyActive();
 		// The reloaded binary carries the selection overlay; re-derive the id set from it,
 		// since any bitmask decode in `mutate` ran against the pre-reload scene.
