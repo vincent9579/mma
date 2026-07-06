@@ -358,6 +358,118 @@ fn find_object_boundaries(bytes: &[u8]) -> (Vec<(usize, usize)>, usize) {
     (ranges, bytes.len())
 }
 
+#[inline]
+fn is_ws(b: u8) -> bool { matches!(b, b' ' | b'\t' | b'\r' | b'\n') }
+
+/// Boundary scan of `[start, limit)` for depth-0 `{...}` objects (absolute offsets).
+/// Returns `(ranges, end_depth, terminated_close)`. `terminated_close` is `Some`
+/// only when the array's end is reached (`}` past depth 0, or a depth-0 sibling key
+/// quote) — that happens in the final chunk. A well-formed non-final chunk ends with
+/// `end_depth == 0` and `terminated_close == None`; anything else means the chunk's
+/// start landed at a false boundary and the caller falls back to serial.
+fn scan_range(bytes: &[u8], start: usize, limit: usize) -> (Vec<(usize, usize)>, i32, Option<usize>) {
+    let mut ranges: Vec<(usize, usize)> = Vec::with_capacity((limit - start) / 96);
+    let mut depth = 0i32;
+    let mut obj_start = 0usize;
+    let mut i = start;
+    let array_close = |ranges: &[(usize, usize)]| -> usize {
+        let from = ranges.last().map_or(start, |r| r.1);
+        memchr::memchr(b']', &bytes[from..]).map_or(bytes.len(), |o| from + o)
+    };
+    while i < limit {
+        let Some(off) = memchr::memchr3(b'"', b'{', b'}', &bytes[i..limit]) else { break };
+        let pos = i + off;
+        match bytes[pos] {
+            b'{' => { if depth == 0 { obj_start = pos; } depth += 1; i = pos + 1; }
+            b'}' => {
+                depth -= 1;
+                i = pos + 1;
+                if depth == 0 { ranges.push((obj_start, pos + 1)); }
+                else if depth < 0 { let c = array_close(&ranges); return (ranges, depth, Some(c)); }
+            }
+            _ => {
+                if depth == 0 { let c = array_close(&ranges); return (ranges, depth, Some(c)); }
+                i = skip_string(bytes, pos + 1); // may cross `limit`; a string stays within its object
+            }
+        }
+    }
+    (ranges, depth, None)
+}
+
+/// Find the start `{` of the next top-level object at/after `from`. Prefers a
+/// newline boundary (a raw newline never appears inside a JSON string, so this is
+/// always a safe split for newline-delimited exports); falls back to a `}`,`{`
+/// separator scan for minified single-line input. A wrong guess can't corrupt the
+/// result — `parallel_find_object_boundaries` validates and falls back to serial.
+fn resync_object_start(bytes: &[u8], from: usize) -> usize {
+    let len = bytes.len();
+    if let Some(nl) = memchr::memchr(b'\n', &bytes[from..]) {
+        let mut j = from + nl + 1;
+        while j < len && is_ws(bytes[j]) { j += 1; }
+        if j < len && bytes[j] == b'{' { return j; }
+    }
+    let mut i = from;
+    while let Some(off) = memchr::memchr(b'}', &bytes[i..]) {
+        let p = i + off;
+        let mut k = p + 1;
+        while k < len && is_ws(bytes[k]) { k += 1; }
+        if k < len && bytes[k] == b',' {
+            let mut m = k + 1;
+            while m < len && is_ws(bytes[m]) { m += 1; }
+            if m < len && bytes[m] == b'{' { return m; }
+        }
+        i = p + 1;
+    }
+    len
+}
+
+/// Parallel counterpart to `find_object_boundaries`. Splits the array bytes into
+/// per-core ranges, resyncs each range start to a real object boundary, scans them
+/// concurrently, then validates (each non-final range ends at depth 0; no overlaps).
+/// On any inconsistency — or for small inputs — it falls back to the serial scan, so
+/// the output is always byte-identical to `find_object_boundaries`.
+fn parallel_find_object_boundaries(bytes: &[u8]) -> (Vec<(usize, usize)>, usize) {
+    let len = bytes.len();
+    let threads = rayon::current_num_threads();
+    if len < 2_000_000 || threads < 2 {
+        return find_object_boundaries(bytes);
+    }
+
+    let mut starts = Vec::with_capacity(threads + 1);
+    starts.push(0usize);
+    for i in 1..threads {
+        let s = resync_object_start(bytes, (len / threads) * i);
+        if s >= len { break; }
+        if s > *starts.last().unwrap() { starts.push(s); }
+    }
+    starts.push(len);
+    let k = starts.len() - 1;
+    if k < 2 {
+        return find_object_boundaries(bytes);
+    }
+
+    let parts: Vec<(Vec<(usize, usize)>, i32, Option<usize>)> = (0..k)
+        .into_par_iter()
+        .map(|i| scan_range(bytes, starts[i], starts[i + 1]))
+        .collect();
+
+    // A false split shows up as the *previous* range not ending cleanly at depth 0.
+    for p in &parts[..k - 1] {
+        if p.1 != 0 || p.2.is_some() { return find_object_boundaries(bytes); }
+    }
+    let mut ranges: Vec<(usize, usize)> = Vec::with_capacity(len / 96);
+    for (r, _, _) in &parts[..k - 1] { ranges.extend_from_slice(r); }
+    let (last_r, last_depth, last_close) = &parts[k - 1];
+    ranges.extend_from_slice(last_r);
+    if *last_depth > 0 && last_close.is_none() {
+        return find_object_boundaries(bytes);
+    }
+    for w in ranges.windows(2) {
+        if w[0].1 > w[1].0 { return find_object_boundaries(bytes); }
+    }
+    (ranges, last_close.unwrap_or(len))
+}
+
 /// Core JSON parser. Three-phase pipeline:
 /// 1. **Scan** -- find metadata keys (`name`, `folder`) in the first 4-8KB,
 ///    then locate the coordinate array (`customCoordinates` or `locations`).
@@ -445,8 +557,9 @@ fn parse_single_json_mut(buf: &mut [u8]) -> ParsedMap {
 
     let t_scan = t0.elapsed();
 
-    // Find object boundaries within the array
-    let (obj_ranges, arr_close) = find_object_boundaries(&buf[arr_start..arr_end]);
+    // Find object boundaries within the array (parallel; falls back to serial on any
+    // inconsistency, so the result is always identical to find_object_boundaries).
+    let (obj_ranges, arr_close) = parallel_find_object_boundaries(&buf[arr_start..arr_end]);
     let t_boundaries = t0.elapsed();
 
     let now = now_unix();

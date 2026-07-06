@@ -290,6 +290,82 @@ fn parsed_tags_sorted_by_order() {
 }
 
 // -----------------------------------------------------------------------
+// Parallel boundary scan (parallel_find_object_boundaries) must be byte-identical
+// to the serial find_object_boundaries. Correctness is a hard invariant: the
+// parallel scanner is only ever a speed optimization over the serial one.
+// -----------------------------------------------------------------------
+
+/// Assert the parallel scan returns exactly the serial scan's ranges + array close.
+fn assert_parallel_matches_serial(arr: &[u8]) {
+    let (ser_r, ser_c) = find_object_boundaries(arr);
+    let (par_r, par_c) = parallel_find_object_boundaries(arr);
+    assert_eq!(par_r, ser_r, "parallel ranges differ from serial");
+    assert_eq!(par_c, ser_c, "parallel array-close differs from serial");
+}
+
+/// Build a synthetic array slice (the bytes between `[` and `]`) of `n` objects.
+/// `sep` is the inter-object separator (e.g. `,` minified or `,\n` delimited).
+fn synth_array(n: usize, sep: &str, with_extra: bool) -> Vec<u8> {
+    let mut s = String::from("[");
+    for i in 0..n {
+        if i > 0 { s.push_str(sep); }
+        if with_extra {
+            // extra with braces/commas inside strings to stress skip_string across ranges
+            s.push_str(&format!(
+                r#"{{"lat":{}.5,"lng":{}.25,"panoId":"pano{}","extra":{{"note":"a}},{{b][{}","tags":["T{}","common"]}}}}"#,
+                i % 90, i % 180, i, i, i % 7));
+        } else {
+            s.push_str(&format!(r#"{{"lat":{}.5,"lng":{}.25,"heading":0,"panoId":null}}"#, i % 90, i % 180));
+        }
+    }
+    s.push(']');
+    s.into_bytes()
+}
+
+#[test]
+fn parallel_scan_matches_serial_small_fixtures() {
+    // Reuse the tricky serial-correctness fixtures — braces/quotes/escapes in strings.
+    let arr = br#"[{"lat":1,"lng":2,"extra":{"uploaderName":"a},{b]["}},{"lat":3,"lng":4}]"#;
+    assert_parallel_matches_serial(arr);
+    let arr = br#"[{"lat":1,"lng":2,"extra":{"note":"he said \"}{,\" loudly"}},{"lat":3,"lng":4}]"#;
+    assert_parallel_matches_serial(arr);
+    let arr = br#"[{"lat":1,"lng":2,"extra":{"path":"C:\\"}},{"lat":3,"lng":4}]"#;
+    assert_parallel_matches_serial(arr);
+    assert_parallel_matches_serial(br#"[]"#);
+    assert_parallel_matches_serial(br#"[{"lat":1,"lng":2}]"#);
+}
+
+#[test]
+fn parallel_scan_matches_serial_large_minified() {
+    // Big enough to exceed the 2MB parallel threshold; minified (no interior newlines),
+    // so it exercises the `},{` resync path.
+    let arr = synth_array(60_000, ",", false);
+    assert!(arr.len() > 2_000_000, "fixture must cross the parallel threshold");
+    assert_parallel_matches_serial(&arr);
+}
+
+#[test]
+fn parallel_scan_matches_serial_large_delimited_with_extra() {
+    // Newline-delimited + extra whose string values contain `}`, `{`, `,`, `]` — the
+    // resync must land on real boundaries and skip_string must span range seams.
+    let arr = synth_array(40_000, ",\n", true);
+    assert!(arr.len() > 2_000_000);
+    assert_parallel_matches_serial(&arr);
+}
+
+#[test]
+fn parallel_scan_matches_serial_trailing_sibling_key() {
+    // Full doc shape: the array is followed by a sibling "extra" key. Both scanners
+    // must stop at the array's `]`, not read the sibling object as a coordinate.
+    let mut doc = Vec::from(&b"{\"customCoordinates\":"[..]);
+    doc.extend_from_slice(&synth_array(30_000, ",", false));
+    doc.extend_from_slice(br#","extra":{"tags":{"X":{"color":[1,2,3]}}}}"#);
+    // Slice from just after the array-open `[` to end, as parse_single_json_mut passes it.
+    let arr_start = doc.iter().position(|&b| b == b'[').unwrap() + 1;
+    assert_parallel_matches_serial(&doc[arr_start..]);
+}
+
+// -----------------------------------------------------------------------
 // Parse benchmark (ignored; run explicitly against a real large file)
 //   cargo test --release -p app_lib import::tests::bench_parse_real -- --ignored --nocapture
 // Override the file with MMA_BENCH_FILE=/path/to/file.json
