@@ -2824,6 +2824,11 @@ declare const COMMANDS: {
 };
 export type CommandId = keyof typeof COMMANDS;
 export type PinnedEntry = CommandId | "---" | (string & {});
+export type RGB = {
+	r: number;
+	g: number;
+	b: number;
+};
 declare const MOVEMENT_MODES: {
 	readonly moving: "Moving";
 	readonly "no-move": "No Move";
@@ -2927,26 +2932,10 @@ declare const DEFAULTS: {
 	nominatimApiKey: string;
 	panToImported: boolean;
 	followActiveInReview: boolean;
-	markerColor: {
-		r: number;
-		g: number;
-		b: number;
-	};
-	activeLocationColor: {
-		r: number;
-		g: number;
-		b: number;
-	};
-	importPreviewColor: {
-		r: number;
-		g: number;
-		b: number;
-	};
-	panoDotColor: {
-		r: number;
-		g: number;
-		b: number;
-	};
+	markerColor: RGB;
+	activeLocationColor: RGB;
+	importPreviewColor: RGB;
+	panoDotColor: RGB;
 	panoDotScaled: boolean;
 	tagViewMode: TagViewMode;
 	/** Tree view only: render each tag as the shortest path suffix that's still unique. */
@@ -3196,26 +3185,10 @@ declare const mma: {
 		nominatimApiKey: string;
 		panToImported: boolean;
 		followActiveInReview: boolean;
-		markerColor: {
-			r: number;
-			g: number;
-			b: number;
-		};
-		activeLocationColor: {
-			r: number;
-			g: number;
-			b: number;
-		};
-		importPreviewColor: {
-			r: number;
-			g: number;
-			b: number;
-		};
-		panoDotColor: {
-			r: number;
-			g: number;
-			b: number;
-		};
+		markerColor: RGB;
+		activeLocationColor: RGB;
+		importPreviewColor: RGB;
+		panoDotColor: RGB;
 		panoDotScaled: boolean;
 		tagViewMode: TagViewMode;
 		truncateTagPaths: boolean;
