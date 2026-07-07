@@ -34,11 +34,12 @@ fn default_visible() -> bool {
 
 /// `Location.extra` stored as its raw JSON bytes instead of a parsed map.
 ///
-/// Serializes *transparently* -- the object is emitted inline over IPC and into the
-/// Arrow `extra` string column exactly as a `Map` would, so the wire format and the
-/// on-disk format are unchanged (no migration; existing files load as-is). Parsing to
-/// a map happens only when a consumer needs keyed access, via [`RawExtra::to_map`] (deep)
-/// or [`RawExtra::shallow`]/[`RawExtra::get`] (cheap, no value tree).
+/// Over IPC/JSON and into the Arrow `extra` string column it emits transparently, so
+/// those formats are unchanged. The binary (rmp) encoding used for delta sidecars and
+/// undo blobs now writes a plain string; legacy shipped builds wrote a map there, so the
+/// `Deserialize` impl accepts both (see [`BinRawExtraVisitor`]). Parsing to a map happens
+/// only when a consumer needs keyed access, via [`RawExtra::to_map`] (deep) or
+/// [`RawExtra::shallow`]/[`RawExtra::get`] (cheap, no value tree).
 #[derive(Clone, Debug)]
 pub struct RawExtra(Box<serde_json::value::RawValue>);
 
@@ -195,11 +196,38 @@ impl<'de> serde::Deserialize<'de> for RawExtra {
         if d.is_human_readable() {
             Box::<serde_json::value::RawValue>::deserialize(d).map(RawExtra)
         } else {
-            let s = String::deserialize(d)?;
-            serde_json::value::RawValue::from_string(s)
-                .map(RawExtra)
-                .map_err(serde::de::Error::custom)
+            d.deserialize_any(BinRawExtraVisitor)
         }
+    }
+}
+
+struct BinRawExtraVisitor;
+
+impl<'de> serde::de::Visitor<'de> for BinRawExtraVisitor {
+    type Value = RawExtra;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a raw-JSON extra string or a legacy extra map")
+    }
+
+    fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<RawExtra, E> {
+        self.visit_string(v.to_owned())
+    }
+
+    fn visit_string<E: serde::de::Error>(self, v: String) -> Result<RawExtra, E> {
+        serde_json::value::RawValue::from_string(v)
+            .map(RawExtra)
+            .map_err(E::custom)
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, map: A) -> Result<RawExtra, A::Error> {
+        let m = <serde_json::Map<String, serde_json::Value> as serde::Deserialize>::deserialize(
+            serde::de::value::MapAccessDeserializer::new(map),
+        )?;
+        let s = serde_json::to_string(&m).map_err(serde::de::Error::custom)?;
+        serde_json::value::RawValue::from_string(s)
+            .map(RawExtra)
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -329,3 +357,7 @@ impl<T> From<std::sync::PoisonError<T>> for AppError {
         AppError(e.to_string())
     }
 }
+
+#[cfg(test)]
+#[path = "types.test.rs"]
+mod tests;

@@ -417,8 +417,7 @@ export async function openMap(id: string) {
 	if (currentMap) emitEvent("map:open", currentMap);
 }
 
-// Tear down all in-memory state for the open map. Shared by closeMap (clean
-// close) and discardOpenMap (the map's data is gone, so we must NOT flush).
+/** Tear down all in-memory state for the open map. */
 function resetMapState() {
 	emitEvent("map:close");
 	currentMapId = null;
@@ -1458,8 +1457,8 @@ export async function confirmImport(droppedFields: string[], tagName?: string) {
 		// map stays blank for seconds after the import "returns".
 		await whenSceneSettled();
 		cancelAutosave();
+		await inflightPersist;
 
-		if (inflightPersist) await inflightPersist;
 		inflightPersist = cmd
 			.storeCommit(mapId, `Import ${r.importedCount} locations`)
 			.then(() => {

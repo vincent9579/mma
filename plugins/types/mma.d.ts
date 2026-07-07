@@ -3287,7 +3287,6 @@ declare const mma: {
 	scheduleSave(): void;
 	flushSave(): Promise<void>;
 	initStore(): Promise<void>;
-	mapOpenMark(phase: string): void;
 	openMap(id: string): Promise<void>;
 	closeMap(): Promise<void>;
 	discardOpenMap(): void;
@@ -3394,8 +3393,8 @@ declare const mma: {
 	removeTagFromLocations(tagId: number, locationIds: number[]): Promise<void>;
 	removeTagFromAllLocations(tagId: number): Promise<void>;
 	beginImportFromPath(path: string): Promise<void>;
-	beginImportFile(): Promise<void>;
 	beginImportPaste(text: string): Promise<void>;
+	beginImportFile(): Promise<void>;
 	confirmImport(droppedFields: string[], tagName?: string): Promise<EditorImportResult | null>;
 	cancelImport(): void;
 	undo(): Promise<void>;
@@ -3450,6 +3449,12 @@ declare const mma: {
 	useImportMarkerVersion: () => number;
 	useCommitDiffPreview: () => CommitDiffPreview | null;
 	useDiffMarkerVersion: () => number;
+	mapOpen: {
+		start: number;
+		seen: Set<string>;
+		begin(): void;
+		mark(phase: string): void;
+	};
 	useKnownFieldKeys: () => ReadonlySet<string>;
 	useAllSelections: () => Selection[];
 	useSelections: () => Selection[];
