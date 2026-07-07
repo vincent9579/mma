@@ -123,6 +123,10 @@ MMA.registerPlugin({
 			enrich,
 			fieldDefs: FIELD_DEFS,
 			units: (locations, enrichFields, force) => usableLocations(locations, enrichFields, force).length,
+			transform(_field, value, loc) {
+				if (loc.extra?.imageDate && Number((loc.extra.imageDate as string).slice(0, 4)) > Number(value)) return null;
+				return `© ${value}`;
+			},
 		});
 	},
 	comingSoon: true,
