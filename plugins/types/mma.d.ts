@@ -2063,6 +2063,8 @@ export interface EnrichmentProvider {
 	requires?: string[];
 	/** Progress units this provider would contribute in bulk (absent = instant). */
 	units?(locations: Location[], enrichFields: string[] | null, force?: boolean): number;
+	/** Transform a raw partition value per-location. Return null to skip. */
+	transform?(field: string, value: string, location: Location): string | null;
 }
 declare function registerEnrichmentProvider(provider: EnrichmentProvider): void;
 declare function getFieldDef(key: string): ExtraFieldDef | undefined;

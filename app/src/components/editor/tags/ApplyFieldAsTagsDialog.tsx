@@ -8,6 +8,7 @@ import type {
 	LocationPatch_Deserialize as LocationPatch,
 } from "@/bindings.gen";
 import { getFieldDef, fieldLabel } from "@/lib/data/fieldDefRegistry";
+import { getProviderForField } from "@/lib/data/fieldDefs";
 import { projectionsForType, partitionKeyOptions, RANGE_ID } from "@/lib/data/fieldOps";
 import {
 	useKnownFieldKeys,
@@ -70,21 +71,39 @@ export function ApplyFieldAsTagsDialog({
 				? { kind: "value" }
 				: { kind: "datePart", part: projectionId as DatePart, tzLocal: tzLocal && hasTzData };
 
-		// Grouping runs in Rust; only the matched subset is fetched (once) to append tags.
 		const groups = await partition(field, key, scopeCtl.scope);
 		if (groups.length === 0) return;
 
-		const created = await createTags(groups.map((g) => g.key));
-		const tagIdByName = new Map(created.map((t) => [t.name.toLowerCase(), t.id]));
+		const transform = getProviderForField(field)?.transform;
 		const locs = await fetchLocationsByIds(groups.flatMap((g) => g.ids));
 		const locById = new Map(locs.map((l) => [l.id, l]));
+
+		const tagNames = new Set<string>();
+		for (const g of groups) {
+			if (transform) {
+				for (const id of g.ids) {
+					const l = locById.get(id);
+					if (!l) continue;
+					const name = transform(field, g.key, l);
+					if (name != null) tagNames.add(name);
+				}
+			} else {
+				tagNames.add(g.key);
+			}
+		}
+
+		const created = await createTags([...tagNames]);
+		const tagIdByName = new Map(created.map((t) => [t.name.toLowerCase(), t.id]));
 		const updates: Update<LocationPatch>[] = [];
 		for (const g of groups) {
-			const tagId = tagIdByName.get(g.key.toLowerCase());
-			if (tagId == null) continue;
 			for (const id of g.ids) {
 				const l = locById.get(id);
-				if (l && !l.tags.includes(tagId)) updates.push({ id, patch: { tags: [...l.tags, tagId] } });
+				if (!l) continue;
+				const name = transform ? transform(field, g.key, l) : g.key;
+				if (name == null) continue;
+				const tagId = tagIdByName.get(name.toLowerCase());
+				if (tagId != null && !l.tags.includes(tagId))
+					updates.push({ id, patch: { tags: [...l.tags, tagId] } });
 			}
 		}
 		if (updates.length > 0) await updateLocations(updates);
