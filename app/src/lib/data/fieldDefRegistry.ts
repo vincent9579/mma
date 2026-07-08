@@ -26,20 +26,47 @@
 import { useSyncExternalStore } from "react";
 import type { ExtraFieldDef } from "@/bindings.gen";
 
-const VIRTUAL_FIELDS: Record<string, ExtraFieldDef> = {
+interface BuiltinFieldDef extends ExtraFieldDef {
+	writable?: boolean;
+}
+
+const BUILTIN_FIELDS: Record<string, BuiltinFieldDef> = {
+	lat: { type: "number", label: "Latitude" },
+	lng: { type: "number", label: "Longitude" },
+	heading: {
+		type: "number",
+		label: "Heading",
+		comparison: { type: "circular", period: 360 },
+		writable: true,
+	},
+	pitch: { type: "number", label: "Pitch", writable: true },
+	zoom: { type: "number", label: "Zoom", writable: true },
 	createdAt: { type: "date", label: "Created" },
 	modifiedAt: { type: "date", label: "Modified" },
-	tagCount: { type: "number", label: "Tag count" },
-	heading: { type: "number", label: "Heading", comparison: { type: "circular", period: 360 } },
-	pitch: { type: "number", label: "Pitch" },
-	zoom: { type: "number", label: "Zoom" },
 };
 
-const TOP_LEVEL_KEYS = new Set(["heading", "pitch", "zoom"]);
+const VIRTUAL_FIELDS: Record<string, ExtraFieldDef> = {
+	tagCount: { type: "number", label: "Tag count" },
+};
 
-/** True when `key` is a built-in top-level Location field (not nested under `extra`). */
-export function isTopLevelField(key: string): boolean {
-	return TOP_LEVEL_KEYS.has(key);
+/** True when `key` is a built-in Location field (not nested under `extra`). */
+export function isBuiltinField(key: string): boolean {
+	return key in BUILTIN_FIELDS;
+}
+
+/** True when `key` is a writable built-in field (heading, pitch, zoom). */
+export function isWritableBuiltinField(key: string): boolean {
+	return BUILTIN_FIELDS[key]?.writable === true;
+}
+
+/** All writable built-in field keys. */
+export function getWritableBuiltinKeys(): string[] {
+	return Object.keys(BUILTIN_FIELDS).filter((k) => BUILTIN_FIELDS[k].writable);
+}
+
+/** All built-in field keys (writable + read-only, excluding virtual). */
+export function getBuiltinKeys(): string[] {
+	return Object.keys(BUILTIN_FIELDS);
 }
 
 let pluginDefs: Record<string, ExtraFieldDef> = {};
@@ -123,7 +150,10 @@ function mergeDef(
 
 /** Look up metadata for a single field key. Returns `undefined` if no metadata exists. */
 export function getFieldDef(key: string): ExtraFieldDef | undefined {
-	return mergeDef(mergeDef(userDefs[key], pluginDefs[key]), VIRTUAL_FIELDS[key]);
+	return mergeDef(
+		mergeDef(userDefs[key], pluginDefs[key]),
+		BUILTIN_FIELDS[key] ?? VIRTUAL_FIELDS[key],
+	);
 }
 
 /** Display label for a field key: registered label if known, otherwise sentence-cased from camelCase/snake_case. */
@@ -141,6 +171,7 @@ export function fieldLabel(key: string): string {
 export function getAllFieldDefs(): Record<string, ExtraFieldDef> {
 	const out: Record<string, ExtraFieldDef> = {};
 	const allKeys = new Set([
+		...Object.keys(BUILTIN_FIELDS),
 		...Object.keys(VIRTUAL_FIELDS),
 		...Object.keys(pluginDefs),
 		...Object.keys(userDefs),

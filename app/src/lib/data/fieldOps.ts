@@ -13,7 +13,7 @@ import type {
 	LocationPatch_Deserialize as LocationPatch,
 } from "@/bindings.gen";
 import { buildSelection } from "@/store/selections";
-import { isTopLevelField } from "@/lib/data/fieldDefRegistry";
+import { isWritableBuiltinField, isBuiltinField } from "@/lib/data/fieldDefRegistry";
 
 /** When a move target already holds a value, which field's value survives. */
 export type MergeWinner = "from" | "to";
@@ -22,7 +22,7 @@ export type MergeWinner = "from" | "to";
  *  field, every other key nests under `extra`. The one place that knows the difference. */
 export function fieldPatch(key: string, value: unknown): Partial<Location> {
 	return (
-		isTopLevelField(key) ? { [key]: value } : { extra: { [key]: value } }
+		isWritableBuiltinField(key) ? { [key]: value } : { extra: { [key]: value } }
 	) as Partial<Location>;
 }
 
@@ -237,15 +237,10 @@ export function parseFieldExpr(src: string): FieldExpr {
 	return expr;
 }
 
-/** Top-level Location fields readable in expressions (writable set + coordinates). */
-const TOP_LEVEL_READ_FIELDS = new Set(["lat", "lng", "heading", "pitch", "zoom"]);
-
-/** Read field `key` from a location: built-in top-level keys or `extra`. The read-side
- *  mirror of `fieldPatch`. */
+/** Read field `key` from a location: built-in keys read the top-level property,
+ *  everything else reads from `extra`. The read-side mirror of `fieldPatch`. */
 export function fieldValue(loc: Location, key: string): unknown {
-	return TOP_LEVEL_READ_FIELDS.has(key)
-		? (loc as unknown as Record<string, unknown>)[key]
-		: loc.extra?.[key];
+	return isBuiltinField(key) ? (loc as unknown as Record<string, unknown>)[key] : loc.extra?.[key];
 }
 
 /** Evaluate an expression against one location. Returns null when any referenced
