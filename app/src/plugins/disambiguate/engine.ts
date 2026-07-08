@@ -76,7 +76,16 @@ export function soleGroup(masks: Set<number>[], id: number): number | null | "ov
 }
 
 function emptyGroup(n: number, present: number): GroupSummary {
-	return { n, present, median: null, p25: null, p75: null, meanDeg: null, concentration: null, top: [] };
+	return {
+		n,
+		present,
+		median: null,
+		p25: null,
+		p75: null,
+		meanDeg: null,
+		concentration: null,
+		top: [],
+	};
 }
 
 /** Resolve how a field is compared. An explicit `comparison` on the def wins;
@@ -179,7 +188,9 @@ function numericField(
 
 	const present = perGroup.map((v) => v.length);
 	const valueScore =
-		comparison.type === "circular" ? circularEta2(perGroup, comparison.period) : kruskalEps2(perGroup);
+		comparison.type === "circular"
+			? circularEta2(perGroup, comparison.period)
+			: kruskalEps2(perGroup);
 	const coverageScore = coverageV(groupSizes, present);
 	const lowConfidence = isLowConfidence(present);
 
@@ -200,8 +211,18 @@ function numericField(
 		return s;
 	});
 
-	const format: ValueFormat = def?.type === "month" ? "month" : def?.type === "date" ? "dateTime" : "number";
-	return { key, label: fieldLabel(key, def), comparison, format, valueScore, coverageScore, lowConfidence, groups };
+	const format: ValueFormat =
+		def?.type === "month" ? "month" : def?.type === "date" ? "dateTime" : "number";
+	return {
+		key,
+		label: fieldLabel(key, def),
+		comparison,
+		format,
+		valueScore,
+		coverageScore,
+		lowConfidence,
+		groups,
+	};
 }
 
 function finishCategorical(
@@ -291,7 +312,16 @@ export function computeDivergence(
 
 	// Built-in numeric columns worth analyzing (lat/lng/timestamps intentionally excluded).
 	for (const key of ["heading", "pitch", "zoom"]) {
-		fields.push(numericField(key, labeled, numGroups, groupSizes, resolvedComparison(key, undefined), undefined));
+		fields.push(
+			numericField(
+				key,
+				labeled,
+				numGroups,
+				groupSizes,
+				resolvedComparison(key, undefined),
+				undefined,
+			),
+		);
 	}
 
 	// Extra fields: registered defs plus any key discovered on the locations.

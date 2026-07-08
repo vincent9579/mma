@@ -81,9 +81,7 @@ export function isSeenPreview(loc: Location): boolean {
 	return (loc.flags & LocationFlag.SeenOverlay) !== 0;
 }
 
-export function createLocation(
-	partial: Partial<Location> & LatLng,
-): Location {
+export function createLocation(partial: Partial<Location> & LatLng): Location {
 	return {
 		id: 0, // placeholder; Rust assigns the real ID
 		heading: 0,

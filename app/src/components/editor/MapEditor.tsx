@@ -37,17 +37,23 @@ import { useHotkey, useCommandHotkeys, isEditableElement } from "@/lib/hooks/use
 import { useBinding } from "@/lib/util/hotkeys";
 import { useLocalStorage } from "@/lib/hooks/useLocalStorage";
 import { useSettings, setSetting, getSettings } from "@/store/settings";
-import { parseMapsUrl, parseCoordinates, parseUrlList, parsedLocationsToImportJson, type ParsedLocation } from "@/lib/data/importExport";
+import {
+	parseMapsUrl,
+	parseCoordinates,
+	parseUrlList,
+	parsedLocationsToImportJson,
+	type ParsedLocation,
+} from "@/lib/data/importExport";
 import { Icon } from "@/components/primitives/Icon";
 import { Tooltip } from "@/components/primitives/Tooltip";
 import { mdiBackburger, mdiPencil } from "@mdi/js";
 import { PluginSidebarHost } from "@/components/editor/PluginSidebarHost";
 import SameLocation from "@/components/editor/SameLocation";
-import { log } from "@/lib/util/log"
+import { log } from "@/lib/util/log";
 import { useCountrySelect } from "@/lib/map/useCountrySelect";
 import { useDeletePolygon } from "@/lib/map/useDeletePolygon";
 import { useMapKeyBindings } from "@/lib/map/mapKeyBindings";
-import { range, clamp } from "@/types/util"
+import { range, clamp } from "@/types/util";
 
 function zoomToPasted(bounds: Bounds | null, padding = 0) {
 	if (!getSettings().panToImported) return;
@@ -61,14 +67,21 @@ async function addParsedLocations(parsed: ParsedLocation[]) {
 	const locs = parsed.map((p) =>
 		createLocation({
 			...p,
-			tags: p.tags.map((n) => tagIdByName.get(n.toLowerCase())).filter((id): id is number => id !== undefined),
+			tags: p.tags
+				.map((n) => tagIdByName.get(n.toLowerCase()))
+				.filter((id): id is number => id !== undefined),
 		}),
 	);
 	await addLocations(locs);
 	setActiveLocation(locs[locs.length - 1].id);
 	const lats = locs.map((l) => l.lat);
 	const lngs = locs.map((l) => l.lng);
-	zoomToPasted({ west: Math.min(...lngs), south: Math.min(...lats), east: Math.max(...lngs), north: Math.max(...lats) });
+	zoomToPasted({
+		west: Math.min(...lngs),
+		south: Math.min(...lats),
+		east: Math.max(...lngs),
+		north: Math.max(...lats),
+	});
 }
 
 function usePasteHandler() {
@@ -271,10 +284,14 @@ export function MapEditor() {
 	useHotkey(useBinding("toggleFullscreenMap"), () => {
 		setSetting("fullscreenMap", !getSettings().fullscreenMap);
 	});
-	useHotkey(useBinding("locationDelete"), () => {
-		const ids = getSelectedLocationIds();
-		if (ids.size > 0) removeLocations(ids);
-	}, { bubble: true });
+	useHotkey(
+		useBinding("locationDelete"),
+		() => {
+			const ids = getSelectedLocationIds();
+			if (ids.size > 0) removeLocations(ids);
+		},
+		{ bubble: true },
+	);
 	const [showMapCursor, setShowMapCursor] = useState(false);
 	const showMapCursorRef = useRef(false);
 
@@ -320,7 +337,9 @@ export function MapEditor() {
 		<div
 			className={editorClasses}
 			style={{
-				gridTemplateColumns: appSettings.fullscreenMap ? undefined : `minmax(0, ${split}fr) minmax(0, ${100 - split}fr)`,
+				gridTemplateColumns: appSettings.fullscreenMap
+					? undefined
+					: `minmax(0, ${split}fr) minmax(0, ${100 - split}fr)`,
 			}}
 		>
 			<SplitHandle onSplitChange={setSplit} />
@@ -342,11 +361,7 @@ export function MapEditor() {
 				<Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
 					<Tooltip content="Edit map" side="bottom">
 						<DialogTrigger asChild>
-							<button
-								className="icon-button"
-								type="button"
-								aria-label="Edit map"
-							>
+							<button className="icon-button" type="button" aria-label="Edit map">
 								<Icon path={mdiPencil} />
 							</button>
 						</DialogTrigger>

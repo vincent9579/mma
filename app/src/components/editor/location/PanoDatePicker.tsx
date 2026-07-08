@@ -109,11 +109,7 @@ export function PanoDatePicker({ onChange }: { onChange: (panoId: string | null)
 				</Select.Value>
 			</Select.Trigger>
 			<Select.Portal>
-				<Select.Content
-					className="select__content"
-					position="popper"
-					side="top"
-				>
+				<Select.Content className="select__content" position="popper" side="top">
 					<Select.Viewport>
 						<Select.Group>
 							<Select.Label className="select__group-header">Specific Panorama</Select.Label>

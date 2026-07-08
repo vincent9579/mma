@@ -4,7 +4,15 @@
  * orchestrates IPC, definitions, and persistence. Kept side-effect-free for testability.
  */
 
-import type { Location, ExtraFieldDef, ExtraFieldType, Selection, SelectionProps, Update, LocationPatch_Deserialize as LocationPatch } from "@/bindings.gen";
+import type {
+	Location,
+	ExtraFieldDef,
+	ExtraFieldType,
+	Selection,
+	SelectionProps,
+	Update,
+	LocationPatch_Deserialize as LocationPatch,
+} from "@/bindings.gen";
 import { buildSelection } from "@/store/selections";
 
 /** When a move target already holds a value, which field's value survives. */
@@ -71,7 +79,10 @@ export function planFieldDelete(locations: Location[], key: string): Update<Loca
  * The caller asserts intent by how it shapes `patch` (e.g. `{ heading }` vs
  * `{ extra: { foo } }`); this function holds no notion of which fields are which.
  */
-export function planFieldSet(locations: Location[], patch: Partial<Location>): Update<LocationPatch>[] {
+export function planFieldSet(
+	locations: Location[],
+	patch: Partial<Location>,
+): Update<LocationPatch>[] {
 	const updates: Update<LocationPatch>[] = [];
 	for (const loc of locations) {
 		if (!changesLocation(loc, patch)) continue;
@@ -120,17 +131,17 @@ const EXPR_FNS: Record<string, { arity: number; apply: (args: number[]) => numbe
 	floor: { arity: 1, apply: ([x]) => Math.floor(x) },
 };
 
-type Token =
-	| { t: "num"; v: number }
-	| { t: "ident"; v: string }
-	| { t: "op"; v: string };
+type Token = { t: "num"; v: number } | { t: "ident"; v: string } | { t: "op"; v: string };
 
 function tokenize(src: string): Token[] {
 	const tokens: Token[] = [];
 	let i = 0;
 	while (i < src.length) {
 		const c = src[i];
-		if (/\s/.test(c)) { i++; continue; }
+		if (/\s/.test(c)) {
+			i++;
+			continue;
+		}
 		if (/[0-9.]/.test(c)) {
 			const m = /^[0-9]*\.?[0-9]+/.exec(src.slice(i));
 			if (!m) throw new Error(`Invalid number at position ${i}`);
@@ -268,11 +279,16 @@ function evalNode(expr: FieldExpr, loc: Location): number | null {
 			const r = evalNode(expr.right, loc);
 			if (l == null || r == null) return null;
 			switch (expr.op) {
-				case "+": return l + r;
-				case "-": return l - r;
-				case "*": return l * r;
-				case "/": return l / r;
-				case "%": return l % r;
+				case "+":
+					return l + r;
+				case "-":
+					return l - r;
+				case "*":
+					return l * r;
+				case "/":
+					return l / r;
+				case "%":
+					return l % r;
 			}
 			break;
 		}
@@ -311,11 +327,7 @@ export function planFieldExpr(
  * Filter when `to` is null (field deleted). Composites collapse if emptied, or unwrap
  * to their sole survivor (matching the rest of the selection engine's semantics).
  */
-function rewriteSelection(
-	sel: Selection,
-	from: string,
-	to: string | null,
-): Selection | null {
+function rewriteSelection(sel: Selection, from: string, to: string | null): Selection | null {
 	const p = sel.props;
 	if (p.type === "Filter") {
 		if (p.field !== from) return sel;
@@ -350,8 +362,22 @@ interface DateParts {
 export function dateParts(v: number, wallClock: boolean): DateParts {
 	const dt = new Date(v * 1000);
 	return wallClock
-		? { y: dt.getUTCFullYear(), mo: dt.getUTCMonth(), d: dt.getUTCDate(), h: dt.getUTCHours(), mi: dt.getUTCMinutes(), s: dt.getUTCSeconds() }
-		: { y: dt.getFullYear(), mo: dt.getMonth(), d: dt.getDate(), h: dt.getHours(), mi: dt.getMinutes(), s: dt.getSeconds() };
+		? {
+				y: dt.getUTCFullYear(),
+				mo: dt.getUTCMonth(),
+				d: dt.getUTCDate(),
+				h: dt.getUTCHours(),
+				mi: dt.getUTCMinutes(),
+				s: dt.getUTCSeconds(),
+			}
+		: {
+				y: dt.getFullYear(),
+				mo: dt.getMonth(),
+				d: dt.getDate(),
+				h: dt.getHours(),
+				mi: dt.getMinutes(),
+				s: dt.getSeconds(),
+			};
 }
 
 /** Encode calendar digits back to Unix seconds in the given frame. Out-of-range fields
@@ -371,7 +397,11 @@ export function partsToEpoch(
  *  - 1s) rather than by adding a constant: +86399 is wrong on DST-transition days, and
  *  flooring first makes the expansion idempotent so re-submitting an edited filter
  *  doesn't drift. */
-export function pickPeriodEnd(v: number, granularity: "day" | "minute", wallClock: boolean): number {
+export function pickPeriodEnd(
+	v: number,
+	granularity: "day" | "minute",
+	wallClock: boolean,
+): number {
 	if (granularity === "minute") return v - (v % 60) + 59;
 	const p = dateParts(v, wallClock);
 	return partsToEpoch({ y: p.y, mo: p.mo, d: p.d + 1 }, wallClock) - 1;
@@ -428,7 +458,10 @@ export function stepFilterWindow(
 			// Day-grain window: [midnight, day-end]. Shift by its day count.
 			const days = Math.round((hi + 1 - lo) / 86400);
 			const newLo = addDays(lo, dir * days, wallClock);
-			return { value: newLo, value2: pickPeriodEnd(addDays(newLo, days - 1, wallClock), "day", wallClock) };
+			return {
+				value: newLo,
+				value2: pickPeriodEnd(addDays(newLo, days - 1, wallClock), "day", wallClock),
+			};
 		}
 		const span = hi - lo + 1;
 		return { value: lo + dir * span, value2: hi + dir * span };
@@ -476,7 +509,10 @@ export const RANGE_ID = "range";
 
 /** Dropdown options for a partition: the projection catalog plus "Range" for numbers (and
  *  dates too when `rangeForDates`). */
-export function partitionKeyOptions(type: ExtraFieldType, rangeForDates: boolean): { id: string; label: string }[] {
+export function partitionKeyOptions(
+	type: ExtraFieldType,
+	rangeForDates: boolean,
+): { id: string; label: string }[] {
 	const projs = projectionsForType(type).map((p) => ({ id: p.id, label: p.label }));
 	const hasRange = type === "number" || (rangeForDates && type === "date");
 	return hasRange ? [{ id: RANGE_ID, label: "Range" }, ...projs] : projs;

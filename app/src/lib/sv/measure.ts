@@ -185,10 +185,7 @@ export function locationsBbox(locations: LatLng[]): Bbox {
 	return padBbox(bbox);
 }
 
-export function resolveScoreMaxError(
-	bounds: "auto" | Bounds,
-	locations: LatLng[],
-): number {
+export function resolveScoreMaxError(bounds: "auto" | Bounds, locations: LatLng[]): number {
 	if (bounds === "auto") {
 		return locations.length > 1 ? bboxToMaxError(locationsBbox(locations)) : 25;
 	}

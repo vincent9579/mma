@@ -12,6 +12,7 @@
 		"dev": "vite",
 		"build": "npm run gen:plugin-types && npm run gen:plugin-registry && npm run gen:image-dims && vite build",
 		"build:opensv": "node opensv-build/build-opensv.mjs",
+		"format": "prettier --write \"src/**/*.{ts,tsx,css,json}\" \"test/**/*.{ts,tsx}\" && cargo fmt --manifest-path src-tauri/Cargo.toml",
 		"lint": "eslint .",
 		"preview": "vite preview",
 		"test": "vitest run",

@@ -217,7 +217,8 @@ export function buildMapStack(opts: MapStackOpts): MapStackResult {
 	if (opts.labels && opts.type !== "osm") {
 		const labelCfg =
 			opts.type === "satellite"
-				? createSatelliteLabelsTileConfig(extraStyles) : createLabelsTileConfig(extraStyles);
+				? createSatelliteLabelsTileConfig(extraStyles)
+				: createLabelsTileConfig(extraStyles);
 		layers.push(
 			new google.maps.ImageMapType({
 				getTileUrl: (coord: TileCoord, zoom: number) =>

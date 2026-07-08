@@ -56,7 +56,10 @@ export function PanoViewerProvider({ children }: { children: ReactNode }) {
 	const defaultPanoId = location?.panoId ?? null;
 	const lat = currentPano?.location?.latLng?.lat() ?? location?.lat ?? 0;
 	const lng = currentPano?.location?.latLng?.lng() ?? location?.lng ?? 0;
-	const datetimeEnabled = isFieldEnabled(currentMap?.meta.settings.enrichFields ?? null, "datetime");
+	const datetimeEnabled = isFieldEnabled(
+		currentMap?.meta.settings.enrichFields ?? null,
+		"datetime",
+	);
 	const dateTimezone = useSetting("dateTimezone");
 
 	const dateState = useMemo(

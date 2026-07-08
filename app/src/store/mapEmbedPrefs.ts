@@ -1,10 +1,4 @@
-import type {
-	SvColor,
-	MapTypeKey,
-	SvCoverageType,
-	SvThickness,
-	MarkerStyle,
-} from "@/types";
+import type { SvColor, MapTypeKey, SvCoverageType, SvThickness, MarkerStyle } from "@/types";
 
 export interface MapEmbedPrefs {
 	svOpacity: number;

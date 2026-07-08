@@ -20,7 +20,8 @@ export function RandomPickModal({ open, onOpenChange, total }: Props) {
 
 	const handlePick = useCallback(() => {
 		const picked = selectRandomFromSelection(count);
-		if (picked > 0) toast(`Selected ${fmt.format(picked)} random location${picked !== 1 ? "s" : ""}`);
+		if (picked > 0)
+			toast(`Selected ${fmt.format(picked)} random location${picked !== 1 ? "s" : ""}`);
 		onOpenChange(false);
 	}, [count, onOpenChange]);
 
@@ -28,8 +29,8 @@ export function RandomPickModal({ open, onOpenChange, total }: Props) {
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent title="Pick random locations" className="random-pick">
 				<p className="random-pick__status">
-					Pick a number of locations at random from the current selection of{" "}
-					{fmt.format(total)}. The picked locations replace the current selection.
+					Pick a number of locations at random from the current selection of {fmt.format(total)}.
+					The picked locations replace the current selection.
 				</p>
 				<form
 					className="random-pick__form"
