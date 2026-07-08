@@ -683,7 +683,10 @@ fn finish_mutation_reports_correct_state() {
     assert!(result.status.can_undo);
     assert!(!result.status.can_redo);
     // Setup added tagged locations, so this first mutation ships counts.
-    assert_eq!(result.status.tag_counts.as_ref().unwrap().get(&10), Some(&1));
+    assert_eq!(
+        result.status.tag_counts.as_ref().unwrap().get(&10),
+        Some(&1)
+    );
     assert_eq!(result.status.version, 1);
 }
 
@@ -703,7 +706,10 @@ fn tag_counts_shipped_only_when_changed() {
     // A tag-touching edit ships fresh counts again.
     let changes = apply_edit(&mut store, std::slice::from_ref(&l), &[]);
     let result = store.finish_mutation(changes);
-    assert_eq!(result.status.tag_counts.as_ref().unwrap().get(&10), Some(&0));
+    assert_eq!(
+        result.status.tag_counts.as_ref().unwrap().get(&10),
+        Some(&0)
+    );
 }
 
 #[test]
