@@ -54,17 +54,6 @@ export function MapEmbed({
 			setPrefs((p) => ({ ...p, [k]: v }));
 	const {
 		svOpacity,
-		svColor,
-		showLabels,
-		showTerrain,
-		svPanoramas,
-		svCoverageType,
-		svThickness,
-		svBlobby,
-		boldCountryBorders,
-		boldSubdivisionBorders,
-		hideRoadLabels,
-		mapStyleName,
 		mapType,
 		markerStyle,
 		markerOpacity,
@@ -143,7 +132,7 @@ export function MapEmbed({
 				});
 
 				const { mapType: stack, svLayer } = resolveStackForPrefs(prefs, {
-					useBlobby: svBlobby,
+					useBlobby: prefs.svBlobby,
 					customStyles,
 				});
 				svLayerRef.current = svLayer;
@@ -189,9 +178,9 @@ export function MapEmbed({
 	useEffect(() => {
 		if (!svLayerRef.current) return;
 		const blobbySingleType =
-			svBlobby && mapZoom <= BLOBBY_ZOOM_THRESHOLD && svCoverageType !== "default";
+			prefs.svBlobby && mapZoom <= BLOBBY_ZOOM_THRESHOLD && prefs.svCoverageType !== "default";
 		svLayerRef.current.setOpacity(blobbySingleType ? svOpacity * 0.6 : svOpacity);
-	}, [svOpacity, svBlobby, mapZoom, svCoverageType]);
+	}, [svOpacity, prefs.svBlobby, mapZoom, prefs.svCoverageType]);
 
 	// The editor map drives the single scene engine (delta/selection/active subscriptions)
 	useEffect(() => startSceneEngine(), []);
@@ -273,7 +262,7 @@ export function MapEmbed({
 		};
 	}, [showPreviews]);
 
-	const useBlobby = svBlobby && mapZoom <= BLOBBY_ZOOM_THRESHOLD;
+	const useBlobby = prefs.svBlobby && mapZoom <= BLOBBY_ZOOM_THRESHOLD;
 
 	useEffect(() => {
 		if (!gMapRef.current) return;
@@ -353,32 +342,10 @@ export function MapEmbed({
 				>
 					<MapTypeDropdown
 						layerConfig={{
-							basemap: mapType,
-							setBasemap: pref("mapType"),
-							labels: showLabels,
-							setLabels: pref("showLabels"),
+							prefs,
+							setPref: pref,
 							supportsLabels: mapType !== "osm",
-							terrain: showTerrain,
-							setTerrain: pref("showTerrain"),
 							supportsTerrain: mapType === "map" || mapType === "satellite",
-							streetViewPanoramas: svPanoramas,
-							setStreetViewPanoramas: pref("svPanoramas"),
-							streetViewCoverageType: svCoverageType,
-							setStreetViewCoverageType: pref("svCoverageType"),
-							svColor,
-							setSvColor: pref("svColor"),
-							streetViewCoverageThickness: svThickness,
-							setStreetViewCoverageThickness: pref("svThickness"),
-							streetViewBlobby: svBlobby,
-							setStreetViewBlobby: pref("svBlobby"),
-							boldCountryBorders,
-							setBoldCountryBorders: pref("boldCountryBorders"),
-							boldSubdivisionBorders,
-							setBoldSubdivisionBorders: pref("boldSubdivisionBorders"),
-							hideRoadLabels,
-							setHideRoadLabels: pref("hideRoadLabels"),
-							mapStyleName,
-							setMapStyleName: pref("mapStyleName"),
 							customStyles,
 							onManageStyles: () => setShowStylesDialog(true),
 						}}
@@ -525,7 +492,7 @@ export function MapEmbed({
 												onClick={() => {
 													const next = customStyles.filter((c) => c.name !== s.name);
 													setCustomStyles(next);
-													if (mapStyleName === s.name) pref("mapStyleName")("default");
+													if (prefs.mapStyleName === s.name) pref("mapStyleName")("default");
 												}}
 												aria-label="Delete style"
 											>

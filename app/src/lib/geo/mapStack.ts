@@ -17,24 +17,7 @@ import {
 } from "@/lib/geo/tiles";
 import { BUILTIN_STYLE_MAP } from "@/lib/geo/mapStyles";
 import { createCompositeMapType } from "@/lib/geo/stackedMapType";
-import type { SvColor, MapTypeKey, SvCoverageType, SvThickness } from "@/types";
 import type { MapEmbedPrefs } from "@/store/mapEmbedPrefs";
-
-export interface MapStackOpts {
-	type: MapTypeKey;
-	labels: boolean;
-	terrain: boolean;
-	color: SvColor;
-	coverageType: SvCoverageType;
-	thickness: SvThickness;
-	useBlobby: boolean;
-	boldCountry: boolean;
-	boldSubdivision: boolean;
-	hideRoadLabels: boolean;
-	style: string;
-	customStyles?: MapStyle[];
-	svOpacity: number;
-}
 
 export interface MapStackResult {
 	mapType: google.maps.ImageMapType;
@@ -48,61 +31,40 @@ export interface CustomStyle {
 
 export const CUSTOM_STYLES_KEY = "mma_custom_styles";
 
-// Maps the saved map prefs onto stack opts. `useBlobby` and resolved `customStyles` are passed in
-// because callers derive them differently (zoom-coupled blobby on the big map; per-call vs reactive
-// custom-style lists).
-export function mapStackOptsFromPrefs(
-	prefs: MapEmbedPrefs,
-	opts: { useBlobby: boolean; customStyles?: MapStyle[] },
-): MapStackOpts {
-	return {
-		type: prefs.mapType,
-		labels: prefs.showLabels,
-		terrain: prefs.showTerrain,
-		color: prefs.svColor,
-		coverageType: prefs.svCoverageType,
-		thickness: prefs.svThickness,
-		useBlobby: opts.useBlobby,
-		boldCountry: prefs.boldCountryBorders,
-		boldSubdivision: prefs.boldSubdivisionBorders,
-		hideRoadLabels: prefs.hideRoadLabels,
-		style: prefs.mapStyleName,
-		customStyles: opts.customStyles,
-		svOpacity: prefs.svOpacity,
-	};
+interface BuildOpts {
+	useBlobby: boolean;
+	customStyles?: MapStyle[];
 }
 
-// Composes the basemap + SV coverage + labels/border tile layers into one stacked map type.
-// Returns the SV layer so the caller can drive reactive opacity without rebuilding the stack.
-export function buildMapStack(opts: MapStackOpts): MapStackResult {
+export function buildMapStack(prefs: MapEmbedPrefs, opts: BuildOpts): MapStackResult {
 	const tileSize = new google.maps.Size(256, 256);
 	const layers: google.maps.ImageMapType[] = [];
-	const legacyMap = opts.style === "legacy" && opts.type === "map";
+	const legacyMap = prefs.mapStyleName === "legacy" && prefs.mapType === "map";
 
 	const extraStyles: MapStyle[] = [];
-	const builtinStyles = BUILTIN_STYLE_MAP[opts.style as keyof typeof BUILTIN_STYLE_MAP];
+	const builtinStyles = BUILTIN_STYLE_MAP[prefs.mapStyleName as keyof typeof BUILTIN_STYLE_MAP];
 	if (builtinStyles) {
 		extraStyles.push(...builtinStyles);
 	} else if (opts.customStyles) {
 		extraStyles.push(...opts.customStyles);
 	}
-	if (opts.boldCountry) {
+	if (prefs.boldCountryBorders) {
 		const s: Record<string, string | number> = { weight: 2 };
-		if (opts.style === "default") s.color = "#000000";
+		if (prefs.mapStyleName === "default") s.color = "#000000";
 		extraStyles.push({
 			featureType: "administrative.country",
 			elementType: "geometry.stroke",
 			stylers: [s],
 		});
 	}
-	if (opts.boldSubdivision) {
+	if (prefs.boldSubdivisionBorders) {
 		extraStyles.push({
 			featureType: "administrative.province",
 			elementType: "geometry.stroke",
 			stylers: [{ weight: 3 }],
 		});
 	}
-	if (opts.hideRoadLabels) {
+	if (prefs.hideRoadLabels) {
 		extraStyles.push({
 			featureType: "road",
 			elementType: "labels",
@@ -110,7 +72,7 @@ export function buildMapStack(opts: MapStackOpts): MapStackResult {
 		});
 	}
 
-	if (opts.type === "satellite") {
+	if (prefs.mapType === "satellite") {
 		const cfg = createSatelliteTileConfig();
 		layers.push(
 			new google.maps.ImageMapType({
@@ -120,7 +82,7 @@ export function buildMapStack(opts: MapStackOpts): MapStackResult {
 				maxZoom: 20,
 			}),
 		);
-		if (opts.terrain) {
+		if (prefs.showTerrain) {
 			const tcfg = createTerrainOverlayTileConfig();
 			layers.push(
 				new google.maps.ImageMapType({
@@ -132,7 +94,7 @@ export function buildMapStack(opts: MapStackOpts): MapStackResult {
 				}),
 			);
 		}
-	} else if (opts.type === "osm") {
+	} else if (prefs.mapType === "osm") {
 		layers.push(
 			new google.maps.ImageMapType({
 				getTileUrl: (coord: TileCoord, zoom: number) =>
@@ -143,7 +105,7 @@ export function buildMapStack(opts: MapStackOpts): MapStackResult {
 			}),
 		);
 	} else {
-		if (opts.terrain) {
+		if (prefs.showTerrain) {
 			if (legacyMap) {
 				const cfg = createLegacyTerrainTileConfig();
 				layers.push(
@@ -199,19 +161,20 @@ export function buildMapStack(opts: MapStackOpts): MapStackResult {
 		}
 	}
 
-	const showOfficial = opts.coverageType === "official" || opts.coverageType === "default";
-	const showUnofficial = opts.coverageType === "unofficial" || opts.coverageType === "default";
+	const showOfficial = prefs.svCoverageType === "official" || prefs.svCoverageType === "default";
+	const showUnofficial =
+		prefs.svCoverageType === "unofficial" || prefs.svCoverageType === "default";
 	const svCfg = opts.useBlobby
 		? createSvBlobbyTileConfig({
 				showOfficial,
 				showUnofficial,
-				color: opts.color,
+				color: prefs.svColor,
 			})
 		: createSvTileConfig({
 				showOfficial,
 				showUnofficial,
-				color: opts.color,
-				thickness: opts.thickness,
+				color: prefs.svColor,
+				thickness: prefs.svThickness,
 			});
 	const svLayer = new google.maps.ImageMapType({
 		getTileUrl: (coord: TileCoord, zoom: number) => buildTileUrl(svCfg, coord.x, coord.y, zoom),
@@ -220,12 +183,12 @@ export function buildMapStack(opts: MapStackOpts): MapStackResult {
 		maxZoom: 20,
 	});
 	const blobbySingleType = opts.useBlobby && !(showOfficial && showUnofficial);
-	svLayer.setOpacity(blobbySingleType ? opts.svOpacity * 0.6 : opts.svOpacity);
+	svLayer.setOpacity(blobbySingleType ? prefs.svOpacity * 0.6 : prefs.svOpacity);
 	layers.push(svLayer);
 
-	if (opts.labels && opts.type !== "osm") {
+	if (prefs.showLabels && prefs.mapType !== "osm") {
 		const labelCfg =
-			opts.type === "satellite"
+			prefs.mapType === "satellite"
 				? createSatelliteLabelsTileConfig(extraStyles)
 				: createLabelsTileConfig(extraStyles);
 		layers.push(
@@ -247,7 +210,5 @@ export function resolveStackForPrefs(
 	opts: { useBlobby: boolean; customStyles: CustomStyle[] },
 ): MapStackResult {
 	const custom = opts.customStyles.find((s) => s.name === prefs.mapStyleName);
-	return buildMapStack(
-		mapStackOptsFromPrefs(prefs, { useBlobby: opts.useBlobby, customStyles: custom?.style }),
-	);
+	return buildMapStack(prefs, { useBlobby: opts.useBlobby, customStyles: custom?.style });
 }

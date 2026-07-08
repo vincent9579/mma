@@ -5,17 +5,11 @@ import { getEnrichFieldOptions, getDefaultEnrichKeys } from "@/lib/data/fieldDef
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { buildTileUrl, createRoadmapTileConfig, type MapStyle } from "@/lib/geo/tiles";
 import { BUILTIN_STYLE_KEYS, BUILTIN_STYLE_LABELS } from "@/lib/geo/mapStyles";
+import type { MapEmbedPrefs } from "@/store/mapEmbedPrefs";
 import { EnrichInfoButton } from "@/components/editor/map/EnrichInfoButton";
 import { Icon } from "@/components/primitives/Icon";
 import { mdiCogOutline } from "@mdi/js";
-import {
-	type SvColor,
-	SV_COLORS,
-	type MapTypeKey,
-	type SvCoverageType,
-	type SvThickness,
-	type MarkerStyle,
-} from "@/types";
+import { SV_COLORS, type MapTypeKey, type SvCoverageType, type MarkerStyle } from "@/types";
 import { useMapSetting } from "@/store/useMapSetting";
 import { ScoreBoundsEditor } from "./ScoreBoundsEditor";
 
@@ -26,32 +20,10 @@ const MAP_TYPE_LABELS: Record<MapTypeKey, string> = {
 };
 
 export interface LayerConfig {
-	basemap: MapTypeKey;
-	setBasemap: (v: MapTypeKey) => void;
-	labels: boolean;
-	setLabels: (v: boolean) => void;
+	prefs: MapEmbedPrefs;
+	setPref: <K extends keyof MapEmbedPrefs>(k: K) => (v: MapEmbedPrefs[K]) => void;
 	supportsLabels: boolean;
-	terrain: boolean;
-	setTerrain: (v: boolean) => void;
 	supportsTerrain: boolean;
-	streetViewPanoramas: boolean;
-	setStreetViewPanoramas: (v: boolean) => void;
-	streetViewCoverageType: SvCoverageType;
-	setStreetViewCoverageType: (v: SvCoverageType) => void;
-	svColor: SvColor;
-	setSvColor: (v: SvColor) => void;
-	streetViewCoverageThickness: SvThickness;
-	setStreetViewCoverageThickness: (v: SvThickness) => void;
-	streetViewBlobby: boolean;
-	setStreetViewBlobby: (v: boolean) => void;
-	boldCountryBorders: boolean;
-	setBoldCountryBorders: (v: boolean) => void;
-	boldSubdivisionBorders: boolean;
-	setBoldSubdivisionBorders: (v: boolean) => void;
-	hideRoadLabels: boolean;
-	setHideRoadLabels: (v: boolean) => void;
-	mapStyleName: string;
-	setMapStyleName: (v: string) => void;
 	customStyles: { name: string; style: MapStyle[] }[];
 	onManageStyles: () => void;
 }
@@ -107,6 +79,7 @@ function SearchRadiusSlider({
 }
 
 function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
+	const { prefs: p, setPref } = e;
 	return (
 		<div className="layer-config">
 			{/* Layers */}
@@ -118,9 +91,9 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 					<input
 						role="menuitemcheckbox"
 						type="checkbox"
-						checked={e.terrain}
+						checked={p.showTerrain}
 						disabled={!e.supportsTerrain}
-						onChange={(ev) => e.setTerrain(ev.target.checked)}
+						onChange={(ev) => setPref("showTerrain")(ev.target.checked)}
 					/>
 					Terrain
 				</label>
@@ -132,9 +105,9 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 					<input
 						role="menuitemcheckbox"
 						type="checkbox"
-						checked={e.labels}
+						checked={p.showLabels}
 						disabled={!e.supportsLabels}
-						onChange={(ev) => e.setLabels(ev.target.checked)}
+						onChange={(ev) => setPref("showLabels")(ev.target.checked)}
 					/>
 					Labels
 				</label>
@@ -142,8 +115,8 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 					<input
 						role="menuitemcheckbox"
 						type="checkbox"
-						checked={e.streetViewPanoramas}
-						onChange={(ev) => e.setStreetViewPanoramas(ev.target.checked)}
+						checked={p.svPanoramas}
+						onChange={(ev) => setPref("svPanoramas")(ev.target.checked)}
 					/>
 					Panoramas (requires close zoom)
 				</label>
@@ -167,8 +140,8 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 							<button
 								key={opt.value}
 								className="button button-group__button"
-								aria-checked={e.streetViewCoverageType === opt.value}
-								onClick={() => e.setStreetViewCoverageType(opt.value)}
+								aria-checked={p.svCoverageType === opt.value}
+								onClick={() => setPref("svCoverageType")(opt.value)}
 							>
 								{opt.name}
 							</button>
@@ -182,8 +155,8 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 								key={c}
 								type="button"
 								className="color-swatch__block"
-								data-state={e.svColor === c ? "on" : "off"}
-								onClick={() => e.setSvColor(c)}
+								data-state={p.svColor === c ? "on" : "off"}
+								onClick={() => setPref("svColor")(c)}
 							>
 								<div className="color-block" style={{ backgroundColor: `var(--${c}-7)` }} />
 							</button>
@@ -193,18 +166,16 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 				<label className="layer-config__item">
 					<input
 						type="checkbox"
-						checked={e.streetViewCoverageThickness === "high"}
-						onChange={(ev) =>
-							e.setStreetViewCoverageThickness(ev.target.checked ? "high" : "default")
-						}
+						checked={p.svThickness === "high"}
+						onChange={(ev) => setPref("svThickness")(ev.target.checked ? "high" : "default")}
 					/>{" "}
 					Make the lines thinner
 				</label>
 				<label className="layer-config__item">
 					<input
 						type="checkbox"
-						checked={e.streetViewBlobby}
-						onChange={(ev) => e.setStreetViewBlobby(ev.target.checked)}
+						checked={p.svBlobby}
+						onChange={(ev) => setPref("svBlobby")(ev.target.checked)}
 					/>{" "}
 					Use blobby layer while zoomed out
 				</label>
@@ -218,8 +189,8 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 					<input
 						role="menuitemcheckbox"
 						type="checkbox"
-						checked={e.boldCountryBorders}
-						onChange={(ev) => e.setBoldCountryBorders(ev.target.checked)}
+						checked={p.boldCountryBorders}
+						onChange={(ev) => setPref("boldCountryBorders")(ev.target.checked)}
 					/>
 					Emphasise country borders
 				</label>
@@ -227,8 +198,8 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 					<input
 						role="menuitemcheckbox"
 						type="checkbox"
-						checked={e.boldSubdivisionBorders}
-						onChange={(ev) => e.setBoldSubdivisionBorders(ev.target.checked)}
+						checked={p.boldSubdivisionBorders}
+						onChange={(ev) => setPref("boldSubdivisionBorders")(ev.target.checked)}
 					/>
 					Emphasise subdivision borders
 				</label>
@@ -236,8 +207,8 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 					<input
 						role="menuitemcheckbox"
 						type="checkbox"
-						checked={e.hideRoadLabels}
-						onChange={(ev) => e.setHideRoadLabels(ev.target.checked)}
+						checked={p.hideRoadLabels}
+						onChange={(ev) => setPref("hideRoadLabels")(ev.target.checked)}
 					/>
 					Hide road labels
 				</label>
@@ -251,8 +222,8 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 					Style:{" "}
 					<NSelect
 						className="nselect--limited"
-						value={e.mapStyleName}
-						onChange={(ev) => e.setMapStyleName(ev.target.value)}
+						value={p.mapStyleName}
+						onChange={(ev) => setPref("mapStyleName")(ev.target.value)}
 					>
 						{BUILTIN_STYLE_KEYS.map((key) => (
 							<option key={key} value={key}>
@@ -420,8 +391,8 @@ export function MapTypeDropdown({ layerConfig }: { layerConfig: LayerConfig }) {
 			{compact && (
 				<BasemapSelector
 					previewUrls={previewUrls}
-					selected={layerConfig.basemap}
-					onSelect={(t) => layerConfig.setBasemap(t)}
+					selected={layerConfig.prefs.mapType}
+					onSelect={(t) => layerConfig.setPref("mapType")(t)}
 				/>
 			)}
 			<SettingsPopup layerConfig={layerConfig} />
@@ -441,7 +412,7 @@ export function MapTypeDropdown({ layerConfig }: { layerConfig: LayerConfig }) {
 			>
 				<BasemapSelector
 					previewUrls={previewUrls}
-					selected={layerConfig.basemap}
+					selected={layerConfig.prefs.mapType}
 					onSelect={() => {}}
 				/>
 			</div>
@@ -452,7 +423,7 @@ export function MapTypeDropdown({ layerConfig }: { layerConfig: LayerConfig }) {
 						className="map-control__menu-button"
 						onClick={() => setIsOpen(!isOpen)}
 					>
-						{MAP_TYPE_LABELS[layerConfig.basemap]}
+						{MAP_TYPE_LABELS[layerConfig.prefs.mapType]}
 					</button>
 					{settingsPopup}
 				</>
@@ -460,12 +431,12 @@ export function MapTypeDropdown({ layerConfig }: { layerConfig: LayerConfig }) {
 				<>
 					<BasemapSelector
 						previewUrls={previewUrls}
-						selected={layerConfig.basemap}
+						selected={layerConfig.prefs.mapType}
 						onSelect={(t) => {
-							if (layerConfig.basemap === t) {
+							if (layerConfig.prefs.mapType === t) {
 								setIsOpen((v) => !v);
 							} else {
-								layerConfig.setBasemap(t);
+								layerConfig.setPref("mapType")(t);
 								setIsOpen(false);
 							}
 						}}
