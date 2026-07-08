@@ -245,12 +245,16 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 				<legend className="layer-config__header">
 					Map&nbsp;style <span className="layer-config__divider" />
 				</legend>
-				<label className="layer-config__item settings-popup__select">
+				<div
+					className="layer-config__item settings-popup__select"
+					style={{ display: "flex", alignItems: "center", gap: 4 }}
+				>
 					Style:{" "}
 					<NSelect
 						className="nselect--limited"
 						value={p.mapStyleName}
 						onChange={(ev) => setPref("mapStyleName")(ev.target.value)}
+						style={{ flex: 1 }}
 					>
 						{BUILTIN_STYLE_KEYS.map((key) => (
 							<option key={key} value={key}>
@@ -263,16 +267,18 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 							</option>
 						))}
 					</NSelect>
-				</label>
-				<a
-					href="#"
-					onClick={(ev) => {
-						ev.preventDefault();
-						e.onManageStyles();
-					}}
-				>
-					Manage map styles
-				</a>
+					<button
+						className="icon-button"
+						title="Manage map styles"
+						style={{ padding: 0, color: "#888", flexShrink: 0 }}
+						onClick={(ev) => {
+							ev.preventDefault();
+							e.onManageStyles();
+						}}
+					>
+						<Icon path={mdiCogOutline} size={14} />
+					</button>
+				</div>
 			</fieldset>
 		</div>
 	);
