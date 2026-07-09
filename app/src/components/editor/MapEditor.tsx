@@ -383,7 +383,7 @@ export function MapEditor() {
 			{workArea === "duplicates" && <SameLocation />}
 			{workArea === "import" && <ImportSidebar />}
 			{workArea === "diff" && <DiffSidebar />}
-			{workArea === "plugin" && <PluginSidebarHost />}
+			<PluginSidebarHost />
 			<CommandPalette />
 			{fileDragging && (
 				<div className="file-drop-overlay">

@@ -8,6 +8,7 @@ import type { FieldEntry } from "@/components/editor/map/FilterBuilder";
 import { partitionKeyOptions, RANGE_ID } from "@/lib/data/fieldOps";
 import { isNumericField, colorPartition } from "./gradientMath";
 import { partition, useScope } from "@/store/useMapStore";
+import { usePluginState } from "@/plugins/registry";
 import { useSetting } from "@/store/settings";
 import "./gradient.css";
 
@@ -91,12 +92,12 @@ function defaultGradientField(fields: FieldEntry[]): string {
 }
 
 export function GradientSidebar({ onClose }: { onClose: () => void }) {
-	const [fieldKey, setFieldKey] = useState(() =>
+	const [fieldKeyRaw, setFieldKey] = usePluginState<string>("gradient", "fieldKey", () =>
 		defaultGradientField(buildGradientFields(MMA.getKnownFieldKeys())),
 	);
-	const [projectionId, setProjectionId] = useState(RANGE_ID);
-	const [presetIdx, setPresetIdx] = useState(0);
-	const [bucketCount, setBucketCount] = useState(10);
+	const [projectionIdRaw, setProjectionId] = usePluginState("gradient", "projectionId", RANGE_ID);
+	const [presetIdxRaw, setPresetIdx] = usePluginState("gradient", "presetIdx", 0);
+	const [bucketCount, setBucketCount] = usePluginState("gradient", "bucketCount", 10);
 	const [applying, setApplying] = useState(false);
 	const scopeCtl = useScope();
 	const dateTimezone = useSetting("dateTimezone");
@@ -106,10 +107,18 @@ export function GradientSidebar({ onClose }: { onClose: () => void }) {
 	const knownKeys = MMA.getKnownFieldKeys();
 	const fields = useMemo(() => buildGradientFields(knownKeys), [knownKeys]);
 
+	// Persisted values are global; fall back when they don't resolve on this map.
+	const fieldKey = fields.some((f) => f.key === fieldKeyRaw)
+		? fieldKeyRaw
+		: defaultGradientField(fields);
+	const presetIdx = presetIdxRaw < PRESETS.length ? presetIdxRaw : 0;
 	const preset = PRESETS[presetIdx];
 	const fieldOpt = fields.find((f) => f.key === fieldKey);
 	const fieldType = (fieldOpt?.def?.type ?? "string") as ExtraFieldType;
 	const projOptions = useMemo(() => gradientOptions(fieldType), [fieldType]);
+	const projectionId = projOptions.some((p) => p.id === projectionIdRaw)
+		? projectionIdRaw
+		: defaultProjection(fieldType);
 
 	const applyGradient = useCallback(async () => {
 		if (!fieldOpt || !map) return;

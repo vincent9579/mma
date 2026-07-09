@@ -8,6 +8,7 @@ import { Sidebar, Field, EmptyState } from "@/components/primitives/Sidebar";
 import type { ExtraFieldDef } from "@/bindings.gen";
 import { fieldLabel, getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { binNumeric, compareNatural } from "@/lib/util/util";
+import { usePluginState } from "@/plugins/registry";
 import type { LocationStore } from "@/api";
 import "./pivot.css";
 
@@ -200,11 +201,11 @@ function defaultPivotField(fields: FieldEntry[]): string {
 }
 
 export function PivotSidebar({ onClose }: { onClose: () => void }) {
-	const [rowSource, setRowSource] = useState<RowSource>("active");
-	const [fieldKey, setFieldKey] = useState(() =>
+	const [rowSourceRaw, setRowSource] = usePluginState<RowSource>("pivot", "rowSource", "active");
+	const [fieldKeyRaw, setFieldKey] = usePluginState<string>("pivot", "fieldKey", () =>
 		defaultPivotField(buildPivotFields(MMA.getKnownFieldKeys())),
 	);
-	const [bucketCount, setBucketCount] = useState<number | null>(10);
+	const [bucketCount, setBucketCount] = usePluginState<number | null>("pivot", "bucketCount", 10);
 	const [data, setData] = useState<PivotData | null>(null);
 	const [loading, setLoading] = useState(false);
 
@@ -212,6 +213,17 @@ export function PivotSidebar({ onClose }: { onClose: () => void }) {
 	const fields = useMemo(() => buildPivotFields(knownKeys), [knownKeys]);
 
 	const savedSelections: SavedSelection[] = MMA.getSettings().savedSelections;
+
+	// Persisted values are global; fall back when they don't resolve on this map.
+	const rowSource: RowSource =
+		rowSourceRaw === "all" ||
+		rowSourceRaw === "active" ||
+		savedSelections.some((s) => s.id === rowSourceRaw)
+			? rowSourceRaw
+			: "active";
+	const fieldKey = fields.some((f) => f.key === fieldKeyRaw)
+		? fieldKeyRaw
+		: defaultPivotField(fields);
 
 	const currentDef = fields.find((f) => f.key === fieldKey)?.def;
 	const isNumericField = currentDef?.type === "number" || currentDef?.type === "date";
