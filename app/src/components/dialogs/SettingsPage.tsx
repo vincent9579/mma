@@ -717,14 +717,6 @@ function MapListSection() {
 			<legend className="fieldset__header">
 				Map List <span className="fieldset__divider" />
 			</legend>
-			<label className="settings-popup__item">
-				<input
-					type="checkbox"
-					checked={s.restoreSession}
-					onChange={(e) => setSetting("restoreSession", e.target.checked)}
-				/>
-				Restore open maps on startup
-			</label>
 			<p style={{ margin: "0.25rem 0", fontSize: "0.85rem", color: "#888" }}>
 				Fields shown on each map row (labels are always shown)
 			</p>
@@ -1210,10 +1202,30 @@ function DataSection() {
 	);
 }
 
+function StartupSection() {
+	const restoreSession = useSetting("restoreSession");
+	return (
+		<fieldset className="fieldset">
+			<legend className="fieldset__header">
+				Startup <span className="fieldset__divider" />
+			</legend>
+			<label className="settings-popup__item">
+				<input
+					type="checkbox"
+					checked={restoreSession}
+					onChange={(e) => setSetting("restoreSession", e.target.checked)}
+				/>
+				Restore open maps on startup
+			</label>
+		</fieldset>
+	);
+}
+
 function AdvancedTab() {
 	const showFps = useSetting("showFps");
 	return (
 		<>
+			<StartupSection />
 			<MapListSection />
 			<SeenSection />
 			<CustomCssSection />
