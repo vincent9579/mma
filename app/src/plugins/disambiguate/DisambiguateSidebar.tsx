@@ -190,10 +190,7 @@ export function DisambiguateSidebar({ onClose }: { onClose: () => void }) {
 	if (selCount < 2) {
 		return (
 			<Sidebar title="Disambiguate selections" onBack={onClose} className="disambig">
-				<EmptyState>
-					Select at least two groups to compare - tags, polygons, or filters. Fields are then ranked
-					by how well they tell the groups apart.
-				</EmptyState>
+				<EmptyState>Select at least two groups to compare - tags, polygons, or filters.</EmptyState>
 			</Sidebar>
 		);
 	}
