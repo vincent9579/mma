@@ -6042,3 +6042,6 @@ body {
 .gmnoprint:has([aria-label^="Terms"]) {
 	display: none;
 }
+div:has(> div.gmnoprint > div.gm-style-cc [title="Keyboard shortcuts"]) {
+	display: none !important;
+}
