@@ -4,29 +4,24 @@ import { NSelect } from "@/components/primitives/NSelect";
 import { useDebouncedCallback } from "@/lib/hooks/useDebouncedCallback";
 import { selectionDisplayName } from "@/store/selections";
 import { savedToSelectionProps, describeRule, type SavedSelection } from "@/store/savedSelections";
-import { Sidebar, Field, EmptyState } from "@/components/primitives/Sidebar";
+import { Sidebar, Field, EmptyState, SegmentedControl } from "@/components/primitives/Sidebar";
 import type { ExtraFieldDef } from "@/bindings.gen";
 import { fieldLabel, getFieldDef } from "@/lib/data/fieldDefRegistry";
 import { binNumeric, compareNatural } from "@/lib/util/util";
 import { usePluginState } from "@/plugins/registry";
+import {
+	stripNa,
+	pivotCellValue,
+	formatPct,
+	NA_KEY,
+	type PivotRow,
+	type PivotData,
+	type ValueMode,
+} from "./pivotMath";
 import type { LocationStore } from "@/api";
 import "./pivot.css";
 
 let locStore: LocationStore | null = null;
-
-interface PivotRow {
-	label: string;
-	color: [number, number, number];
-	counts: Map<string, number>;
-	total: number;
-}
-
-interface PivotData {
-	rows: PivotRow[];
-	columns: string[];
-	columnLabels: string[];
-	columnTotals: number[];
-}
 
 type RowSource = "all" | "active" | string; // "all", "active", or saved selection id
 
@@ -164,14 +159,14 @@ async function computePivot(
 			}
 		}
 		if (naCount > 0) {
-			counts.set("__na__", naCount);
+			counts.set(NA_KEY, naCount);
 			hasNa = true;
 			total += naCount;
 		}
 		return { label: row.label, color: row.color, counts, total };
 	});
 
-	if (hasNa) columns.push("__na__");
+	if (hasNa) columns.push(NA_KEY);
 
 	const columnTotals = columns.map((col) =>
 		pivotRows.reduce((sum, r) => sum + (r.counts.get(col) ?? 0), 0),
@@ -179,7 +174,7 @@ async function computePivot(
 
 	const extraLabels = fieldDef?.labels ?? {};
 	const columnLabels = columns.map((c) => {
-		if (c === "__na__") return "N/A";
+		if (c === NA_KEY) return "N/A";
 		if (isTags) return tagMap[c]?.name ?? `Tag ${c}`;
 		return extraLabels[c] ?? c;
 	});
@@ -206,6 +201,8 @@ export function PivotSidebar({ onClose }: { onClose: () => void }) {
 		defaultPivotField(buildPivotFields(MMA.getKnownFieldKeys())),
 	);
 	const [bucketCount, setBucketCount] = usePluginState<number | null>("pivot", "bucketCount", 10);
+	const [valueMode, setValueMode] = usePluginState<ValueMode>("pivot", "valueMode", "count");
+	const [includeNa, setIncludeNa] = usePluginState<boolean>("pivot", "includeNa", true);
 	const [data, setData] = useState<PivotData | null>(null);
 	const [loading, setLoading] = useState(false);
 
@@ -254,6 +251,10 @@ export function PivotSidebar({ onClose }: { onClose: () => void }) {
 		};
 	}, [recompute, debouncedRecompute]);
 
+	const hasNa = data?.columns.includes(NA_KEY) ?? false;
+
+	const view = useMemo(() => (data && !includeNa ? stripNa(data) : data), [data, includeNa]);
+
 	return (
 		<Sidebar title="Pivot Table" onBack={onClose} className="pivot-sidebar" flush>
 			<div className="pivot-sidebar__controls">
@@ -293,6 +294,27 @@ export function PivotSidebar({ onClose }: { onClose: () => void }) {
 						</NSelect>
 					</Field>
 				)}
+				<Field label="Values">
+					<SegmentedControl<ValueMode>
+						value={valueMode}
+						onChange={setValueMode}
+						options={[
+							{ value: "count", label: "Count" },
+							{ value: "rowPct", label: "Row %" },
+							{ value: "colPct", label: "Col %" },
+						]}
+					/>
+				</Field>
+				{hasNa && (
+					<label className="pivot-sidebar__check">
+						<input
+							type="checkbox"
+							checked={includeNa}
+							onChange={(e) => setIncludeNa(e.target.checked)}
+						/>
+						Include N/A
+					</label>
+				)}
 			</div>
 
 			<div className="pivot-sidebar__body">
@@ -309,7 +331,7 @@ export function PivotSidebar({ onClose }: { onClose: () => void }) {
 					</EmptyState>
 				)}
 				{loading && <EmptyState>Computing...</EmptyState>}
-				{data && <PivotTable data={data} />}
+				{view && <PivotTable data={view} mode={valueMode} />}
 			</div>
 		</Sidebar>
 	);
@@ -317,7 +339,7 @@ export function PivotSidebar({ onClose }: { onClose: () => void }) {
 
 type SortKey = "label" | "total" | string; // column key or "label" or "total"
 
-function PivotTable({ data }: { data: PivotData }) {
+function PivotTable({ data, mode }: { data: PivotData; mode: ValueMode }) {
 	const [sortKey, setSortKey] = useState<SortKey>("label");
 	const [sortAsc, setSortAsc] = useState(true);
 
@@ -332,6 +354,23 @@ function PivotTable({ data }: { data: PivotData }) {
 		});
 	}, []);
 
+	// Displayed value per cell; also drives sorting and shading so all three agree.
+	const cellValue = useCallback(
+		(row: PivotRow, col: string) => pivotCellValue(data, row, col, mode),
+		[mode, data],
+	);
+
+	const maxCellValue = useMemo(() => {
+		let max = 0;
+		for (const row of data.rows) {
+			for (const col of data.columns) {
+				const v = cellValue(row, col);
+				if (v > max) max = v;
+			}
+		}
+		return max;
+	}, [data, cellValue]);
+
 	const sortedIndices = useMemo(() => {
 		const indices = data.rows.map((_, i) => i);
 		indices.sort((a, b) => {
@@ -343,15 +382,15 @@ function PivotTable({ data }: { data: PivotData }) {
 				va = data.rows[a].total;
 				vb = data.rows[b].total;
 			} else {
-				va = data.rows[a].counts.get(sortKey) ?? 0;
-				vb = data.rows[b].counts.get(sortKey) ?? 0;
+				va = cellValue(data.rows[a], sortKey);
+				vb = cellValue(data.rows[b], sortKey);
 			}
 			if (va < vb) return sortAsc ? -1 : 1;
 			if (va > vb) return sortAsc ? 1 : -1;
 			return 0;
 		});
 		return indices;
-	}, [data, sortKey, sortAsc]);
+	}, [data, sortKey, sortAsc, cellValue]);
 
 	const arrow = (key: SortKey) => (sortKey === key ? (sortAsc ? " ▴" : " ▾") : "");
 
@@ -398,10 +437,20 @@ function PivotTable({ data }: { data: PivotData }) {
 									</span>
 								</td>
 								{data.columns.map((col) => {
-									const v = row.counts.get(col) ?? 0;
+									const raw = row.counts.get(col) ?? 0;
+									const v = cellValue(row, col);
 									return (
-										<td key={col} className={v === 0 ? "pivot-sidebar__cell--zero" : ""}>
-											{v}
+										<td
+											key={col}
+											className={raw === 0 ? "pivot-sidebar__cell--zero" : ""}
+											style={
+												raw > 0 && maxCellValue > 0
+													? { background: `rgba(255,255,255,${(0.11 * v) / maxCellValue})` }
+													: undefined
+											}
+											title={mode === "count" ? undefined : `${raw}`}
+										>
+											{mode === "count" ? raw : formatPct(v)}
 										</td>
 									);
 								})}
