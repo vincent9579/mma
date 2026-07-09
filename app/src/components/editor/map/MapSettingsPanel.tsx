@@ -392,8 +392,22 @@ export function MapTypeDropdown({ layerConfig }: { layerConfig: LayerConfig }) {
 	const [isOpen, setIsOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const basemapMeasureRef = useRef<HTMLDivElement>(null);
+	const basemapRef = useRef<HTMLDivElement>(null);
 	const compact = useMapTypeCompact(containerRef, basemapMeasureRef);
 	const mapPreviewUrl = useMemo(() => buildTileUrl(createRoadmapTileConfig(), 0, 0, 0), []);
+
+	useEffect(() => {
+		const measure = basemapMeasureRef.current;
+		const visible = basemapRef.current;
+		if (!measure || !visible) return;
+		const sync = () => {
+			visible.style.width = `${measure.scrollWidth}px`;
+		};
+		const obs = new ResizeObserver(sync);
+		obs.observe(measure);
+		sync();
+		return () => obs.disconnect();
+	}, [compact]);
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -467,21 +481,23 @@ export function MapTypeDropdown({ layerConfig }: { layerConfig: LayerConfig }) {
 				</>
 			) : (
 				<>
-					<BasemapSelector
-						previewUrls={previewUrls}
-						selected={layerConfig.prefs.mapType}
-						onSelect={(t) => {
-							if (layerConfig.prefs.mapType === t) {
-								setIsOpen((v) => !v);
-							} else {
-								layerConfig.setPref("mapType")(t);
-								setIsOpen(false);
-							}
-						}}
-						onMouseEnter={() => {
-							setIsOpen(true);
-						}}
-					/>
+					<div ref={basemapRef}>
+						<BasemapSelector
+							previewUrls={previewUrls}
+							selected={layerConfig.prefs.mapType}
+							onSelect={(t) => {
+								if (layerConfig.prefs.mapType === t) {
+									setIsOpen((v) => !v);
+								} else {
+									layerConfig.setPref("mapType")(t);
+									setIsOpen(false);
+								}
+							}}
+							onMouseEnter={() => {
+								setIsOpen(true);
+							}}
+						/>
+					</div>
 					{settingsPopup}
 				</>
 			)}

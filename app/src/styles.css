@@ -2251,6 +2251,9 @@ summary.button {
 	height: auto;
 	overflow: visible;
 }
+.map-type-control__basemap--measure .map-type-control__button span {
+	font-weight: 700;
+}
 .map-type-control__basemap {
 	grid-auto-flow: column;
 	grid-auto-columns: 1fr;
