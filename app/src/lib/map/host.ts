@@ -1,15 +1,22 @@
 // MapHost: the single interface every map surface (editor map, minimap) binds to.
 // Hosts wrap a concrete basemap engine (Google Maps via opensv, MapLibre GL for
 // vector tiles) behind one camera/event/overlay contract so consumers never
-// branch on the engine. Google-only features (DrawingManager, measure tool)
-// reach the raw map through `googleMap` and degrade when it is null.
+// branch on the engine. Engine-only features (DrawingManager, measure tool)
+// reach the raw engine through `hostInstance(host, kind)` and degrade when the
+// active host is a different engine.
 
 import type { Layer, PickingInfo } from "@deck.gl/core";
 import type { LatLng, Bounds, MapTypeKey } from "@/types";
 import type { MapEmbedPrefs } from "@/store/mapEmbedPrefs";
 import type { CustomStyle } from "@/lib/geo/mapStack";
 
-export type MapHostKind = "google" | "maplibre";
+// Engine instance registry. This module knows nothing about concrete hosts;
+// each host module augments this interface with `kind: engine instance type`,
+// which is also what makes it a MapHostKind.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- augmentation seam
+export interface HostInstances {}
+
+export type MapHostKind = keyof HostInstances;
 
 export interface DeckOverlayProps {
 	layers: Layer[];
@@ -39,12 +46,12 @@ export interface BasemapOpts {
 	customStyles: CustomStyle[];
 }
 
-export interface MapHost {
-	readonly kind: MapHostKind;
-	// The engine's map div: toasts anchor here, DOM listeners attach here.
+export interface MapHostContract<K extends MapHostKind = MapHostKind> {
+	readonly kind: K;
+	// The engine's visible map div: toasts anchor here, DOM listeners attach here.
 	readonly container: HTMLElement;
-	// Escape hatch for Google-only features; null on non-Google hosts.
-	readonly googleMap: google.maps.Map | null;
+	// Raw engine escape hatch; typed by `kind`. Prefer `hostInstance(host, kind)`.
+	getHostInstance(): HostInstances[K];
 
 	// Camera. Zoom is always Google-scale (world = 256px at z0); hosts normalize.
 	getZoom(): number;
@@ -70,6 +77,18 @@ export interface MapHost {
 	setSvOpacity(v: number): void;
 	resize(): void;
 	destroy(): void;
+}
+
+// Discriminated union over the registered kinds, so `host.kind === "x"` narrows
+// getHostInstance() to that engine's type.
+export type MapHost = { [K in MapHostKind]: MapHostContract<K> }[MapHostKind];
+
+/** The raw engine instance if `host` is of the given kind, else null. */
+export function hostInstance<K extends MapHostKind>(
+	host: MapHost | null,
+	kind: K,
+): HostInstances[K] | null {
+	return host?.kind === kind ? (host.getHostInstance() as HostInstances[K]) : null;
 }
 
 export function hostKindForMapType(mapType: MapTypeKey): MapHostKind {

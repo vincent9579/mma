@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useEffectEvent } from "react";
 import { google } from "@/lib/sv/opensv";
 import { Icon, polygonOutline, rectangleOutline } from "@/components/primitives/Icon";
 import { mdiPencil } from "@mdi/js";
-import type { MapHost } from "@/lib/map/host";
+import { hostInstance, type MapHost } from "@/lib/map/host";
 import { addClickInterceptor } from "@/lib/map/mapState";
 
 type DrawMode = "polygon" | "rectangle" | "freehand" | null;
@@ -59,7 +59,7 @@ export function PolygonTools({
 	const isDrawingRef = useRef(false);
 	const emitDraw = useEffectEvent((rings: number[][][]) => onDraw(rings));
 	const emitUpdate = useEffectEvent(() => requestOverlayUpdate());
-	const gMap = host?.googleMap ?? null;
+	const gMap = hostInstance(host, "google");
 
 	// Google host: polygon/rectangle via the native DrawingManager (editable rubber band).
 	useEffect(() => {

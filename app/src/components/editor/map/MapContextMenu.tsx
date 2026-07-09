@@ -8,7 +8,7 @@ import {
 	setLatLngAnchor,
 	getContextMenuTarget,
 } from "@/lib/sv/measure";
-import type { MapHost } from "@/lib/map/host";
+import { hostInstance, type MapHost } from "@/lib/map/host";
 
 interface MapContextMenuProps {
 	host: MapHost | null;
@@ -19,7 +19,7 @@ export const MapContextMenuContent = forwardRef<HTMLDivElement, MapContextMenuPr
 		const { isMeasuring } = useMeasureState();
 		const anchor = useLatLngAnchor();
 		// The measure tool is Google-only (measuretool-googlemaps-v3).
-		const gMap = host?.googleMap ?? null;
+		const gMap = hostInstance(host, "google");
 
 		return (
 			<ContextMenu.Content className="context-menu" ref={ref}>

@@ -10,12 +10,19 @@ import type { MapEmbedPrefs } from "@/store/mapEmbedPrefs";
 import type { LatLng, Bounds } from "@/types";
 import type {
 	MapHost,
+	MapHostContract,
 	MapHostEvents,
 	BasemapOpts,
 	CreateHostOpts,
 	DeckOverlayHandle,
 	DeckOverlayProps,
 } from "@/lib/map/host";
+
+declare module "@/lib/map/host" {
+	interface HostInstances {
+		google: google.maps.Map;
+	}
+}
 
 type GmEvent = { srcEvent?: { domEvent?: Event } };
 
@@ -87,7 +94,7 @@ class GoogleDeckOverlay implements DeckOverlayHandle {
 	}
 }
 
-class GoogleMapHost implements MapHost {
+class GoogleMapHost implements MapHostContract<"google"> {
 	readonly kind = "google" as const;
 	readonly map: google.maps.Map;
 	private svLayer: google.maps.ImageMapType | null = null;
@@ -120,7 +127,7 @@ class GoogleMapHost implements MapHost {
 		return this.map.getDiv();
 	}
 
-	get googleMap(): google.maps.Map {
+	getHostInstance(): google.maps.Map {
 		return this.map;
 	}
 

@@ -20,12 +20,19 @@ import type { MapEmbedPrefs } from "@/store/mapEmbedPrefs";
 import type { LatLng, Bounds } from "@/types";
 import type {
 	MapHost,
+	MapHostContract,
 	MapHostEvents,
 	BasemapOpts,
 	CreateHostOpts,
 	DeckOverlayHandle,
 	DeckOverlayProps,
 } from "@/lib/map/host";
+
+declare module "@/lib/map/host" {
+	interface HostInstances {
+		maplibre: maplibregl.Map;
+	}
+}
 
 const ZOOM_OFFSET = 1;
 const SV_SOURCE = "mma-sv";
@@ -108,9 +115,8 @@ class MapLibreDeckOverlay implements DeckOverlayHandle {
 	}
 }
 
-class MapLibreHost implements MapHost {
+class MapLibreHost implements MapHostContract<"maplibre"> {
 	readonly kind = "maplibre" as const;
-	readonly googleMap = null;
 	readonly map: maplibregl.Map;
 	private overlays = new Set<MapLibreDeckOverlay>();
 	private svCfg: TileConfig;
@@ -177,6 +183,10 @@ class MapLibreHost implements MapHost {
 	// inner map canvas bubble up to it. Pixel math converts via PREFETCH_MARGIN.
 	get container(): HTMLElement {
 		return this.outer;
+	}
+
+	getHostInstance(): maplibregl.Map {
+		return this.map;
 	}
 
 	private svTileTemplate(): string {
