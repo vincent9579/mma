@@ -93,8 +93,6 @@ function buildRows(): FieldRow[] {
 
 function CoverageIcon({ ratio }: { ratio: number }) {
 	const pct = Math.round(ratio * 100);
-	// Complete = green, partial = amber: same scale as the bulk-enrich coverage bars.
-	const fill = ratio >= 1 ? "var(--constructive)" : "#e8a83e";
 	return (
 		<svg className="manage-fields-table__coverage" width="18" height="18" viewBox="0 0 14 14">
 			<title>{pct}% of locations</title>
@@ -104,8 +102,8 @@ function CoverageIcon({ ratio }: { ratio: number }) {
 					cx="7"
 					cy="7"
 					r="6"
-					fill={fill}
-					opacity="0.85"
+					fill="currentColor"
+					opacity="0.5"
 					style={{ clipPath: `inset(${(1 - ratio) * 100}% 0 0 0)` }}
 				/>
 			)}

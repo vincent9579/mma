@@ -6037,7 +6037,7 @@ body {
 	transition: background 0.15s;
 }
 .switch--on {
-	background: #16a34a;
+	background: var(--constructive);
 }
 .switch:disabled {
 	opacity: 0.5;
