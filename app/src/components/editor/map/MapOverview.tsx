@@ -114,7 +114,7 @@ function SpacedPickPanel() {
 }
 
 function TopKPanel({
-	field,
+	field: fieldProp,
 	setField,
 	count,
 	setCount,
@@ -129,7 +129,7 @@ function TopKPanel({
 	setAscending: (v: boolean) => void;
 }) {
 	const fields = useExtraFieldKeys();
-	if (field === "" && fields.length > 0) setField(fields[0].key);
+	const field = fieldProp || fields[0]?.key || "";
 	return (
 		<form
 			className="selection-manager__inline-form"
