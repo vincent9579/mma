@@ -16,6 +16,7 @@ export interface MapEmbedPrefs {
 	hideTransit: boolean;
 	hideHighways: boolean;
 	mapStyleName: string;
+	vectorStyleName: string;
 	mapType: MapTypeKey;
 	markerStyle: MarkerStyle;
 	markerOpacity: number;
@@ -42,6 +43,7 @@ export const DEFAULT_PREFS: MapEmbedPrefs = {
 	hideTransit: false,
 	hideHighways: false,
 	mapStyleName: "default",
+	vectorStyleName: "liberty",
 	mapType: "map",
 	markerStyle: "pin",
 	markerOpacity: 1,

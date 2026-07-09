@@ -36,6 +36,26 @@ interface BuildOpts {
 	customStyles?: MapStyle[];
 }
 
+/** SV coverage tile config for the current prefs; shared by the Google raster stack
+ *  and the MapLibre raster overlay. */
+export function createSvConfigForPrefs(prefs: MapEmbedPrefs, useBlobby: boolean) {
+	const showOfficial = prefs.svCoverageType === "official" || prefs.svCoverageType === "default";
+	const showUnofficial =
+		prefs.svCoverageType === "unofficial" || prefs.svCoverageType === "default";
+	return useBlobby
+		? createSvBlobbyTileConfig({
+				showOfficial,
+				showUnofficial,
+				color: prefs.svColor,
+			})
+		: createSvTileConfig({
+				showOfficial,
+				showUnofficial,
+				color: prefs.svColor,
+				thickness: prefs.svThickness,
+			});
+}
+
 export function buildMapStack(prefs: MapEmbedPrefs, opts: BuildOpts): MapStackResult {
 	const tileSize = new google.maps.Size(256, 256);
 	const layers: google.maps.ImageMapType[] = [];
@@ -177,18 +197,7 @@ export function buildMapStack(prefs: MapEmbedPrefs, opts: BuildOpts): MapStackRe
 	const showOfficial = prefs.svCoverageType === "official" || prefs.svCoverageType === "default";
 	const showUnofficial =
 		prefs.svCoverageType === "unofficial" || prefs.svCoverageType === "default";
-	const svCfg = opts.useBlobby
-		? createSvBlobbyTileConfig({
-				showOfficial,
-				showUnofficial,
-				color: prefs.svColor,
-			})
-		: createSvTileConfig({
-				showOfficial,
-				showUnofficial,
-				color: prefs.svColor,
-				thickness: prefs.svThickness,
-			});
+	const svCfg = createSvConfigForPrefs(prefs, opts.useBlobby);
 	const svLayer = new google.maps.ImageMapType({
 		getTileUrl: (coord: TileCoord, zoom: number) => buildTileUrl(svCfg, coord.x, coord.y, zoom),
 		tileSize,

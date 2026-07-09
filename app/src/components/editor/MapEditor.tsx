@@ -22,7 +22,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { goToList } from "@/store/router";
 import { activatePlugins, deactivatePlugins } from "@/plugins/registry";
-import { getGoogleMap, waitForGoogleMap, fitMapToBounds } from "@/lib/map/mapState";
+import { getMapHost, waitForMapHost, fitMapToBounds } from "@/lib/map/mapState";
 import { pluginsReady } from "@/plugins";
 import { MapEmbed } from "@/components/editor/map/MapEmbed";
 import { MapMetaBar } from "@/components/editor/map/MapMetaBar";
@@ -240,7 +240,7 @@ export function MapEditor() {
 
 	useEffect(() => {
 		let cancelled = false;
-		Promise.all([pluginsReady, waitForGoogleMap()]).then(() => {
+		Promise.all([pluginsReady, waitForMapHost()]).then(() => {
 			if (cancelled) return;
 			activatePlugins();
 		});
@@ -309,11 +309,10 @@ export function MapEditor() {
 			showMapCursorRef.current = false;
 			setShowMapCursor(false);
 			if (!wasShowing) return;
-			const gmap = getGoogleMap();
-			const center = gmap?.getCenter();
-			if (!gmap || !center) return;
-			// deck.gl/google-maps picks off the Maps 'click' event (latLng), not DOM events.
-			google.maps.event.trigger(gmap, "click", { latLng: center });
+			const host = getMapHost();
+			const center = host?.getCenter();
+			if (!host || !center) return;
+			host.triggerClickAt(center);
 		}
 		function onBlur() {
 			setShowMapCursor(false);

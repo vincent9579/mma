@@ -4,7 +4,12 @@ import { NSelect } from "@/components/primitives/NSelect";
 import { getEnrichFieldOptions, getDefaultEnrichKeys } from "@/lib/data/fieldDefs";
 import { Dialog, DialogContent } from "@/components/primitives/Dialog";
 import { buildTileUrl, createRoadmapTileConfig, type MapStyle } from "@/lib/geo/tiles";
-import { BUILTIN_STYLE_KEYS, BUILTIN_STYLE_LABELS } from "@/lib/geo/mapStyles";
+import {
+	BUILTIN_STYLE_KEYS,
+	BUILTIN_STYLE_LABELS,
+	VECTOR_STYLE_KEYS,
+	VECTOR_STYLE_LABELS,
+} from "@/lib/geo/mapStyles";
 import type { MapEmbedPrefs } from "@/store/mapEmbedPrefs";
 import { EnrichInfoButton } from "@/components/editor/map/EnrichInfoButton";
 import { Icon } from "@/components/primitives/Icon";
@@ -17,6 +22,7 @@ const MAP_TYPE_LABELS: Record<MapTypeKey, string> = {
 	map: "Map",
 	satellite: "Satellite",
 	osm: "OSM",
+	vector: "Vector",
 };
 
 export interface LayerConfig {
@@ -24,6 +30,8 @@ export interface LayerConfig {
 	setPref: <K extends keyof MapEmbedPrefs>(k: K) => (v: MapEmbedPrefs[K]) => void;
 	supportsLabels: boolean;
 	supportsTerrain: boolean;
+	// Google styler options (borders, hide POI, styles); off for vector basemaps.
+	supportsStyling: boolean;
 	customStyles: { name: string; style: MapStyle[] }[];
 	onManageStyles: () => void;
 }
@@ -190,6 +198,7 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 						role="menuitemcheckbox"
 						type="checkbox"
 						checked={p.boldCountryBorders}
+						disabled={!e.supportsStyling}
 						onChange={(ev) => setPref("boldCountryBorders")(ev.target.checked)}
 					/>
 					Emphasise country borders
@@ -199,6 +208,7 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 						role="menuitemcheckbox"
 						type="checkbox"
 						checked={p.boldSubdivisionBorders}
+						disabled={!e.supportsStyling}
 						onChange={(ev) => setPref("boldSubdivisionBorders")(ev.target.checked)}
 					/>
 					Emphasise subdivision borders
@@ -208,6 +218,7 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 						role="menuitemcheckbox"
 						type="checkbox"
 						checked={p.hideRoadLabels}
+						disabled={!e.supportsStyling}
 						onChange={(ev) => setPref("hideRoadLabels")(ev.target.checked)}
 					/>
 					Hide road labels
@@ -217,6 +228,7 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 						role="menuitemcheckbox"
 						type="checkbox"
 						checked={p.hidePoi}
+						disabled={!e.supportsStyling}
 						onChange={(ev) => setPref("hidePoi")(ev.target.checked)}
 					/>
 					Hide points of interest
@@ -226,6 +238,7 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 						role="menuitemcheckbox"
 						type="checkbox"
 						checked={p.hideTransit}
+						disabled={!e.supportsStyling}
 						onChange={(ev) => setPref("hideTransit")(ev.target.checked)}
 					/>
 					Hide transit
@@ -235,6 +248,7 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 						role="menuitemcheckbox"
 						type="checkbox"
 						checked={p.hideHighways}
+						disabled={!e.supportsStyling}
 						onChange={(ev) => setPref("hideHighways")(ev.target.checked)}
 					/>
 					Hide highways
@@ -245,39 +259,61 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 				<legend className="layer-config__header">
 					Map&nbsp;style <span className="layer-config__divider" />
 				</legend>
-				<div
-					className="layer-config__item settings-popup__select"
-					style={{ display: "flex", alignItems: "center", gap: 4 }}
-				>
-					Style:{" "}
-					<NSelect
-						className="nselect--limited"
-						value={p.mapStyleName}
-						onChange={(ev) => setPref("mapStyleName")(ev.target.value)}
-						style={{ flex: 1 }}
+				{p.mapType === "vector" ? (
+					<div
+						className="layer-config__item settings-popup__select"
+						style={{ display: "flex", alignItems: "center", gap: 4 }}
 					>
-						{BUILTIN_STYLE_KEYS.map((key) => (
-							<option key={key} value={key}>
-								{BUILTIN_STYLE_LABELS[key]}
-							</option>
-						))}
-						{e.customStyles.map((s) => (
-							<option key={s.name} value={s.name}>
-								{s.name}
-							</option>
-						))}
-					</NSelect>
-					<button
-						className="icon-button icon-button--inline"
-						title="Manage map styles"
-						onClick={(ev) => {
-							ev.preventDefault();
-							e.onManageStyles();
-						}}
+						Style:{" "}
+						<NSelect
+							className="nselect--limited"
+							value={p.vectorStyleName}
+							onChange={(ev) => setPref("vectorStyleName")(ev.target.value)}
+							style={{ flex: 1 }}
+						>
+							{VECTOR_STYLE_KEYS.map((key) => (
+								<option key={key} value={key}>
+									{VECTOR_STYLE_LABELS[key]}
+								</option>
+							))}
+						</NSelect>
+					</div>
+				) : (
+					<div
+						className="layer-config__item settings-popup__select"
+						style={{ display: "flex", alignItems: "center", gap: 4 }}
 					>
-						<Icon path={mdiCogOutline} size={18} />
-					</button>
-				</div>
+						Style:{" "}
+						<NSelect
+							className="nselect--limited"
+							value={p.mapStyleName}
+							disabled={!e.supportsStyling}
+							onChange={(ev) => setPref("mapStyleName")(ev.target.value)}
+							style={{ flex: 1 }}
+						>
+							{BUILTIN_STYLE_KEYS.map((key) => (
+								<option key={key} value={key}>
+									{BUILTIN_STYLE_LABELS[key]}
+								</option>
+							))}
+							{e.customStyles.map((s) => (
+								<option key={s.name} value={s.name}>
+									{s.name}
+								</option>
+							))}
+						</NSelect>
+						<button
+							className="icon-button icon-button--inline"
+							title="Manage map styles"
+							onClick={(ev) => {
+								ev.preventDefault();
+								e.onManageStyles();
+							}}
+						>
+							<Icon path={mdiCogOutline} size={18} />
+						</button>
+					</div>
+				)}
 			</fieldset>
 		</div>
 	);
@@ -286,9 +322,11 @@ function SettingsPopup({ layerConfig: e }: { layerConfig: LayerConfig }) {
 const MAP_TYPE_PREVIEW_STATIC: Partial<Record<MapTypeKey, string>> = {
 	satellite: "https://mts1.googleapis.com/vt?hl=en-US&lyrs=s&x=0&y=0&z=0",
 	osm: "https://tile.openstreetmap.org/0/0/0.png",
+	// No raster endpoint for OpenFreeMap styles; Carto's voyager raster is a close stand-in.
+	vector: "https://basemaps.cartocdn.com/rastertiles/voyager/0/0/0.png",
 };
 
-const MAP_TYPES: MapTypeKey[] = ["map", "satellite", "osm"];
+const MAP_TYPES: MapTypeKey[] = ["map", "satellite", "osm", "vector"];
 
 function BasemapSelector({
 	previewUrls,
@@ -424,6 +462,7 @@ export function MapTypeDropdown({ layerConfig }: { layerConfig: LayerConfig }) {
 		map: mapPreviewUrl,
 		satellite: MAP_TYPE_PREVIEW_STATIC.satellite!,
 		osm: MAP_TYPE_PREVIEW_STATIC.osm!,
+		vector: MAP_TYPE_PREVIEW_STATIC.vector!,
 	};
 
 	const settingsPopup = isOpen && (

@@ -3181,7 +3181,7 @@ declare const mma: {
 	getAllFieldDefs: typeof getAllFieldDefs;
 	createLocation: typeof createLocation;
 	getGoogleMap: () => google.maps.Map | null;
-	waitForGoogleMap: () => Promise<google.maps.Map>;
+	waitForGoogleMap: () => Promise<google.maps.Map | null>;
 	setSetting: typeof setSetting;
 	getSettings: () => {
 		showCameraBadges: boolean;

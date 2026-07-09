@@ -478,3 +478,21 @@ const STYLE_BG_COLORS: Record<BuiltinStyleKey, string> = {
 export function getStyleBackgroundColor(style: string): string {
 	return STYLE_BG_COLORS[style as BuiltinStyleKey] ?? STYLE_BG_COLORS.default;
 }
+
+// --- Vector basemap styles (OpenFreeMap-hosted MapLibre styles) ---
+
+export const VECTOR_STYLE_KEYS = ["liberty", "bright", "positron"] as const;
+export type VectorStyleKey = (typeof VECTOR_STYLE_KEYS)[number];
+
+export const VECTOR_STYLE_LABELS: Record<VectorStyleKey, string> = {
+	liberty: "Liberty",
+	bright: "Bright",
+	positron: "Positron",
+};
+
+export const DEFAULT_VECTOR_STYLE: VectorStyleKey = "liberty";
+
+export function vectorStyleUrl(name: string): string {
+	const key = (VECTOR_STYLE_KEYS as readonly string[]).includes(name) ? name : DEFAULT_VECTOR_STYLE;
+	return `https://tiles.openfreemap.org/styles/${key}`;
+}
