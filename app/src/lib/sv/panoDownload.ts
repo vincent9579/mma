@@ -266,7 +266,7 @@ async function renderLocationImage(
 	meta: PanoData | null,
 	config: PanoDownloadConfig,
 ): Promise<RenderedImage | null> {
-	const name = String(loc.id);
+	const name = panoId;
 
 	if (config.mode === "thumbnail") {
 		const url = new URL(svThumbnailUrl(panoId, loc.heading, 1024, 768));
@@ -370,6 +370,22 @@ export async function bulkDownloadPanoramas(
 	let done = 0;
 	let singleName: string | null = null;
 
+	const usedNames = new Set<string>();
+	const uniqueName = (name: string) => {
+		if (!usedNames.has(name)) {
+			usedNames.add(name);
+			return name;
+		}
+		const dot = name.lastIndexOf(".");
+		const stem = name.slice(0, dot);
+		const ext = name.slice(dot);
+		let i = 2;
+		while (usedNames.has(`${stem}_${i}${ext}`)) i++;
+		const suffixed = `${stem}_${i}${ext}`;
+		usedNames.add(suffixed);
+		return suffixed;
+	};
+
 	try {
 		onProgress?.(0, pending.length, "Downloading");
 		await runConcurrent(
@@ -378,12 +394,13 @@ export async function bulkDownloadPanoramas(
 				const image = await renderLocationImage(loc, panoId, metaMap.get(panoId) ?? null, config);
 				let ok = false;
 				if (image) {
-					const res = await fetch(mmaBufUrl(`${session}/${image.fileName}`), {
+					const fileName = uniqueName(image.fileName);
+					const res = await fetch(mmaBufUrl(`${session}/${fileName}`), {
 						method: "POST",
 						body: image.blob,
 					});
 					ok = res.ok;
-					if (ok) singleName = image.fileName;
+					if (ok) singleName = fileName;
 				}
 				(ok ? succeeded : failed).push(loc.id);
 				done++;
@@ -402,9 +419,8 @@ export async function bulkDownloadPanoramas(
 	}
 
 	const outputPath = await cmd.storeUploadFinish(session);
+	const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
 	const suggestedName =
-		succeeded.length === 1 && singleName
-			? singleName
-			: `panoramas-${new Date().toISOString().slice(0, 10)}.zip`;
+		succeeded.length === 1 && singleName ? singleName : `panoramas-${stamp}.zip`;
 	return { succeeded, failed, outputPath, suggestedName, fileCount: succeeded.length };
 }
