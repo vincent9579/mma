@@ -2845,7 +2845,9 @@ summary.button {
 }
 .bulk-operation__actions {
 	display: flex;
+	flex-wrap: wrap;
 	justify-content: flex-end;
+	gap: 0.5rem;
 }
 
 .merge-duplicates__status {

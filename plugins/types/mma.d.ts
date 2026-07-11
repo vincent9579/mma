@@ -2,7 +2,7 @@
 
 /// <reference types="google.maps" />
 
-import { ComponentType, ReactNode } from 'react';
+import { ComponentType, ReactNode, SetStateAction } from 'react';
 
 export interface PluginSettingDef {
 	key: string;
@@ -18,6 +18,9 @@ interface Plugin {
 	comingSoon?: boolean;
 	core?: boolean;
 	settings?: PluginSettingDef[];
+	/** Keep the sidebar mounted (hidden) when the user leaves plugin mode.
+	 *  Only for plugins whose state can't be serialized (e.g. an iframe). */
+	keepAlive?: boolean;
 	activate(): void | (() => void);
 	modal?: ComponentType<{
 		onClose: () => void;
@@ -38,6 +41,10 @@ export interface PluginStorage {
 	keys(): string[];
 }
 declare function createPluginStorage(id: string): PluginStorage;
+declare function usePluginState<T>(pluginId: string, key: string, initial: T | (() => T)): readonly [
+	T,
+	(action: SetStateAction<T>) => void
+];
 /** Commands */
 export declare const commands: {
 	/**
@@ -846,6 +853,37 @@ export declare const commands: {
 	} | {
 		status: "error";
 		error: string;
+	}>;
+	/**
+	 *  Create a temp session dir for binary uploads from the frontend. Files are
+	 *  written into it via `mma-buf://` POST, then packaged by [`store_upload_finish`].
+	 */
+	storeUploadBegin: () => Promise<{
+		status: "ok";
+		data: string;
+	} | {
+		status: "error";
+		error: string;
+	}>;
+	/**
+	 *  Package an upload session and remove its dir: a single file is moved out
+	 *  as-is, multiple are packed into a Stored ZIP (entries like JPEG/PNG are
+	 *  already compressed). Returns a temp path for [`store_save_export_file`].
+	 */
+	storeUploadFinish: (sessionDir: string) => Promise<{
+		status: "ok";
+		data: string;
+	} | {
+		status: "error";
+		error: string;
+	}>;
+	/**  Remove an abandoned upload session dir (e.g. cancelled operation). */
+	storeUploadAbort: (sessionDir: string) => Promise<{
+		status: "error";
+		error: string;
+	} | {
+		status: "ok";
+		data: null;
 	}>;
 	/**
 	 *  Delete all rows from a table. Returns the number of deleted rows.
@@ -2830,6 +2868,13 @@ declare const COMMANDS: {
 		aliases: string[];
 		execute: () => boolean;
 	};
+	"bulk-download-panoramas": {
+		label: string;
+		icon: string;
+		group: "Bulk Operations";
+		aliases: string[];
+		execute: () => boolean;
+	};
 	"delete-selected-tags": {
 		label: string;
 		icon: string;
@@ -3127,6 +3172,9 @@ declare const mma: {
 		storeExportGeojson: (scope: number[] | null, tagsJson: string) => Promise<string>;
 		storeSaveExportFile: (srcPath: string, destPath: string) => Promise<null>;
 		storeExportBulkZip: () => Promise<string>;
+		storeUploadBegin: () => Promise<string>;
+		storeUploadFinish: (sessionDir: string) => Promise<string>;
+		storeUploadAbort: (sessionDir: string) => Promise<null>;
 		storeDbClearTable: (table: string) => Promise<number>;
 		storeDbStats: () => Promise<DbStats>;
 		storeSeenWrite: (entry: SeenWriteEntry) => Promise<null>;
@@ -3177,6 +3225,7 @@ declare const mma: {
 	};
 	toast: typeof toast;
 	storage: typeof createPluginStorage;
+	usePluginState: typeof usePluginState;
 	getFieldDef: typeof getFieldDef;
 	getAllFieldDefs: typeof getAllFieldDefs;
 	createLocation: typeof createLocation;
