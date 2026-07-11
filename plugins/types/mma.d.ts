@@ -3014,6 +3014,8 @@ declare const DEFAULTS: {
 	geocodeProvider: GeocodeProvider;
 	nominatimApiKey: string;
 	panToImported: boolean;
+	/** Min half-extent (degrees) a single pasted/imported point is padded to before fitBounds */
+	pastePadding: number;
 	followActiveInReview: boolean;
 	markerColor: RGB;
 	activeLocationColor: RGB;
@@ -3273,6 +3275,7 @@ declare const mma: {
 		geocodeProvider: GeocodeProvider;
 		nominatimApiKey: string;
 		panToImported: boolean;
+		pastePadding: number;
 		followActiveInReview: boolean;
 		markerColor: RGB;
 		activeLocationColor: RGB;
