@@ -64,8 +64,9 @@ export async function fetchPanoDotsWithIds(tile: { x: number; y: number }): Prom
 }
 
 const cache = new Map<string, PanoDot[] | Promise<PanoDot[]>>();
+const CACHE_MAX = 2000;
 
-export async function fetchPanoDots(tile: { x: number; y: number }): Promise<PanoDot[]> {
+export function fetchPanoDots(tile: { x: number; y: number }): PanoDot[] | Promise<PanoDot[]> {
 	const key = tileKey(tile);
 	const cached = cache.get(key);
 	if (cached) return cached;
@@ -87,5 +88,9 @@ export async function fetchPanoDots(tile: { x: number; y: number }): Promise<Pan
 	})();
 
 	cache.set(key, promise);
+	for (const k of cache.keys()) {
+		if (cache.size <= CACHE_MAX) break;
+		cache.delete(k);
+	}
 	return promise;
 }
