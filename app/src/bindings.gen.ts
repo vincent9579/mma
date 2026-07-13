@@ -703,11 +703,13 @@ export type Location = {
 /**
  *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+ *  `extra` is a JSON Merge Patch (RFC 7386): keys shallow-merge, null values delete.
  */
 
 /**
  *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+ *  `extra` is a JSON Merge Patch (RFC 7386): keys shallow-merge, null values delete.
  */
 export type LocationPatch_Deserialize = {
 	lat?: number | null,
@@ -726,6 +728,7 @@ export type LocationPatch_Deserialize = {
 /**
  *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+ *  `extra` is a JSON Merge Patch (RFC 7386): keys shallow-merge, null values delete.
  */
 export type LocationPatch = {
 	lat: number | null,

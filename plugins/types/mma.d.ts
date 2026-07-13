@@ -1356,10 +1356,12 @@ type Location = {
 /**
  *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+ *  `extra` is a JSON Merge Patch (RFC 7386): keys shallow-merge, null values delete.
  */
 /**
  *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+ *  `extra` is a JSON Merge Patch (RFC 7386): keys shallow-merge, null values delete.
  */
 export type LocationPatch_Deserialize = {
 	lat?: number | null;
@@ -1377,6 +1379,7 @@ export type LocationPatch_Deserialize = {
 /**
  *  Partial location update from JS. `None` fields are unchanged; `Some(None)` on
  *  nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+ *  `extra` is a JSON Merge Patch (RFC 7386): keys shallow-merge, null values delete.
  */
 export type LocationPatch = {
 	lat: number | null;
@@ -1598,10 +1601,6 @@ export type PolygonGeometry = {
 	])[])[])[] | null;
 	properties?: any | null;
 };
-/**
- *  Activity payload from JS. All fields optional so the privacy tiers can send
- *  progressively less (generic omits the map name/count).
- */
 export type PresenceActivity = {
 	details: string | null;
 	state: string | null;
@@ -2153,7 +2152,8 @@ export interface EnrichmentProvider {
 	label?: string;
 	enrich(locations: Location[], enrichFields: string[] | null, ctx?: EnrichCtx): Promise<Map<number, Record<string, unknown>>>;
 	fieldDefs: Record<string, ExtraFieldDef>;
-	/** When set, this provider is auto-invoked after patchLocationExtra writes any of these fields. */
+	/** Fields this provider reads: schedules it into a later dependency wave than any
+	 *  provider producing them (core-written fields like imageDate precede wave 1). */
 	requires?: string[];
 	/** Progress units this provider would contribute in bulk (absent = instant). */
 	units?(locations: Location[], enrichFields: string[] | null, force?: boolean): number;
@@ -3435,7 +3435,6 @@ declare const mma: {
 	}): Promise<void>;
 	renameField(from: string, to: string, winner?: MergeWinner): Promise<void>;
 	deleteField(key: string): Promise<void>;
-	patchLocationExtra(loc: Location, extraPatch: Record<string, unknown>, replace?: boolean): Promise<void>;
 	getSelectionCounts(): Record<string, number>;
 	toggleGhostSelection(key: string): Promise<void>;
 	isolateSelection(key: string): Promise<void>;

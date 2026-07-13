@@ -280,7 +280,10 @@ describe("Location persistence", () => {
 	it("extras survive save/load", async () => {
 		const extraLoc = await getLoc(persistLocIds[0]);
 		await withApi(async (api, l) => {
-			await api.patchLocationExtra(l, { altitude: 42, country: "US", note: "test" });
+			await api.updateLocations(
+				[{ id: l.id, patch: { extra: { altitude: 42, country: "US", note: "test" } } }],
+				{ undoable: false },
+			);
 		}, extraLoc);
 
 		await flushAndWait();

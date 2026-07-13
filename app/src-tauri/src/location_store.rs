@@ -1527,7 +1527,22 @@ impl Store {
             loc.tags = v.clone();
         }
         if let Some(ref v) = patch.extra {
-            loc.extra = v.clone();
+            // JSON Merge Patch (RFC 7386): keys shallow-merge into the current extra,
+            // a null value deletes its key, and a null patch clears extra entirely.
+            loc.extra = match v {
+                None => None,
+                Some(p) => {
+                    let mut m = loc.extra.as_ref().map(|e| e.to_map()).unwrap_or_default();
+                    for (k, val) in p.to_map() {
+                        if val.is_null() {
+                            m.remove(&k);
+                        } else {
+                            m.insert(k, val);
+                        }
+                    }
+                    crate::types::RawExtra::from_map(&m)
+                }
+            };
         }
         if let Some(v) = patch.created_at {
             loc.created_at = v;
@@ -1853,6 +1868,7 @@ where
 
 /// Partial location update from JS. `None` fields are unchanged; `Some(None)` on
 /// nullable fields (panoId, extra, modifiedAt) explicitly sets the field to null.
+/// `extra` is a JSON Merge Patch (RFC 7386): keys shallow-merge, null values delete.
 #[derive(Default, serde::Deserialize, specta::Type)]
 #[serde(default, rename_all = "camelCase")]
 pub struct LocationPatch {

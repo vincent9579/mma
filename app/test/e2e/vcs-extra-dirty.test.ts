@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Invariant under scrutiny: an extra-field-only change (the path enrichment and
- * manual extra edits take, via patchLocationExtra -> storeUpdateLocations(record_undo=false))
- * makes the map committable.
+ * manual extra edits take, via updateLocations(undoable: false)) makes the map
+ * committable.
  *
  * store_commit_diff is derived from the overlay -- the same changeset store_commit
  * records -- so non-undoable extra writes count as modified and enable the
@@ -39,7 +39,11 @@ describe("VCS — extra-only change commit semantics", () => {
 
 	it("an extra-only edit registers as modified on the commit-diff badge", async () => {
 		const loc = await getLoc(id);
-		await withApi(async (api, l) => api.patchLocationExtra(l, { score: 7 }), loc);
+		await withApi(
+			async (api, l) =>
+				api.updateLocations([{ id: l.id, patch: { extra: { score: 7 } } }], { undoable: false }),
+			loc,
+		);
 		// Overlay-derived diff sees non-undoable extra writes.
 		expect(await withApi(async (api) => api.cmd.storeCommitDiff())).toEqual([0, 0, 1]);
 		expect(await withApi(async (api) => api.hasCommitDiff())).toBe(true);
@@ -52,7 +56,11 @@ describe("VCS — extra-only change commit semantics", () => {
 		// Mutate extra again post-commit, then checkout the "extra commit" to prove
 		// it materialized the score=7 value (not lost, not the later value).
 		const loc = await getLoc(id);
-		await withApi(async (api, l) => api.patchLocationExtra(l, { score: 999 }), loc);
+		await withApi(
+			async (api, l) =>
+				api.updateLocations([{ id: l.id, patch: { extra: { score: 999 } } }], { undoable: false }),
+			loc,
+		);
 		await flushAndWait();
 
 		await withApi(async (api, cid) => api.checkoutCommit(cid), newCommit);
