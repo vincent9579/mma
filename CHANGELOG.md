@@ -1,3 +1,9 @@
+## v0.7.6 - 2026-07-13
+- Opt-in Discord Rich Presence, with a privacy level setting
+- Fixed metadata fields occasionally being lost when several enrichment steps wrote to a location at once
+- Fixed Street View coverage dots lagging the map after panning across large areas
+- Fixed the plugin sidebar staying visible outside plugin views
+
 ## v0.7.5 - 2026-07-12
 - Close an in-progress polygon by clicking its first vertex
 - Polygon drawing now works the same on every map style
