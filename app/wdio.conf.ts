@@ -43,11 +43,12 @@ export const config: WebdriverIO.Config = {
 		{
 			"tauri:options": {
 				application:
-					process.platform === "win32"
+					process.env.MMA_E2E_BINARY ??
+					(process.platform === "win32"
 						? path.resolve("./src-tauri/target/debug/map-making-app.exe")
 						: fs.existsSync("/usr/local/bin/map-making-app")
 							? "/usr/local/bin/map-making-app"
-							: path.resolve("./src-tauri/target/debug/map-making-app"),
+							: path.resolve("./src-tauri/target/debug/map-making-app")),
 				args: ["--test-db"],
 			},
 		},
