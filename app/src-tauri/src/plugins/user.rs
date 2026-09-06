@@ -17,7 +17,7 @@ use tokio::task;
 /// shipped at, so an app under a plugin's `minAppVersion` floor installs from there
 /// instead of `master`.
 fn repo_base(git_ref: &str) -> String {
-    format!("https://raw.githubusercontent.com/ccmdi/mma/{git_ref}/plugins")
+    format!("https://raw.githubusercontent.com/vincent9579/mma/{git_ref}/plugins")
 }
 
 /// Refs come from the registry, which only ever emits full commit hashes. Anything else

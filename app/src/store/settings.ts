@@ -107,6 +107,12 @@ export const PREVIEW_ASPECT_RATIOS = {
 	"32 / 9": "32:9",
 	free: msg("Free"),
 } as const;
+export const DEFAULT_PLUGIN_REGISTRY_URL =
+	"https://raw.githubusercontent.com/vincent9579/mma/master/plugins/registry.json";
+export const DEFAULT_PLUGIN_REPO_BASE_URL =
+	"https://raw.githubusercontent.com/vincent9579/mma/master/plugins";
+export const DEFAULT_SIDECAR_RELEASE_BASE_URL =
+	"https://github.com/vincent9579/mma/releases/download";
 
 export type Language = keyof typeof LANGUAGES;
 export type MovementMode = keyof typeof MOVEMENT_MODES;
@@ -229,6 +235,9 @@ export const DEFAULTS = {
 	/** Local REST transport for window.MMA (Settings > Advanced). */
 	remoteApi: false,
 	remoteApiKey: "",
+	pluginRegistryUrl: DEFAULT_PLUGIN_REGISTRY_URL,
+	pluginRepoBaseUrl: DEFAULT_PLUGIN_REPO_BASE_URL,
+	sidecarReleaseBaseUrl: DEFAULT_SIDECAR_RELEASE_BASE_URL,
 	pinnedCommands: [
 		"deselectAll",
 		"selection-delete-locations",

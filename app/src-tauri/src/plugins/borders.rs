@@ -560,7 +560,7 @@ fn border_path(level: &str) -> AppResult<PathBuf> {
 }
 
 fn border_url(level: &str) -> String {
-    format!("https://raw.githubusercontent.com/ccmdi/mma/master/data/borders/borders-{level}.rkyv")
+    format!("https://raw.githubusercontent.com/vincent9579/mma/master/data/borders/borders-{level}.rkyv")
 }
 
 fn border_client() -> reqwest::Result<Client> {
@@ -641,7 +641,7 @@ pub(crate) fn parse_border_shas(listing: &serde_json::Value) -> HashMap<String, 
 /// Blob shas of the repo's border files: one ~1KB API call covering every level.
 fn fetch_border_shas() -> AppResult<HashMap<String, String>> {
     let listing: serde_json::Value = border_client()?
-        .get("https://api.github.com/repos/ccmdi/mma/contents/data/borders")
+        .get("https://api.github.com/repos/vincent9579/mma/contents/data/borders")
         .send()?
         .error_for_status()?
         .json()?;

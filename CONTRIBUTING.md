@@ -15,7 +15,7 @@ You need:
 Clone with submodules:
 
 ```bash
-git clone --recurse-submodules https://github.com/ccmdi/mma
+git clone --recurse-submodules https://github.com/vincent9579/mma
 cd mma/app
 npm install
 ```

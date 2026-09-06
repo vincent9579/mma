@@ -77,6 +77,9 @@ import {
 	BORDER_DETAILS,
 	SUBDIVISION_DETAILS,
 	PREVIEW_ASPECT_RATIOS,
+	DEFAULT_PLUGIN_REGISTRY_URL,
+	DEFAULT_PLUGIN_REPO_BASE_URL,
+	DEFAULT_SIDECAR_RELEASE_BASE_URL,
 	resetSettings,
 } from "@/store/settings";
 import { formatBinding, buildComboString } from "@/lib/hooks/useHotkey";
@@ -1314,12 +1317,75 @@ function DataBody() {
 	);
 }
 
+function PluginSourcesGroup() {
+	const s = useSettings();
+	return (
+		<SettingsGroup title={t("Plugin sources")}>
+			<SettingRow
+				label={t("Marketplace registry URL")}
+				control={
+					<span style={{ display: "flex", gap: 8, flex: 1 }}>
+						<TextInput
+							type="url"
+							value={s.pluginRegistryUrl}
+							onChange={(e) => setSetting("pluginRegistryUrl", e.target.value)}
+							style={{ flex: 1, minWidth: 0 }}
+							spellCheck={false}
+						/>
+						<Button onClick={() => setSetting("pluginRegistryUrl", DEFAULT_PLUGIN_REGISTRY_URL)}>
+							{t("Reset")}
+						</Button>
+					</span>
+				}
+			/>
+			<SettingRow
+				label={t("Plugin repository base URL")}
+				control={
+					<span style={{ display: "flex", gap: 8, flex: 1 }}>
+						<TextInput
+							type="url"
+							value={s.pluginRepoBaseUrl}
+							onChange={(e) => setSetting("pluginRepoBaseUrl", e.target.value)}
+							style={{ flex: 1, minWidth: 0 }}
+							spellCheck={false}
+						/>
+						<Button onClick={() => setSetting("pluginRepoBaseUrl", DEFAULT_PLUGIN_REPO_BASE_URL)}>
+							{t("Reset")}
+						</Button>
+					</span>
+				}
+			/>
+			<SettingRow
+				label={t("Sidecar release base URL")}
+				control={
+					<span style={{ display: "flex", gap: 8, flex: 1 }}>
+						<TextInput
+							type="url"
+							value={s.sidecarReleaseBaseUrl}
+							onChange={(e) => setSetting("sidecarReleaseBaseUrl", e.target.value)}
+							style={{ flex: 1, minWidth: 0 }}
+							spellCheck={false}
+						/>
+						<Button
+							onClick={() => setSetting("sidecarReleaseBaseUrl", DEFAULT_SIDECAR_RELEASE_BASE_URL)}
+						>
+							{t("Reset")}
+						</Button>
+					</span>
+				}
+			/>
+		</SettingsGroup>
+	);
+}
+
 function AdvancedBody() {
 	return (
 		<>
 			<SettingsGroup title={t("Custom CSS")}>
 				<CustomCssBlock />
 			</SettingsGroup>
+
+			<PluginSourcesGroup />
 
 			<SettingsGroup title={t("Debug")}>
 				<SettingRow setting="showFps" label={t("Show FPS counter")} />

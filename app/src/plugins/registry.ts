@@ -115,15 +115,28 @@ export function needsBuildUpdate(
 	);
 }
 
-const REGISTRY_URL = "https://raw.githubusercontent.com/ccmdi/mma/master/plugins/registry.json";
+import { getSettings, DEFAULT_PLUGIN_REGISTRY_URL } from "@/store/settings";
+
+const REGISTRY_FALLBACK = "https://raw.githubusercontent.com/vincent9579/mma/master/plugins/registry.json";
+
+function registryUrl(): string {
+	try {
+		return getSettings().pluginRegistryUrl || DEFAULT_PLUGIN_REGISTRY_URL || REGISTRY_FALLBACK;
+	} catch {
+		return REGISTRY_FALLBACK;
+	}
+}
 
 let registryPromise: Promise<PluginManifest[]> | null = null;
+let cachedUrl: string | null = null;
 
 /** The marketplace registry, fetched once per session (startup update check and the
  *  marketplace dialog share it). A failed fetch clears the cache so the next call retries. @unstable */
 export function fetchPluginRegistry(): Promise<PluginManifest[]> {
-	if (!registryPromise) {
-		registryPromise = fetch(REGISTRY_URL, { signal: AbortSignal.timeout(5000) }).then((r) => {
+	const url = registryUrl();
+	if (!registryPromise || cachedUrl !== url) {
+		cachedUrl = url;
+		registryPromise = fetch(url, { signal: AbortSignal.timeout(5000) }).then((r) => {
 			if (!r.ok) throw new Error(`HTTP ${r.status}`);
 			return r.json();
 		});

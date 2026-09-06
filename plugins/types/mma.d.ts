@@ -3830,6 +3830,9 @@ declare const PREVIEW_ASPECT_RATIOS: {
     /** @unstable */
     readonly free: "Free";
 };
+declare const DEFAULT_PLUGIN_REGISTRY_URL = "https://raw.githubusercontent.com/vincent9579/mma/master/plugins/registry.json";
+declare const DEFAULT_PLUGIN_REPO_BASE_URL = "https://raw.githubusercontent.com/vincent9579/mma/master/plugins";
+declare const DEFAULT_SIDECAR_RELEASE_BASE_URL = "https://github.com/vincent9579/mma/releases/download";
 export type Language = keyof typeof LANGUAGES;
 export type MovementMode = keyof typeof MOVEMENT_MODES;
 declare const MOVEMENT_CYCLE: MovementMode[];
@@ -4012,6 +4015,12 @@ declare const DEFAULTS: {
     /** @unstable */
     remoteApiKey: string;
     /** @unstable */
+    pluginRegistryUrl: string;
+    /** @unstable */
+    pluginRepoBaseUrl: string;
+    /** @unstable */
+    sidecarReleaseBaseUrl: string;
+    /** @unstable */
     pinnedCommands: PinnedEntry[];
 };
 export type AppSettings = typeof DEFAULTS;
@@ -4122,6 +4131,9 @@ declare const APP_SETTINGS: PersistedStore<{
     /** Local REST transport for window.MMA (Settings > Advanced). */
     remoteApi: boolean;
     remoteApiKey: string;
+    pluginRegistryUrl: string;
+    pluginRepoBaseUrl: string;
+    sidecarReleaseBaseUrl: string;
     pinnedCommands: PinnedEntry[];
 }>;
 /** @unstable */
@@ -4153,6 +4165,9 @@ export type settings_BorderDetail = BorderDetail;
 declare const settings_CSS_VAR_SETTINGS: typeof CSS_VAR_SETTINGS;
 declare const settings_DATE_TIMEZONES: typeof DATE_TIMEZONES;
 declare const settings_DEFAULTS: typeof DEFAULTS;
+declare const settings_DEFAULT_PLUGIN_REGISTRY_URL: typeof DEFAULT_PLUGIN_REGISTRY_URL;
+declare const settings_DEFAULT_PLUGIN_REPO_BASE_URL: typeof DEFAULT_PLUGIN_REPO_BASE_URL;
+declare const settings_DEFAULT_SIDECAR_RELEASE_BASE_URL: typeof DEFAULT_SIDECAR_RELEASE_BASE_URL;
 declare const settings_DISCORD_PRESENCE_MODES: typeof DISCORD_PRESENCE_MODES;
 export type settings_DateTimezone = DateTimezone;
 export type settings_DiscordPresenceMode = DiscordPresenceMode;
@@ -4194,7 +4209,7 @@ declare const settings_setSetting: typeof setSetting;
 declare const settings_useSetting: typeof useSetting;
 declare const settings_useSettings: typeof useSettings;
 declare namespace settings {
-  export { settings_APP_SETTINGS as APP_SETTINGS, settings_BORDER_ARCHIVE_BYTES as BORDER_ARCHIVE_BYTES, settings_BORDER_DETAILS as BORDER_DETAILS, settings_CSS_VAR_SETTINGS as CSS_VAR_SETTINGS, settings_DATE_TIMEZONES as DATE_TIMEZONES, settings_DEFAULTS as DEFAULTS, settings_DISCORD_PRESENCE_MODES as DISCORD_PRESENCE_MODES, settings_EXACT_DATE_FORMATS as EXACT_DATE_FORMATS, settings_GEOCODE_PROVIDERS as GEOCODE_PROVIDERS, settings_GEOCODE_PROVIDER_LABELS as GEOCODE_PROVIDER_LABELS, settings_LANGUAGES as LANGUAGES, settings_MAP_LIST_FIELDS as MAP_LIST_FIELDS, settings_MOVEMENT_CYCLE as MOVEMENT_CYCLE, settings_MOVEMENT_MODES as MOVEMENT_MODES, settings_OPACITY_TOGGLE_MODES as OPACITY_TOGGLE_MODES, settings_POLYGON_COLOR_MODES as POLYGON_COLOR_MODES, settings_PREVIEW_ASPECT_RATIOS as PREVIEW_ASPECT_RATIOS, settings_PRIVATE_SETTINGS as PRIVATE_SETTINGS, settings_SEEN_RESOLUTIONS as SEEN_RESOLUTIONS, settings_SUBDIVISION_DETAILS as SUBDIVISION_DETAILS, settings_TAG_FOLDER_COLOR_MODES as TAG_FOLDER_COLOR_MODES, settings_TAG_SUGGESTION_LIMITS as TAG_SUGGESTION_LIMITS, settings_TAG_VIEW_MODES as TAG_VIEW_MODES, settings_UNIT_SYSTEMS as UNIT_SYSTEMS, settings_getSettings as getSettings, settings_navHiddenWithUI as navHiddenWithUI, settings_panoDisplayOptions as panoDisplayOptions, settings_resetSettings as resetSettings, settings_setSetting as setSetting, settings_useSetting as useSetting, settings_useSettings as useSettings };
+  export { settings_APP_SETTINGS as APP_SETTINGS, settings_BORDER_ARCHIVE_BYTES as BORDER_ARCHIVE_BYTES, settings_BORDER_DETAILS as BORDER_DETAILS, settings_CSS_VAR_SETTINGS as CSS_VAR_SETTINGS, settings_DATE_TIMEZONES as DATE_TIMEZONES, settings_DEFAULTS as DEFAULTS, settings_DEFAULT_PLUGIN_REGISTRY_URL as DEFAULT_PLUGIN_REGISTRY_URL, settings_DEFAULT_PLUGIN_REPO_BASE_URL as DEFAULT_PLUGIN_REPO_BASE_URL, settings_DEFAULT_SIDECAR_RELEASE_BASE_URL as DEFAULT_SIDECAR_RELEASE_BASE_URL, settings_DISCORD_PRESENCE_MODES as DISCORD_PRESENCE_MODES, settings_EXACT_DATE_FORMATS as EXACT_DATE_FORMATS, settings_GEOCODE_PROVIDERS as GEOCODE_PROVIDERS, settings_GEOCODE_PROVIDER_LABELS as GEOCODE_PROVIDER_LABELS, settings_LANGUAGES as LANGUAGES, settings_MAP_LIST_FIELDS as MAP_LIST_FIELDS, settings_MOVEMENT_CYCLE as MOVEMENT_CYCLE, settings_MOVEMENT_MODES as MOVEMENT_MODES, settings_OPACITY_TOGGLE_MODES as OPACITY_TOGGLE_MODES, settings_POLYGON_COLOR_MODES as POLYGON_COLOR_MODES, settings_PREVIEW_ASPECT_RATIOS as PREVIEW_ASPECT_RATIOS, settings_PRIVATE_SETTINGS as PRIVATE_SETTINGS, settings_SEEN_RESOLUTIONS as SEEN_RESOLUTIONS, settings_SUBDIVISION_DETAILS as SUBDIVISION_DETAILS, settings_TAG_FOLDER_COLOR_MODES as TAG_FOLDER_COLOR_MODES, settings_TAG_SUGGESTION_LIMITS as TAG_SUGGESTION_LIMITS, settings_TAG_VIEW_MODES as TAG_VIEW_MODES, settings_UNIT_SYSTEMS as UNIT_SYSTEMS, settings_getSettings as getSettings, settings_navHiddenWithUI as navHiddenWithUI, settings_panoDisplayOptions as panoDisplayOptions, settings_resetSettings as resetSettings, settings_setSetting as setSetting, settings_useSetting as useSetting, settings_useSettings as useSettings };
   export type { settings_AppSettings as AppSettings, settings_BorderDetail as BorderDetail, settings_DateTimezone as DateTimezone, settings_DiscordPresenceMode as DiscordPresenceMode, settings_ExactDateFormat as ExactDateFormat, settings_GeocodeProvider as GeocodeProvider, settings_Language as Language, settings_MapListField as MapListField, settings_MovementMode as MovementMode, settings_OpacityToggleMode as OpacityToggleMode, settings_PolygonColorMode as PolygonColorMode, settings_PreviewAspectRatio as PreviewAspectRatio, settings_SeenResolution as SeenResolution, settings_SubdivisionDetail as SubdivisionDetail, settings_TagFolderColorMode as TagFolderColorMode, settings_TagViewMode as TagViewMode, settings_UnitSystem as UnitSystem };
 }
 

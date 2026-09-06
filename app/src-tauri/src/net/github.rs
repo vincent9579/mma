@@ -25,7 +25,7 @@ use std::thread;
 
 pub(crate) const CLIENT_ID: &str = "Iv23liRIs8ykMt8IFai2";
 
-const REPO: &str = "ccmdi/mma";
+const REPO: &str = "vincent9579/mma";
 const API: &str = "https://api.github.com";
 const SECRET_NAME: &str = "github";
 

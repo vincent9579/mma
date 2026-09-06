@@ -29,9 +29,9 @@
 	"plugins": {
 		"updater": {
 			"endpoints": [
-				"https://github.com/ccmdi/mma/releases/latest/download/latest.json"
+				"https://github.com/vincent9579/mma/releases/latest/download/latest.json"
 			],
-			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFGODZEODg4QjQ2MzhBQjkKUldTNWltTzBpTmlHcjhxRWpqN2t3TGpkeVVxSjNodFU2Qng3eDBoL004aHJQTHUrT0Fjd2NkOTYK"
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFCMTEwOTA4RUYxN0ZCMQpSV1N4Zi9HT2tCQ3hDdHc5VDNSMTNMVlBsRHhQeC85Uk5EMHNMU0JBb1dYSTY4QUFUY3IxZHNocAo="
 		}
 	},
 	"bundle": {

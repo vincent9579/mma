@@ -22,7 +22,7 @@ A local-first desktop alternative to [map-making.app](https://map-making.app).
 
 ## Installation
 
-Open [the latest release](https://github.com/ccmdi/mma/releases/latest) and download the installer for your platform.
+Open [the latest release](https://github.com/vincent9579/mma/releases/latest) and download the installer for your platform.
 
 ### macOS / Linux
 
@@ -36,7 +36,7 @@ On both Mac & Linux, framerate and rendering stability can be an issue. If you e
 ### From source
 
 ```bash
-git clone --recurse-submodules https://github.com/ccmdi/mma
+git clone --recurse-submodules https://github.com/vincent9579/mma
 cd mma/app && npm install && npx tauri build
 ```
 

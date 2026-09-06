@@ -9,7 +9,7 @@ import { cmd } from "@/lib/commands";
 import { events } from "@/bindings.gen";
 import { getLocal, setLocal, persisted } from "@/lib/hooks/useLocalStorage";
 
-const REPO = "ccmdi/mma";
+const REPO = "vincent9579/mma";
 const RELEASES_API = `https://api.github.com/repos/${REPO}/releases?per_page=30`;
 /** A published GitHub release. The release, not CHANGELOG.md, is what the app reads: nothing
  *  exists until it is published, and pre-release is a fact of the release rather than of a

@@ -15,7 +15,7 @@ use std::fs::File;
 use std::path::Path;
 
 /// Empty disables the anonymous tier rather than failing it.
-const WORKER_URL: &str = "https://feedback.ccmdi.com";
+const WORKER_URL: &str = "";
 
 /// Leading zero bits demanded of the proof-of-work hash. ~1M hashes to solve (well under a
 /// second), one hash to check. Enough to make scripted spam cost something without the user
