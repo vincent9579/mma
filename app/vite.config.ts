@@ -8,6 +8,19 @@ export default defineConfig({
 		alias: {
 			"@": path.resolve(import.meta.dirname, "src"),
 		},
+		dedupe: [
+			"@luma.gl/core",
+			"@luma.gl/engine",
+			"@luma.gl/shadertools",
+			"@luma.gl/webgl",
+			"@luma.gl/webgpu",
+			"@luma.gl/gpgpu",
+			"@deck.gl/core",
+			"@deck.gl/layers",
+			"@deck.gl/extensions",
+			"@deck.gl/google-maps",
+			"@deck.gl/mapbox",
+		],
 	},
 	define: {
 		__APP_VERSION__: JSON.stringify(process.env.npm_package_version),

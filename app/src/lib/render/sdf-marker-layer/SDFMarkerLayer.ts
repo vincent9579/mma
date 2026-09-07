@@ -115,12 +115,12 @@ export default class SDFMarkerLayer<
 			flattenOpacity,
 		};
 		model.shaderInputs.setProps({ sdfMarker: sdfProps });
-		model.draw(this.context.renderPass);
+		model.draw(this.context.renderPass as unknown as any);
 	}
 
 	protected _getModel() {
 		const positions = [-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0];
-		return new Model(this.context.device, {
+		return new Model(this.context.device as unknown as any, {
 			...this.getShaders(),
 			id: this.props.id,
 			bufferLayout: this.getAttributeManager()!.getBufferLayouts(),

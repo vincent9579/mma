@@ -14,7 +14,7 @@ async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mma-dts-"));
   try {
     execSync(
-      `npx tsc -p tsconfig.app.json --declaration --emitDeclarationOnly --noEmit false --rootDir src --outDir "${tmp}"`,
+      `npx tsc -p tsconfig.app.json --declaration --emitDeclarationOnly --noEmit false --skipLibCheck --rootDir src --outDir "${tmp}"`,
       { cwd: appDir, stdio: "inherit" },
     );
 
