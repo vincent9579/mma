@@ -78,6 +78,10 @@ pub struct MapSettings {
     /// Which member of a duplicate group survives a merge: a `field_expr` scoring the
     /// location, highest wins. `None` (or blank) keeps the built-in ranking.
     pub duplicate_score: Option<String>,
+    /// How multiple Tag selections combine: "or" = Union (default), "and" = Intersection.
+    pub tag_filter_mode: Option<String>,
+    /// Whether to show autotag suggestions in LocationPreview.
+    pub auto_tag_suggestions: Option<bool>,
 }
 
 impl Default for MapSettings {
@@ -100,6 +104,8 @@ impl Default for MapSettings {
             virtual_tags: HashMap::new(),
             aliases: HashMap::new(),
             duplicate_score: None,
+            tag_filter_mode: None,
+            auto_tag_suggestions: None,
         }
     }
 }

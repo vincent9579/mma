@@ -41,10 +41,15 @@ function padBoundsToMin(b: Bounds, minExtent: number): Bounds {
 	return { west, south, east, north };
 }
 
-export function fitMapToBounds(bounds: Bounds | null, padding = 0, minExtent?: number) {
+export function fitMapToBounds(
+	bounds: Bounds | null,
+	padding = 0,
+	minExtent?: number,
+	opts?: { duration?: number; snap?: boolean },
+) {
 	if (!bounds) return;
 	if (minExtent != null) bounds = padBoundsToMin(bounds, minExtent);
-	mapHost?.fitBounds(bounds, padding);
+	mapHost?.fitBounds(bounds, padding, opts);
 }
 
 type ClickInterceptor = (lat: number, lng: number, shiftKey: boolean) => boolean;

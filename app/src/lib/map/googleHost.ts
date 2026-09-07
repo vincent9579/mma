@@ -166,7 +166,18 @@ class GoogleMapHost implements MapHostContract<"google"> {
 		this.map.moveCamera(opts);
 	}
 
-	fitBounds(bounds: Bounds, padding?: number, opts?: { snap?: boolean }) {
+	fitBounds(bounds: Bounds, padding?: number, opts?: { snap?: boolean; duration?: number }) {
+		// Google Maps fitBounds is not duration-aware; we use snap to control animation parity.
+		// If duration is 0, treat as snap; otherwise let Google animate natively.
+		if (opts?.duration === 0) {
+			this.map.fitBounds(bounds, padding);
+			google.maps.event.addListenerOnce(this.map, "bounds_changed", () => {
+				const center = this.map.getCenter();
+				const zoom = this.map.getZoom();
+				if (center && zoom != null) this.map.moveCamera({ center, zoom });
+			});
+			return;
+		}
 		this.map.fitBounds(bounds, padding);
 		if (opts?.snap) {
 			google.maps.event.addListenerOnce(this.map, "bounds_changed", () => {

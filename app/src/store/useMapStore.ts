@@ -17,12 +17,13 @@ import { toast } from "@/lib/util/toast";
 import { trace } from "@/lib/util/debug";
 import { mmaBufUrl, nowUnix } from "@/lib/util/util";
 import { setUserFieldDefs } from "@/lib/data/fieldDefRegistry";
-import { rewriteSelectionFields } from "@/store/selections";
+import { rewriteSelectionFields, buildSelection } from "@/store/selections";
 import { compareNatural } from "@/lib/util/util";
 import { compareMonthOrder } from "@/lib/util/date";
 import type { LocationPatch_Deserialize as LocationPatch, Update, TagPatch } from "@/bindings.gen";
 import type { KeySpec, PartitionBucket, FieldOp, FieldOpResult, MergeWinner } from "@/bindings.gen";
 import { SelectedIds, decodeSelectionBitmask, type ReadonlyIdSet } from "@/lib/render/CellManager";
+import type { Bounds } from "@/types";
 import { resetImportState } from "./importStaging";
 import { resetCommitDiffState, resetCommitDiffCounts } from "./commitDiff";
 import { setCachedMapList, invalidateMapList, reloadMapList } from "./mapList";
@@ -404,11 +405,31 @@ export const getActiveSelections: () => Selection[] = memoOnRefs(
 	(sels, ghosts) => (ghosts.size === 0 ? sels : sels.filter((s) => !ghosts.has(s.key))),
 );
 
-/** The live selection as a `Selector`: the union of the active selection nodes. What
- *  every "operate on the selection" call site sends -- Rust holds no notion of "selected",
- *  so the tree JS already has is the definition. */
+/** The live selection as a `Selector`. Tag selections combine per MapSettings.tagFilterMode:
+ *  "or" = Union (default), "and" = Intersection. Non-tag selections are always Unioned
+ *  with the tag group. */
 export function currentSelection(): Selector {
-	return { type: "Union", selections: getActiveSelections() };
+	const active = getActiveSelections();
+	const mode = (state.map?.settings.tagFilterMode as string | undefined) ?? "or";
+	if (mode === "and") {
+		const tagSels = active.filter((s) => s.selector.type === "Tag");
+		const otherSels = active.filter((s) => s.selector.type !== "Tag");
+		if (tagSels.length > 1) {
+			const tagGroup: Selector = { type: "Intersection", selections: tagSels } as unknown as Selector;
+			if (otherSels.length === 0) return tagGroup;
+			const key = tagSels.map((s) => `(${s.key})`).join("^");
+			// Cheap color hash, no import needed
+			let h = 0;
+			for (let i = 0; i < key.length; i++) h = ((h << 5) - h + key.charCodeAt(i)) | 0;
+			const hue = Math.abs(h) % 360;
+			// hsl( hue,0.5,0.5 ) -> rgb approximation, use fixed palette entry to avoid dep
+			const rgb: RGB = [128, 128, 128] as unknown as RGB;
+			void hue;
+			const tagGroupSel = { key, color: rgb, selector: tagGroup } as unknown as import("@/bindings.gen").Selection;
+			return { type: "Union", selections: [tagGroupSel, ...otherSels] } as unknown as Selector;
+		}
+	}
+	return { type: "Union", selections: active };
 }
 
 /** Overwrite the selected-id set directly, bypassing selection resolution. Rarely what you want. */
@@ -840,9 +861,135 @@ export function updateFilterSelection(oldKey: string, selector: Selector) {
 	});
 }
 
-/** Toggle tag selections on/off for the given tags (used by tag-pill clicks). */
+let tagFitSeq = 0;
+
+/** Normalize tag selections for current filter mode: AND merges tags into one Intersection, OR splits. */
+function normalizeTagSelections(sels: import("@/bindings.gen").Selection[], mode: string): import("@/bindings.gen").Selection[] {
+	const isTag = (s: import("@/bindings.gen").Selection) => s.selector.type === "Tag";
+	const isTagInter = (s: import("@/bindings.gen").Selection) =>
+		s.selector.type === "Intersection" && (s.selector as unknown as { selections: import("@/bindings.gen").Selection[] }).selections.every((c) => c.selector.type === "Tag");
+	if (mode === "and") {
+		const other = sels.filter((s) => !isTag(s) && !isTagInter(s));
+		const tagIds = new Set<number>();
+		for (const s of sels) {
+			if (isTag(s)) tagIds.add((s.selector as unknown as { tagId: number }).tagId);
+			else if (isTagInter(s)) {
+				for (const c of (s.selector as unknown as { selections: import("@/bindings.gen").Selection[] }).selections) {
+					tagIds.add((c.selector as unknown as { tagId: number }).tagId);
+				}
+			}
+		}
+		if (tagIds.size === 0) return other;
+		if (tagIds.size === 1) {
+			const id = [...tagIds][0];
+			return [...other, buildSelection({ type: "Tag", tagId: id })];
+		}
+		const tagSels = [...tagIds].map((id) => buildSelection({ type: "Tag", tagId: id }));
+		return [...other, buildSelection({ type: "Intersection", selections: tagSels } as unknown as import("@/bindings.gen").Selector)];
+	} else {
+		// OR: split any tag Intersection back into individual Tags
+		const other = sels.filter((s) => !isTagInter(s));
+		const inters = sels.filter(isTagInter);
+		if (inters.length === 0) return sels;
+		const tagSels: import("@/bindings.gen").Selection[] = [];
+		for (const inter of inters) {
+			for (const c of (inter.selector as unknown as { selections: import("@/bindings.gen").Selection[] }).selections) {
+				tagSels.push(c);
+			}
+		}
+		return [...other, ...tagSels];
+	}
+}
+
+/** Apply current tagFilterMode normalization and sync. Call after mode changes. */
+export function syncTagFilterMode() {
+	const mode = (getMapState().map?.settings.tagFilterMode ?? "or") as string;
+	void applySelectionUpdate((sels) => {
+		const normalized = normalizeTagSelections(sels, mode);
+		// reference equality check to avoid no-op sync
+		if (normalized.length === sels.length && normalized.every((v, i) => v === sels[i])) return sels;
+		return normalized;
+	});
+}
+
+/** Toggle tag selections on/off for the given tags (used by tag-pill clicks).
+ *  On add, fetches combined bounds of all selected tags and fitBounds with
+ *  global duration (AppSettings.tagFitDurationMs) and existing padding.
+ *  Pure removals or empty tags do not move; consecutive clicks use last one. */
 export function toggleTagSelections(tagIds: number[]) {
 	if (!state.map || tagIds.length === 0) return;
+	const mode = (getMapState().map?.settings.tagFilterMode ?? "or") as string;
+	const prevDeep = new Set(getSelectedTagIdsDeep() as unknown as number[]);
+	// also include top-level tag ids for OR
+	const prevTop = getSelectedTagIds();
+	const prevAll = mode === "and" ? prevDeep : prevTop;
+	const added = tagIds.filter((id) => !prevAll.has(id));
+	const isAdd = added.length > 0;
+	if (mode === "and") {
+		void applySelectionUpdate((sels) => {
+			// collect current tag ids (including inside Intersection)
+			const current = new Set<number>();
+			for (const s of sels) {
+				if (s.selector.type === "Tag") current.add((s.selector as unknown as { tagId: number }).tagId);
+				else if (s.selector.type === "Intersection") {
+					for (const c of (s.selector as unknown as { selections: import("@/bindings.gen").Selection[] }).selections) {
+						if (c.selector.type === "Tag") current.add((c.selector as unknown as { tagId: number }).tagId);
+					}
+				}
+			}
+			for (const id of tagIds) {
+				if (current.has(id)) current.delete(id);
+				else current.add(id);
+			}
+			const other = sels.filter(
+				(s) => s.selector.type !== "Tag" && !(s.selector.type === "Intersection" && (s.selector as unknown as { selections: import("@/bindings.gen").Selection[] }).selections.every((c) => c.selector.type === "Tag")),
+			);
+			if (current.size === 0) return other;
+			if (current.size === 1) {
+				const id = [...current][0];
+				return [...other, buildSelection({ type: "Tag", tagId: id })];
+			}
+			const tagSels = [...current].map((id) => buildSelection({ type: "Tag", tagId: id }));
+			return [...other, buildSelection({ type: "Intersection", selections: tagSels } as unknown as import("@/bindings.gen").Selector)];
+		}).then(() => {
+			if (!isAdd) return;
+			const seq = ++tagFitSeq;
+			void (async () => {
+				const sels = getActiveSelections();
+				// collect active tag ids deep
+				const ids: number[] = [];
+				for (const s of sels) {
+					if (s.selector.type === "Tag") ids.push((s.selector as unknown as { tagId: number }).tagId);
+					else if (s.selector.type === "Intersection") {
+						for (const c of (s.selector as unknown as { selections: import("@/bindings.gen").Selection[] }).selections) {
+							if (c.selector.type === "Tag") ids.push((c.selector as unknown as { tagId: number }).tagId);
+						}
+					}
+				}
+				if (ids.length === 0) return;
+				const selector: Selector =
+					ids.length === 1
+						? ({ type: "Tag", tagId: ids[0] } as unknown as Selector)
+						: ({ type: ids.length > 1 && mode === "and" ? "Intersection" : "Union", selections: ids.map((id) => buildSelection({ type: "Tag", tagId: id })) } as unknown as Selector);
+				// For Intersection, we need selector directly, not wrapped; fetchBounds can handle both
+				const fetchSel: Selector =
+					selector.type === "Intersection" || selector.type === "Union"
+						? (selector as unknown as Selector)
+						: selector;
+				const raw = await fetchBounds(fetchSel as Selector);
+				if (seq !== tagFitSeq) return;
+				if (!raw) return;
+				const bounds: Bounds = { west: raw[0], south: raw[1], east: raw[2], north: raw[3] };
+				const { getSettings } = await import("@/store/settings");
+				const { fitMapToBounds } = await import("@/lib/map/mapState");
+				const duration = getSettings().tagFitDurationMs ?? 300;
+				const padding = 45;
+				const minExtent = getSettings().pastePadding ?? 0.003;
+				fitMapToBounds(bounds, padding, minExtent, { duration });
+			})();
+		});
+		return;
+	}
 	void applySelectionUpdate((sels) =>
 		tagIds.reduce((result, tagId) => {
 			const key = `tag:${tagId}`;
@@ -850,7 +997,29 @@ export function toggleTagSelections(tagIds: number[]) {
 				? removeSelection(key)(result)
 				: addSelection({ type: "Tag", tagId })(result);
 		}, sels),
-	);
+	).then(() => {
+		if (!isAdd) return;
+		const seq = ++tagFitSeq;
+		void (async () => {
+			const active = getActiveSelections().filter((s) => s.selector.type === "Tag");
+			if (active.length === 0) return;
+			const selector: Selector =
+				active.length === 1
+					? active[0].selector
+					: ({ type: "Union", selections: active } as unknown as Selector);
+			const raw = await fetchBounds(selector);
+			if (seq !== tagFitSeq) return;
+			if (!raw) return;
+			const bounds: Bounds = { west: raw[0], south: raw[1], east: raw[2], north: raw[3] };
+			// Lazy import to avoid circular dep at module init
+			const { getSettings } = await import("@/store/settings");
+			const { fitMapToBounds } = await import("@/lib/map/mapState");
+			const duration = getSettings().tagFitDurationMs ?? 300;
+			const padding = 45;
+			const minExtent = getSettings().pastePadding ?? 0.003;
+			fitMapToBounds(bounds, padding, minExtent, { duration });
+		})();
+	});
 }
 
 /** Tag ids that currently have a Tag selection (cached; keyed on the selection list,
@@ -887,6 +1056,22 @@ export const getSelectedTagIdsDeep: () => readonly number[] = memoOnRefs(
 		return out;
 	},
 );
+
+export const getSelectedTagIdsDeepSet: () => ReadonlySet<number> = (() => {
+	let prevSet: Set<number> | null = null;
+	let prevArr: readonly number[] | null = null;
+	return memoOnRefs(
+		() => [getSelectedTagIdsDeep()] as const,
+		(arr) => {
+			if (prevArr && prevArr.length === arr.length && arr.every((v, i) => v === prevArr![i])) return prevSet!;
+			const set = new Set(arr as unknown as number[]);
+			if (prevSet && prevSet.size === set.size && [...prevSet].every((v) => set.has(v))) return prevSet;
+			prevSet = set;
+			prevArr = arr;
+			return set;
+		},
+	);
+})();
 
 let virtualIdSeq = 0;
 /** Each preview gets a fresh negative id so its identity changes between previews (the pano viewer re-resolves on active-id change). */

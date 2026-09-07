@@ -12,12 +12,13 @@ import { ContextMenu } from "@base-ui-components/react/context-menu";
 import {
 	deleteTags,
 	getMapState,
-	getSelectedTagIds,
+	getSelectedTagIdsDeepSet,
 	getVisibleTags,
 	removeTagFromAllLocations,
 	removeTagFromLocations,
 	reorderTags,
 	resolveIds,
+	syncTagFilterMode,
 	updateTags,
 	useMapState,
 } from "@/store/useMapStore";
@@ -58,7 +59,8 @@ const NO_ALIASES = {};
 
 export function TagManager() {
 	const map = useMapState((s) => s.map);
-	const selectedTagIds = useMapState(getSelectedTagIds);
+	const [tagFilterMode, setTagFilterMode] = useMapSetting("tagFilterMode", "or");
+	const selectedTagIds = useMapState(() => getSelectedTagIdsDeepSet());
 	const tagCounts = useMapState((s) => s.tagCounts);
 	const tagViewMode = useSetting("tagViewMode");
 	const [filterText, setFilterText] = useState("");
@@ -245,6 +247,23 @@ export function TagManager() {
 									onClick={() => setSetting("tagSortMode", mode)}
 								>
 									{label}
+								</Button>
+							))}
+						</span>
+						<span className="button-group" role="radiogroup" aria-label={t("Tag filter mode")}>
+							{(["or", "and"] as const).map((m) => (
+								<Button
+									key={m}
+									className="button-group__button"
+									role="radio"
+									aria-checked={(tagFilterMode as string) === m}
+									onClick={() => {
+										setTagFilterMode(m as unknown as typeof tagFilterMode);
+										// defer to let MapSettings patch apply, then normalize
+										setTimeout(() => syncTagFilterMode(), 0);
+									}}
+								>
+									{t(m === "or" ? "OR" : "AND")}
 								</Button>
 							))}
 						</span>

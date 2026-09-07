@@ -60,7 +60,7 @@ export interface MapHostContract<K extends MapHostKind = MapHostKind> {
 	getBounds(): Bounds | null;
 	panTo(p: LatLng): void;
 	moveCamera(opts: { center?: LatLng; zoom?: number }): void;
-	fitBounds(bounds: Bounds, padding?: number, opts?: { snap?: boolean }): void;
+	fitBounds(bounds: Bounds, padding?: number, opts?: { snap?: boolean; duration?: number }): void;
 
 	on<K extends keyof MapHostEvents>(event: K, fn: (arg: MapHostEvents[K]) => void): () => void;
 	once<K extends keyof MapHostEvents>(event: K, fn: (arg: MapHostEvents[K]) => void): () => void;

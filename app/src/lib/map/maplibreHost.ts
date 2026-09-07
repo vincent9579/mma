@@ -260,14 +260,18 @@ class MapLibreHost implements MapHostContract<"maplibre"> {
 		});
 	}
 
-	fitBounds(bounds: Bounds, padding?: number, opts?: { snap?: boolean }) {
+	fitBounds(bounds: Bounds, padding?: number, opts?: { snap?: boolean; duration?: number }) {
+		const animate = !opts?.snap && (opts?.duration == null || opts.duration > 0);
 		this.map.fitBounds(
 			[
 				[bounds.west, bounds.south],
 				[bounds.east, bounds.north],
 			],
-			// Padding fits the bounds inside the visible window, past the prefetch bleed.
-			{ padding: (padding ?? 45) + PREFETCH_MARGIN, animate: !opts?.snap },
+			{
+				padding: (padding ?? 45) + PREFETCH_MARGIN,
+				animate,
+				duration: opts?.duration,
+			},
 		);
 	}
 

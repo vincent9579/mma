@@ -168,6 +168,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             store::commands::store_duplicate_groups,
             store::commands::store_merge_duplicates,
             store::commands::store_prune_duplicates,
+            store::commands::store_generate_auto_tags,
+            store::commands::store_apply_auto_tags,
             store::commands::store_fill_render_file,
             store::commands::store_resolve_pick,
             store::maps::store_list_maps,
