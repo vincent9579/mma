@@ -82,6 +82,12 @@ pub struct MapSettings {
     pub tag_filter_mode: Option<String>,
     /// Whether to show autotag suggestions in LocationPreview.
     pub auto_tag_suggestions: Option<bool>,
+    /// Whether autotag suggestions follow the app language (country/season names).
+    /// `None` (or true) translates; false keeps English/raw codes.
+    pub auto_tag_translate: Option<bool>,
+    /// How a country suggestion renders as a tag: "code" (TW), "name" (Taiwan),
+    /// or "both" (TW-Taiwan). `None` keeps the legacy "code" behaviour.
+    pub auto_tag_country_format: Option<String>,
 }
 
 impl Default for MapSettings {
@@ -106,6 +112,8 @@ impl Default for MapSettings {
             duplicate_score: None,
             tag_filter_mode: None,
             auto_tag_suggestions: None,
+            auto_tag_translate: None,
+            auto_tag_country_format: None,
         }
     }
 }

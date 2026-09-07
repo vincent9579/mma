@@ -60,6 +60,24 @@ fn map_settings_aliases_default_empty() {
 }
 
 #[test]
+fn map_settings_autotag_defaults_unset() {
+    // Old settings JSON (no autotag keys) must deserialize as "translate on,
+    // country format code" -- the legacy suggestion behaviour.
+    let old_json = r#"{"pointAlongRoad":true}"#;
+    let settings: MapSettings = serde_json::from_str(old_json).unwrap();
+    assert!(settings.auto_tag_translate.is_none());
+    assert!(settings.auto_tag_country_format.is_none());
+    assert!(MapSettings::default().auto_tag_translate.is_none());
+    assert!(MapSettings::default().auto_tag_country_format.is_none());
+
+    // Round-trips configured values.
+    let json = r#"{"autoTagTranslate":false,"autoTagCountryFormat":"both"}"#;
+    let settings: MapSettings = serde_json::from_str(json).unwrap();
+    assert_eq!(settings.auto_tag_translate, Some(false));
+    assert_eq!(settings.auto_tag_country_format.as_deref(), Some("both"));
+}
+
+#[test]
 fn map_settings_duplicate_score_defaults_unset() {
     // Old settings JSON (no duplicateScore) must deserialize as "built-in ranking".
     let old_json = r#"{"pointAlongRoad":true}"#;

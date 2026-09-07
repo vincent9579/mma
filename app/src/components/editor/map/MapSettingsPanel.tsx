@@ -20,6 +20,11 @@ import { Slider } from "@/components/primitives/Slider";
 import { hexToRgb, rgbToHex, resolveSvColorHex } from "@/lib/util/color";
 import { useMapSetting } from "@/store/useMapSetting";
 import { formatDistance } from "@/lib/util/format";
+import {
+	AUTO_TAG_COUNTRY_FORMATS,
+	normalizeCountryFormat,
+	type AutoTagCountryFormat,
+} from "@/lib/autotag";
 import { useSetting } from "@/store/settings";
 import { t } from "@/lib/i18n";
 
@@ -375,6 +380,13 @@ export function MapSettingsDropdown({
 	const [onlyOfficial, setOnlyOfficial] = useMapSetting("onlyOfficial");
 	const [defaultPanoId, setDefaultPanoId] = useMapSetting("defaultPanoId");
 	const [searchRadius, setSearchRadius] = useMapSetting("searchRadius");
+	const [autoTagEnabled, setAutoTagEnabled] = useMapSetting("autoTagSuggestions", true);
+	const [autoTagTranslate, setAutoTagTranslate] = useMapSetting("autoTagTranslate", true);
+	const [autoTagCountryFormatRaw, setAutoTagCountryFormat] = useMapSetting(
+		"autoTagCountryFormat",
+		"code",
+	);
+	const autoTagCountryFormat = normalizeCountryFormat(autoTagCountryFormatRaw);
 	const [isOpen, setIsOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
 
@@ -466,6 +478,37 @@ export function MapSettingsDropdown({
 							onChange={setPref("selectOnly")}
 							label={t("Select-only mode")}
 						/>
+					</fieldset>
+					<fieldset className="fieldset">
+						<legend className="fieldset__header">
+							{t("Autotag")} <span className="fieldset__divider" />
+						</legend>
+						<SwitchRow
+							checked={autoTagEnabled}
+							onChange={setAutoTagEnabled}
+							label={t("Show autotag suggestions")}
+						/>
+						<SwitchRow
+							checked={autoTagTranslate}
+							disabled={!autoTagEnabled}
+							onChange={setAutoTagTranslate}
+							label={t("Translate suggestions to app language")}
+						/>
+						<label className="settings-popup__item settings-popup__select">
+							{t("Country tag:")}{" "}
+							<NSelect
+								className="nselect--compact"
+								value={autoTagCountryFormat}
+								disabled={!autoTagEnabled}
+								onChange={(e) => setAutoTagCountryFormat(e.target.value)}
+							>
+								{(Object.keys(AUTO_TAG_COUNTRY_FORMATS) as AutoTagCountryFormat[]).map((key) => (
+									<option key={key} value={key}>
+										{t(AUTO_TAG_COUNTRY_FORMATS[key])}
+									</option>
+								))}
+							</NSelect>
+						</label>
 					</fieldset>
 					<fieldset className="fieldset">
 						<legend className="fieldset__header">

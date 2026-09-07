@@ -3754,6 +3754,9 @@ input.date-picker__trigger.is-invalid:focus {
 	opacity: 1;
 	padding: 0 1rem;
 }
+.tag.is-suggested {
+	border-style: dashed;
+}
 .tag:has(> .tag__button) {
 	padding: 0 0.75rem 0 0;
 }

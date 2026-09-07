@@ -601,9 +601,9 @@ declare const commands$1: {
      */
     storePruneDuplicates: (selector: Selector, distance: number, score: string | null) => Promise<MutationResult>;
     /** @unstable */
-    storeGenerateAutoTags: (locationId: number) => Promise<AutoTagSuggestion[]>;
+    storeGenerateAutoTags: (locationId: number, countryFormat: string | null, countryNames: { [key in string]: string; } | null, seasonNames: { [key in string]: string; } | null) => Promise<AutoTagSuggestion[]>;
     /** @unstable */
-    storeApplyAutoTags: (locationIds: number[], tagTypes: string[]) => Promise<AutoTagApplyResult>;
+    storeApplyAutoTags: (locationIds: number[], tagTypes: string[], countryFormat: string | null, countryNames: { [key in string]: string; } | null, seasonNames: { [key in string]: string; } | null) => Promise<AutoTagApplyResult>;
     /**
      *  Full render rebuild: single-pass over all alive locations, writes binary to a temp file.
      *  Returns the file path for JS to fetch via `mma-buf://`. Only called on map open or full reset.
@@ -1597,6 +1597,16 @@ type MapSettings = {
     tagFilterMode?: string | null;
     /**  Whether to show autotag suggestions in LocationPreview. */
     autoTagSuggestions?: boolean | null;
+    /**
+     *  Whether autotag suggestions follow the app language (country/season names).
+     *  `None` (or true) translates; false keeps English/raw codes.
+     */
+    autoTagTranslate?: boolean | null;
+    /**
+     *  How a country suggestion renders as a tag: "code" (TW), "name" (Taiwan),
+     *  or "both" (TW-Taiwan). `None` keeps the legacy "code" behaviour.
+     */
+    autoTagCountryFormat?: string | null;
 };
 /**  When a move target already holds a value, which side survives. */
 type MergeWinner = "from" | "to";

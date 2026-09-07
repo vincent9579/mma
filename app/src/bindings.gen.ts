@@ -305,8 +305,8 @@ export const commands = {
 	 *  ranks by. One undoable edit.
 	 */
 	storePruneDuplicates: (selector: Selector, distance: number, score: string | null) => __TAURI_INVOKE<MutationResult>("store_prune_duplicates", { selector, distance, score }).then((v) => (({...v,delta:({...v.delta,added:v.delta.added.map(i=>i),updated:v.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),fieldDefs:v.fieldDefs==null?v.fieldDefs:Object.fromEntries(Object.entries(v.fieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) as typeof v)),
-	storeGenerateAutoTags: (locationId: number) => __TAURI_INVOKE<AutoTagSuggestion[]>("store_generate_auto_tags", { locationId }),
-	storeApplyAutoTags: (locationIds: number[], tagTypes: string[]) => __TAURI_INVOKE<AutoTagApplyResult>("store_apply_auto_tags", { locationIds, tagTypes }),
+	storeGenerateAutoTags: (locationId: number, countryFormat: string | null, countryNames: { [key in string]: string } | null, seasonNames: { [key in string]: string } | null) => __TAURI_INVOKE<AutoTagSuggestion[]>("store_generate_auto_tags", { locationId, countryFormat, countryNames, seasonNames }),
+	storeApplyAutoTags: (locationIds: number[], tagTypes: string[], countryFormat: string | null, countryNames: { [key in string]: string } | null, seasonNames: { [key in string]: string } | null) => __TAURI_INVOKE<AutoTagApplyResult>("store_apply_auto_tags", { locationIds, tagTypes, countryFormat, countryNames, seasonNames }),
 	/**
 	 *  Full render rebuild: single-pass over all alive locations, writes binary to a temp file.
 	 *  Returns the file path for JS to fetch via `mma-buf://`. Only called on map open or full reset.
@@ -1101,6 +1101,16 @@ export type MapSettings = {
 	tagFilterMode?: string | null,
 	/**  Whether to show autotag suggestions in LocationPreview. */
 	autoTagSuggestions?: boolean | null,
+	/**
+	 *  Whether autotag suggestions follow the app language (country/season names).
+	 *  `None` (or true) translates; false keeps English/raw codes.
+	 */
+	autoTagTranslate?: boolean | null,
+	/**
+	 *  How a country suggestion renders as a tag: "code" (TW), "name" (Taiwan),
+	 *  or "both" (TW-Taiwan). `None` keeps the legacy "code" behaviour.
+	 */
+	autoTagCountryFormat?: string | null,
 };
 
 /**  When a move target already holds a value, which side survives. */

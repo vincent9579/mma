@@ -1357,9 +1357,9 @@ fn is_southern(code: &str) -> bool {
 fn season_for(month: u32, is_south: bool) -> &'static str {
     let north = match month {
         12 | 1 | 2 => "Winter",
-        3 | 4 | 5 => "Spring",
-        6 | 7 | 8 => "Summer",
-        9 | 10 | 11 => "Autumn",
+        3..=5 => "Spring",
+        6..=8 => "Summer",
+        9..=11 => "Autumn",
         _ => "Unknown",
     };
     if !is_south {
@@ -1396,20 +1396,52 @@ fn tag_present(store: &Store, loc: &Location, value: &str) -> bool {
     false
 }
 
-fn generate_for_location(store: &Store, loc: &Location) -> Vec<AutoTagSuggestion> {
+/// Render an ISO-A2 country code as a tag value. `format` is "code" (TW),
+/// "name" (Taiwan), or "both" (TW-Taiwan); anything else falls back to "code".
+/// `names` maps upper-cased codes to the frontend-resolved display name and
+/// already follows the app language when translation is on. A name identical
+/// to the code (unknown code) collapses back to the bare code.
+fn country_tag_value(code: &str, format: &str, names: &HashMap<String, String>) -> String {
+    match format {
+        "name" => names.get(code).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| code.to_string()),
+        "both" => match names.get(code).filter(|n| !n.is_empty() && n.as_str() != code) {
+            Some(name) => format!("{code}-{name}"),
+            None => code.to_string(),
+        },
+        _ => code.to_string(),
+    }
+}
+
+/// Resolve an English season name through the frontend-supplied table, which
+/// already follows the app language when translation is on. Missing entries
+/// (older frontends) fall back to English.
+fn season_tag_value(english: &str, names: &HashMap<String, String>) -> String {
+    names.get(english).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| english.to_string())
+}
+
+fn generate_for_location(
+    store: &Store,
+    loc: &Location,
+    country_format: &str,
+    country_names: &HashMap<String, String>,
+    season_names: &HashMap<String, String>,
+) -> Vec<AutoTagSuggestion> {
     let mut out = Vec::new();
     let extra = loc.extra.as_ref();
-    // countryCode
+    // countryCode: raw code, localised name, or both ("TW-Taiwan"), depending on
+    // the caller's `country_format`. Names are resolved by the frontend (which
+    // owns the app locale) and passed in; unknown codes fall back to the code.
     if let Some(v) = extra
         .and_then(|e| e.get("countryCode"))
         .and_then(|v| match v {
             serde_json::Value::String(s) => Some(s),
             _ => None,
         })
-        .map(|s| s.trim().to_string())
+        .map(|s| s.trim().to_uppercase())
         .filter(|s| !s.is_empty())
     {
-        out.push(AutoTagSuggestion { tag_type: "countryCode".into(), value: v.clone(), already_present: tag_present(store, loc, &v) });
+        let value = country_tag_value(&v, country_format, country_names);
+        out.push(AutoTagSuggestion { tag_type: "countryCode".into(), value: value.clone(), already_present: tag_present(store, loc, &value) });
     }
     // cameraType
     if let Some(v) = extra
@@ -1448,7 +1480,7 @@ fn generate_for_location(store: &Store, loc: &Location) -> Vec<AutoTagSuggestion
             String::new()
         };
         if !year_str.is_empty() && year_str.chars().all(|c| c.is_ascii_digit()) {
-            let val = format!("© {}", year_str);
+            let val = format!("© {year_str}");
             out.push(AutoTagSuggestion { tag_type: "copyrightYear".into(), value: val.clone(), already_present: tag_present(store, loc, &val) });
         }
     }
@@ -1472,7 +1504,8 @@ fn generate_for_location(store: &Store, loc: &Location) -> Vec<AutoTagSuggestion
                         })
                         .unwrap_or_default();
                     let is_south = is_southern(&code);
-                    let season = season_for(month, is_south).to_string();
+                    let season_en = season_for(month, is_south);
+                    let season = season_tag_value(season_en, season_names);
                     out.push(AutoTagSuggestion { tag_type: "Season".into(), value: season.clone(), already_present: tag_present(store, loc, &season) });
                 }
             }
@@ -1490,10 +1523,16 @@ pub fn store_generate_auto_tags(
     label: WindowLabel,
     state: tauri::State<'_, StoreState>,
     location_id: u32,
+    country_format: Option<String>,
+    country_names: Option<HashMap<String, String>>,
+    season_names: Option<HashMap<String, String>>,
 ) -> AppResult<Vec<AutoTagSuggestion>> {
+    let format = country_format.unwrap_or_else(|| "code".to_string());
+    let countries = country_names.unwrap_or_default();
+    let seasons = season_names.unwrap_or_default();
     with_store!(label, state, |store| {
         let loc = store.get_loc_by_id(location_id).ok_or_else(|| AppError::from("location not found"))?;
-        Ok(generate_for_location(store, &loc))
+        Ok(generate_for_location(store, &loc, &format, &countries, &seasons))
     })
 }
 
@@ -1513,9 +1552,15 @@ pub fn store_apply_auto_tags(
     state: tauri::State<'_, StoreState>,
     location_ids: Vec<u32>,
     tag_types: Vec<String>,
+    country_format: Option<String>,
+    country_names: Option<HashMap<String, String>>,
+    season_names: Option<HashMap<String, String>>,
 ) -> AppResult<AutoTagApplyResult> {
     let type_set: HashSet<String> = tag_types.into_iter().collect();
     let filter_by_type = !type_set.is_empty();
+    let format = country_format.unwrap_or_else(|| "code".to_string());
+    let countries = country_names.unwrap_or_default();
+    let seasons = season_names.unwrap_or_default();
     with_store!(label, state, |store| {
         let mut total = 0usize;
         let mut success = 0usize;
@@ -1534,7 +1579,7 @@ pub fn store_apply_auto_tags(
         let mut tag_values: Vec<String> = Vec::new();
         let mut loc_suggestions: Vec<(u32, Vec<AutoTagSuggestion>)> = Vec::new();
         for loc in &locs {
-            let sug = generate_for_location(store, loc);
+            let sug = generate_for_location(store, loc, &format, &countries, &seasons);
             let filtered: Vec<AutoTagSuggestion> = if filter_by_type { sug.into_iter().filter(|s| type_set.contains(&s.tag_type)).collect() } else { sug };
             total += filtered.len();
             // already_present counts as skipped
@@ -1592,4 +1637,34 @@ pub fn store_apply_auto_tags(
         };
         Ok(result)
     })
+}
+
+#[cfg(test)]
+mod autotag_tests {
+    use super::*;
+
+    fn names(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn country_tag_value_formats() {
+        let map = names(&[("TW", "台灣")]);
+        assert_eq!(country_tag_value("TW", "code", &map), "TW");
+        assert_eq!(country_tag_value("TW", "name", &map), "台灣");
+        assert_eq!(country_tag_value("TW", "both", &map), "TW-台灣");
+        // Unknown codes collapse to the bare code in every format.
+        assert_eq!(country_tag_value("XX", "name", &map), "XX");
+        assert_eq!(country_tag_value("XX", "both", &map), "XX");
+        // Unknown formats and empty tables fall back to the code.
+        assert_eq!(country_tag_value("TW", "bogus", &map), "TW");
+        assert_eq!(country_tag_value("TW", "both", &HashMap::new()), "TW");
+    }
+
+    #[test]
+    fn season_tag_value_falls_back_to_english() {
+        let map = names(&[("Spring", "春季")]);
+        assert_eq!(season_tag_value("Spring", &map), "春季");
+        assert_eq!(season_tag_value("Winter", &map), "Winter");
+    }
 }
