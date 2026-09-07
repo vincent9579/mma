@@ -1,6 +1,11 @@
 {
-  "name": "autotag",
+  "name": "mma-autotag-plugin",
   "private": true,
-  "type": "module",
-  "scripts": { "build": "echo built" }
+  "scripts": {
+    "build": "node ../build-plugin.mjs ."
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "mma-plugin-types": "file:../types"
+  }
 }
