@@ -261,16 +261,20 @@ const AutoTagSuggestions = memo(function AutoTagSuggestions({
 								if (cancelled) return;
 							}
 						}
-					} catch {}
+					} catch (_e) {
+						void _e;
+					}
 				}
 				if (!cancelled) setSuggested(res);
-			} catch {
+			} catch (_e) {
+				void _e;
 				if (!cancelled) setSuggested([]);
 			}
 		})();
 		return () => {
 			cancelled = true;
 		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- _extra intentionally excluded to avoid loop, read via getMapState
 	}, [locationId, autoTagEnabled]);
 	if (!autoTagEnabled || visible.length === 0) return null;
 	return (
@@ -289,10 +293,12 @@ const AutoTagSuggestions = memo(function AutoTagSuggestions({
 						button={
 							<TagPillButton
 								variant="add"
-								onClick={async () => {
-									const tags = await createTags([s.value]);
-									if (tags.length > 0) onAdopt(tags[0].name);
-									else onAdopt(s.value);
+								onClick={() => {
+									void (async () => {
+										const tags = await createTags([s.value]);
+										if (tags.length > 0) onAdopt(tags[0].name);
+										else onAdopt(s.value);
+									})();
 								}}
 							/>
 						}

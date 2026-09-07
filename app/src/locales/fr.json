@@ -1577,5 +1577,11 @@
 	"{radius} radius": "rayon de {radius}",
 	"{rate}/s": "{rate}/s",
 	"{selected} of {total} selected ({locations} locations)": "{selected} sur {total} sélectionnés ({locations} lieux)",
-	"{value} is the projected value, {field} the field label. A / makes a folder.": "{value} est la valeur projetée, {field} le libellé du champ. Un / crée un dossier."
+	"{value} is the projected value, {field} the field label. A / makes a folder.": "{value} est la valeur projetée, {field} le libellé du champ. Un / crée un dossier.",
+	"Suggestions": "Suggestions",
+	"Tag filter mode": "Tag filter mode",
+	"Marketplace registry URL": "Marketplace registry URL",
+	"Plugin repository base URL": "Plugin repository base URL",
+	"Plugin sources": "Plugin sources",
+	"Sidecar release base URL": "Sidecar release base URL"
 }

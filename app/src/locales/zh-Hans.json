@@ -1473,5 +1473,7 @@
 	"Marketplace registry URL": "市场注册表 URL",
 	"Plugin repository base URL": "插件仓库基础 URL",
 	"Plugin sources": "插件来源",
-	"Sidecar release base URL": "Sidecar 发布基础 URL"
+	"Sidecar release base URL": "Sidecar 发布基础 URL",
+	"Suggestions": "建议",
+	"Tag filter mode": "标签过滤模式"
 }

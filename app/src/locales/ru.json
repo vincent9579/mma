@@ -1631,5 +1631,11 @@
 	"{radius} radius": "радиус {radius}",
 	"{rate}/s": "{rate}/s",
 	"{selected} of {total} selected ({locations} locations)": "Выбрано {selected} из {total} ({locations} локаций)",
-	"{value} is the projected value, {field} the field label. A / makes a folder.": "{value} - спроецированное значение, {field} - название поля. Символ / создаёт папку."
+	"{value} is the projected value, {field} the field label. A / makes a folder.": "{value} - спроецированное значение, {field} - название поля. Символ / создаёт папку.",
+	"Suggestions": "Suggestions",
+	"Tag filter mode": "Tag filter mode",
+	"Marketplace registry URL": "Marketplace registry URL",
+	"Plugin repository base URL": "Plugin repository base URL",
+	"Plugin sources": "Plugin sources",
+	"Sidecar release base URL": "Sidecar release base URL"
 }

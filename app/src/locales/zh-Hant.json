@@ -1473,5 +1473,7 @@
 	"Marketplace registry URL": "市集註冊表 URL",
 	"Plugin repository base URL": "外掛儲存庫基礎 URL",
 	"Plugin sources": "外掛來源",
-	"Sidecar release base URL": "Sidecar 發布基礎 URL"
+	"Sidecar release base URL": "Sidecar 發布基礎 URL",
+	"Suggestions": "建議",
+	"Tag filter mode": "標籤篩選模式"
 }
