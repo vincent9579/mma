@@ -1469,5 +1469,9 @@
 	"{radius} radius": "半径 {radius}",
 	"{rate}/s": "{rate}/秒",
 	"{selected} of {total} selected ({locations} locations)": "已选 {selected} / {total}（{locations} 个位置）",
-	"{value} is the projected value, {field} the field label. A / makes a folder.": "{value} 为投影值，{field} 为字段名。/ 会创建文件夹。"
+	"{value} is the projected value, {field} the field label. A / makes a folder.": "{value} 为投影值，{field} 为字段名。/ 会创建文件夹。",
+	"Marketplace registry URL": "市场注册表 URL",
+	"Plugin repository base URL": "插件仓库基础 URL",
+	"Plugin sources": "插件来源",
+	"Sidecar release base URL": "Sidecar 发布基础 URL"
 }

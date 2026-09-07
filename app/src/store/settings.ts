@@ -19,6 +19,7 @@ export const LANGUAGES = {
 	pl: "Polski",
 	ru: "Русский",
 	"zh-Hans": "简体中文",
+	"zh-Hant": "繁體中文",
 	"en-XA": msg("Pseudolocale"),
 } as const;
 
@@ -229,6 +230,8 @@ export const DEFAULTS = {
 	subdivisionDetail: "off" as SubdivisionDetail,
 	previewAspectRatio: "16 / 9" as PreviewAspectRatio,
 	tagSuggestionLimit: 0 as number,
+	/** Duration (ms) for Tag selection fitBounds animation; 0 = instant. Global. */
+	tagFitDurationMs: 300 as number,
 	/** Copy-to-map hotkeys that work in every map (assigned in the copy-to-map dialog);
 	 *  a map's own binding on the same key shadows them. */
 	globalCopyBindings: [] as MapKeyBinding[],
