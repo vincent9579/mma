@@ -122,7 +122,7 @@ function SpacedPickPanel() {
 	useSetting("units");
 	const unit = distanceUnit("m");
 
-	const handleSubmit = (e: React.FormEvent) => {
+	const handleSubmit = (e: React.SyntheticEvent) => {
 		e.preventDefault();
 		if (!valid) return;
 		const count = perSelection ? parsed : Math.min(parsed, total);
@@ -257,7 +257,7 @@ function BulkTagForm() {
 	const tagCounts = useMapState((s) => s.tagCounts);
 	const tagSortMode = useSetting("tagSortMode");
 
-	const handleBulkAddTag = async (e: React.FormEvent) => {
+	const handleBulkAddTag = async (e: React.SyntheticEvent) => {
 		e.preventDefault();
 		const name = bulkTagInput.trim();
 		const selected = getMapState().selectedLocationIds;
