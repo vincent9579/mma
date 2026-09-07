@@ -305,6 +305,8 @@ export const commands = {
 	 *  ranks by. One undoable edit.
 	 */
 	storePruneDuplicates: (selector: Selector, distance: number, score: string | null) => __TAURI_INVOKE<MutationResult>("store_prune_duplicates", { selector, distance, score }).then((v) => (({...v,delta:({...v.delta,added:v.delta.added.map(i=>i),updated:v.delta.updated.map(i=>({...i,lng:i.lng==null?i.lng:i.lng,lat:i.lat==null?i.lat:i.lat,heading:i.heading==null?i.heading:i.heading}))}),fieldDefs:v.fieldDefs==null?v.fieldDefs:Object.fromEntries(Object.entries(v.fieldDefs).map(([k,v])=>[k,({...v,comparison:v.comparison==null?v.comparison:v.comparison})]))}) as typeof v)),
+	storeGenerateAutoTags: (locationId: number) => __TAURI_INVOKE<AutoTagSuggestion[]>("store_generate_auto_tags", { locationId }),
+	storeApplyAutoTags: (locationIds: number[], tagTypes: string[]) => __TAURI_INVOKE<AutoTagApplyResult>("store_apply_auto_tags", { locationIds, tagTypes }),
 	/**
 	 *  Full render rebuild: single-pass over all alive locations, writes binary to a temp file.
 	 *  Returns the file path for JS to fetch via `mma-buf://`. Only called on map open or full reset.
@@ -558,6 +560,19 @@ export type AttachmentRef = {
 	 *  rendered issue.
 	 */
 	name: string,
+};
+
+export type AutoTagApplyResult = {
+	total: number,
+	success: number,
+	skipped: number,
+	errors: string[],
+};
+
+export type AutoTagSuggestion = {
+	tagType: string,
+	value: string,
+	alreadyPresent: boolean,
 };
 
 /**  How a page of rows is cut into procedure calls. */
@@ -1082,6 +1097,10 @@ export type MapSettings = {
 	 *  location, highest wins. `None` (or blank) keeps the built-in ranking.
 	 */
 	duplicateScore?: string | null,
+	/**  How multiple Tag selections combine: "or" = Union (default), "and" = Intersection. */
+	tagFilterMode?: string | null,
+	/**  Whether to show autotag suggestions in LocationPreview. */
+	autoTagSuggestions?: boolean | null,
 };
 
 /**  When a move target already holds a value, which side survives. */

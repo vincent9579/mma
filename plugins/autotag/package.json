@@ -1,0 +1,6 @@
+{
+  "name": "autotag",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "echo built" }
+}

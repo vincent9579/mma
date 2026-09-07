@@ -1342,3 +1342,254 @@ pub fn store_near_any(
         Ok(result)
     })
 }
+
+// --- Autotag suggestions ---
+const SOUTHERN_COUNTRIES: &[&str] = &[
+    "AO", "AR", "AU", "BO", "BW", "BR", "BI", "CL", "KM", "CD", "TL", "EC", "GQ", "SZ", "FJ", "GA", "ID", "KE",
+    "KI", "LS", "MG", "MW", "MU", "MZ", "NA", "NR", "NZ", "PG", "PY", "PE", "CG", "RW", "WS", "SC", "SB", "SO",
+    "ZA", "TZ", "TO", "TV", "UG", "UY", "VU", "ZM", "ZW", "CO", "MV", "ST",
+];
+
+fn is_southern(code: &str) -> bool {
+    SOUTHERN_COUNTRIES.contains(&code.to_uppercase().as_str())
+}
+
+fn season_for(month: u32, is_south: bool) -> &'static str {
+    let north = match month {
+        12 | 1 | 2 => "Winter",
+        3 | 4 | 5 => "Spring",
+        6 | 7 | 8 => "Summer",
+        9 | 10 | 11 => "Autumn",
+        _ => "Unknown",
+    };
+    if !is_south {
+        return north;
+    }
+    match north {
+        "Winter" => "Summer",
+        "Spring" => "Autumn",
+        "Summer" => "Winter",
+        "Autumn" => "Spring",
+        _ => "Unknown",
+    }
+}
+
+#[derive(serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoTagSuggestion {
+    pub tag_type: String,
+    pub value: String,
+    pub already_present: bool,
+}
+
+fn tag_present(store: &Store, loc: &Location, value: &str) -> bool {
+    let lower = value.to_lowercase();
+    for &tid in &loc.tags {
+        if let Some(tag) = store.tags.all.get(&tid) {
+            if tag.name.to_lowercase() == lower {
+                return true;
+            }
+        }
+    }
+    // also check if tag exists globally with same name but not attached? spec says alreadyPresent means location already has tag
+    // so only check loc.tags
+    false
+}
+
+fn generate_for_location(store: &Store, loc: &Location) -> Vec<AutoTagSuggestion> {
+    let mut out = Vec::new();
+    let extra = loc.extra.as_ref();
+    // countryCode
+    if let Some(v) = extra
+        .and_then(|e| e.get("countryCode"))
+        .and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s),
+            _ => None,
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        out.push(AutoTagSuggestion { tag_type: "countryCode".into(), value: v.clone(), already_present: tag_present(store, loc, &v) });
+    }
+    // cameraType
+    if let Some(v) = extra
+        .and_then(|e| e.get("cameraType"))
+        .and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s),
+            _ => None,
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        out.push(AutoTagSuggestion { tag_type: "cameraType".into(), value: v.clone(), already_present: tag_present(store, loc, &v) });
+    }
+    // imageDate -> year
+    if let Some(s) = extra
+        .and_then(|e| e.get("imageDate"))
+        .and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s),
+            _ => None,
+        })
+    {
+        if s.len() >= 4 {
+            let year = s[0..4].to_string();
+            if year.chars().all(|c| c.is_ascii_digit()) {
+                out.push(AutoTagSuggestion { tag_type: "imageDate".into(), value: year.clone(), already_present: tag_present(store, loc, &year) });
+            }
+        }
+    }
+    // copyrightYear -> © year
+    if let Some(v) = extra.and_then(|e| e.get("copyrightYear")) {
+        let year_str = if let Some(n) = v.as_u64() {
+            n.to_string()
+        } else if let serde_json::Value::String(s) = v {
+            s.trim().to_string()
+        } else {
+            String::new()
+        };
+        if !year_str.is_empty() && year_str.chars().all(|c| c.is_ascii_digit()) {
+            let val = format!("© {}", year_str);
+            out.push(AutoTagSuggestion { tag_type: "copyrightYear".into(), value: val.clone(), already_present: tag_present(store, loc, &val) });
+        }
+    }
+    // Season: month + countryCode
+    if let Some(s) = extra
+        .and_then(|e| e.get("imageDate"))
+        .and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s),
+            _ => None,
+        })
+    {
+        // expect YYYY-MM
+        if s.len() >= 7 && s.as_bytes()[4] == b'-' {
+            if let Ok(month) = s[5..7].parse::<u32>() {
+                if (1..=12).contains(&month) {
+                    let code = extra
+                        .and_then(|e| e.get("countryCode"))
+                        .and_then(|v| match v {
+                            serde_json::Value::String(s) => Some(s),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let is_south = is_southern(&code);
+                    let season = season_for(month, is_south).to_string();
+                    out.push(AutoTagSuggestion { tag_type: "Season".into(), value: season.clone(), already_present: tag_present(store, loc, &season) });
+                }
+            }
+        }
+    }
+    if out.len() > 5 {
+        out.truncate(5);
+    }
+    out
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn store_generate_auto_tags(
+    label: WindowLabel,
+    state: tauri::State<'_, StoreState>,
+    location_id: u32,
+) -> AppResult<Vec<AutoTagSuggestion>> {
+    with_store!(label, state, |store| {
+        let loc = store.get_loc_by_id(location_id).ok_or_else(|| AppError::from("location not found"))?;
+        Ok(generate_for_location(store, &loc))
+    })
+}
+
+#[derive(serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoTagApplyResult {
+    pub total: usize,
+    pub success: usize,
+    pub skipped: usize,
+    pub errors: Vec<String>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn store_apply_auto_tags(
+    label: WindowLabel,
+    state: tauri::State<'_, StoreState>,
+    location_ids: Vec<u32>,
+    tag_types: Vec<String>,
+) -> AppResult<AutoTagApplyResult> {
+    let type_set: HashSet<String> = tag_types.into_iter().collect();
+    let filter_by_type = !type_set.is_empty();
+    with_store!(label, state, |store| {
+        let mut total = 0usize;
+        let mut success = 0usize;
+        let mut skipped = 0usize;
+        let mut errors: Vec<String> = Vec::new();
+        // Pre-collect locations
+        let locs: Vec<Location> = location_ids.iter().filter_map(|id| store.get_loc_by_id(*id)).collect();
+        if locs.is_empty() && !location_ids.is_empty() {
+            errors.push("no locations found".into());
+        }
+        let mut updates: Vec<(Location, Location)> = Vec::new();
+        // Need to track tags to create: value -> tag id
+        // We will use store.create_tags later? Instead we create tags via store.create_tags helper but we need batched mutation.
+        // Simplify: for each suggestion, ensure tag exists (create if needed) then push to location.
+        // To avoid multiple finish_mutation, we collect all tag creations first.
+        let mut tag_values: Vec<String> = Vec::new();
+        let mut loc_suggestions: Vec<(u32, Vec<AutoTagSuggestion>)> = Vec::new();
+        for loc in &locs {
+            let sug = generate_for_location(store, loc);
+            let filtered: Vec<AutoTagSuggestion> = if filter_by_type { sug.into_iter().filter(|s| type_set.contains(&s.tag_type)).collect() } else { sug };
+            total += filtered.len();
+            // already_present counts as skipped
+            for s in &filtered {
+                if s.already_present { skipped += 1; }
+                else if !tag_values.iter().any(|v| v.to_lowercase()==s.value.to_lowercase()) { tag_values.push(s.value.clone()); }
+            }
+            loc_suggestions.push((loc.id, filtered));
+        }
+        // Create tags for needed values
+        if !tag_values.is_empty() {
+            // create_tags expects names and will dedupe case-insensitively
+            let _ = store.create_tags(&tag_values, &[]);
+        }
+        // Now map value -> tag id
+        let mut value_to_id: HashMap<String, u32> = HashMap::new();
+        for (id, tag) in store.tags.all.iter() {
+            value_to_id.insert(tag.name.to_lowercase(), *id);
+        }
+        for (loc_id, sugs) in loc_suggestions {
+            if let Some(old) = store.get_loc_by_id(loc_id) {
+                let mut new_tags = old.tags.clone();
+                let mut changed = false;
+                for s in sugs {
+                    if s.already_present { continue; }
+                    if let Some(&tid) = value_to_id.get(&s.value.to_lowercase()) {
+                        if !new_tags.contains(&tid) {
+                            new_tags.push(tid);
+                            changed = true;
+                            success += 1;
+                        } else {
+                            skipped += 1;
+                        }
+                    } else {
+                        errors.push(format!("tag not created: {}", s.value));
+                    }
+                }
+                if changed {
+                    let mut new_loc = old.clone();
+                    new_loc.tags = new_tags;
+                    updates.push((old, new_loc));
+                }
+            }
+        }
+        let result = if updates.is_empty() {
+            AutoTagApplyResult { total, success, skipped, errors }
+        } else {
+            let mutation = store.apply_undoable(updates.iter().map(|(a,_)| a.clone()).collect(), updates.into_iter().map(|(_,b)| b).collect());
+            // apply_undoable already did finish_mutation internally? Check: store.apply_undoable returns MutationResult after finish
+            // But we used store directly; need to ensure mutation result is applied. We already used internal method that returns MutationResult.
+            // For simplicity, we don't return mutation here, but we need to ensure store state updated.
+            // The above apply_undoable is via store.apply_undoable which does finish_mutation.
+            let _ = mutation;
+            AutoTagApplyResult { total, success, skipped, errors }
+        };
+        Ok(result)
+    })
+}

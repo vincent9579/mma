@@ -600,6 +600,10 @@ declare const commands$1: {
      *  @unstable
      */
     storePruneDuplicates: (selector: Selector, distance: number, score: string | null) => Promise<MutationResult>;
+    /** @unstable */
+    storeGenerateAutoTags: (locationId: number) => Promise<AutoTagSuggestion[]>;
+    /** @unstable */
+    storeApplyAutoTags: (locationIds: number[], tagTypes: string[]) => Promise<AutoTagApplyResult>;
     /**
      *  Full render rebuild: single-pass over all alive locations, writes binary to a temp file.
      *  Returns the file path for JS to fetch via `mma-buf://`. Only called on map open or full reset.
@@ -989,6 +993,17 @@ type AttachmentRef = {
      *  rendered issue.
      */
     name: string;
+};
+type AutoTagApplyResult = {
+    total: number;
+    success: number;
+    skipped: number;
+    errors: string[];
+};
+type AutoTagSuggestion = {
+    tagType: string;
+    value: string;
+    alreadyPresent: boolean;
 };
 /**  How a page of rows is cut into procedure calls. */
 type BatchMode = {
@@ -1578,6 +1593,10 @@ type MapSettings = {
      *  location, highest wins. `None` (or blank) keeps the built-in ranking.
      */
     duplicateScore?: string | null;
+    /**  How multiple Tag selections combine: "or" = Union (default), "and" = Intersection. */
+    tagFilterMode?: string | null;
+    /**  Whether to show autotag suggestions in LocationPreview. */
+    autoTagSuggestions?: boolean | null;
 };
 /**  When a move target already holds a value, which side survives. */
 type MergeWinner = "from" | "to";
@@ -3011,9 +3030,9 @@ declare function partition(field: string, key: KeySpec, selector: Selector): Pro
 declare function fetchLocations(selector: Selector): Promise<Location[]>;
 /** Active (non-ghosted) selections, the default for any operational logic. */
 declare const getActiveSelections: () => Selection[];
-/** The live selection as a `Selector`: the union of the active selection nodes. What
- *  every "operate on the selection" call site sends -- Rust holds no notion of "selected",
- *  so the tree JS already has is the definition. */
+/** The live selection as a `Selector`. Tag selections combine per MapSettings.tagFilterMode:
+ *  "or" = Union (default), "and" = Intersection. Non-tag selections are always Unioned
+ *  with the tag group. */
 declare function currentSelection(): Selector;
 /** Overwrite the selected-id set directly, bypassing selection resolution. Rarely what you want. */
 declare function setSelectedLocationIds(ids: SelectedIds): void;
@@ -3096,7 +3115,12 @@ declare function pruneDuplicates(selector: Selector, distance: number): Promise<
 /** Edit an existing filter (or any selection) in place by key, preserving its
  *  position inside any AND/OR/Invert composite. Carries ghost state to the new key. */
 declare function updateFilterSelection(oldKey: string, selector: Selector): Promise<void>;
-/** Toggle tag selections on/off for the given tags (used by tag-pill clicks). */
+/** Apply current tagFilterMode normalization and sync. Call after mode changes. */
+declare function syncTagFilterMode(): void;
+/** Toggle tag selections on/off for the given tags (used by tag-pill clicks).
+ *  On add, fetches combined bounds of all selected tags and fitBounds with
+ *  global duration (AppSettings.tagFitDurationMs) and existing padding.
+ *  Pure removals or empty tags do not move; consecutive clicks use last one. */
 declare function toggleTagSelections(tagIds: number[]): void;
 /** Tag ids that currently have a Tag selection (cached; keyed on the selection list,
  *  identity-stable while the set of ids is unchanged). */
@@ -3105,6 +3129,7 @@ declare const getSelectedTagIds: () => ReadonlySet<number>;
  *  composite children included, ghosted selections excluded, ids may repeat.
  *  Deep counterpart of getSelectedTagIds (top-level only, as a set). */
 declare const getSelectedTagIdsDeep: () => readonly number[];
+declare const getSelectedTagIdsDeepSet: () => ReadonlySet<number>;
 /** Open a staged-import location read-only, "as if" it were active. The location becomes
  *  virtual (negative id; ImportPreview flag) so identity and mutate-guards derive from it. @unstable */
 declare function openStagedLocation(index: number): Promise<void>;
@@ -3191,6 +3216,7 @@ declare const store_getActiveSelections: typeof getActiveSelections;
 declare const store_getMapState: typeof getMapState;
 declare const store_getSelectedTagIds: typeof getSelectedTagIds;
 declare const store_getSelectedTagIdsDeep: typeof getSelectedTagIdsDeep;
+declare const store_getSelectedTagIdsDeepSet: typeof getSelectedTagIdsDeepSet;
 declare const store_getTag: typeof getTag;
 declare const store_getVisibleTags: typeof getVisibleTags;
 declare const store_holdAutosave: typeof holdAutosave;
@@ -3226,6 +3252,7 @@ declare const store_setMapExtraFields: typeof setMapExtraFields;
 declare const store_setPluginMode: typeof setPluginMode;
 declare const store_setSelectedLocationIds: typeof setSelectedLocationIds;
 declare const store_setWorkArea: typeof setWorkArea;
+declare const store_syncTagFilterMode: typeof syncTagFilterMode;
 declare const store_tagIdsToNames: typeof tagIdsToNames;
 declare const store_toggleTagSelections: typeof toggleTagSelections;
 declare const store_undo: typeof undo;
@@ -3236,7 +3263,7 @@ declare const store_updateTags: typeof updateTags;
 declare const store_useMapState: typeof useMapState;
 declare const store_waitForInflightPersist: typeof waitForInflightPersist;
 declare namespace store {
-  export { store_addLocations as addLocations, store_addSelections as addSelections, store_addTagToLocations as addTagToLocations, store_applyFieldOp as applyFieldOp, store_applySelectionUpdate as applySelectionUpdate, store_cancelAutosave as cancelAutosave, store_checkoutCommit as checkoutCommit, store_closeDuplicates as closeDuplicates, closeMap$1 as closeMap, store_commitMap as commitMap, store_countBy as countBy, store_countIn as countIn, store_coverage as coverage, store_createTags as createTags, store_currentSelection as currentSelection, store_deleteField as deleteField, store_deleteTags as deleteTags, store_discardOpenMap as discardOpenMap, store_duplicateLocation as duplicateLocation, store_emitBitmask as emitBitmask, store_exitPluginMode as exitPluginMode, store_fetchBounds as fetchBounds, store_fetchColumns as fetchColumns, store_fetchLocations as fetchLocations, store_fieldValues as fieldValues, store_flushSave as flushSave, store_getActiveSelections as getActiveSelections, store_getMapState as getMapState, store_getSelectedTagIds as getSelectedTagIds, store_getSelectedTagIdsDeep as getSelectedTagIdsDeep, store_getTag as getTag, store_getVisibleTags as getVisibleTags, store_holdAutosave as holdAutosave, store_initStore as initStore, store_mapOpen as mapOpen, store_mergeDuplicates as mergeDuplicates, store_mutate as mutate, store_openDuplicateLocation as openDuplicateLocation, openMap$1 as openMap, store_openStagedLocation as openStagedLocation, store_partition as partition, store_patchMapMeta as patchMapMeta, store_previewDuplicateGroups as previewDuplicateGroups, store_previewVirtualLocation as previewVirtualLocation, store_pruneDuplicates as pruneDuplicates, store_redo as redo, store_removeDuplicate as removeDuplicate, store_removeLocations as removeLocations, store_removeSelections as removeSelections, store_removeTagFromAllLocations as removeTagFromAllLocations, store_removeTagFromLocations as removeTagFromLocations, store_renameField as renameField, store_reorderTags as reorderTags, store_resetSelections as resetSelections, store_resolveIds as resolveIds, store_resolveLocation as resolveLocation, store_sampleFrom as sampleFrom, store_scheduleAutoCommit as scheduleAutoCommit, store_scheduleSave as scheduleSave, store_selectRandomFromSelection as selectRandomFromSelection, store_selectSpacedFromSelection as selectSpacedFromSelection, store_setActiveLocation as setActiveLocation, store_setMapExtraFields as setMapExtraFields, store_setPluginMode as setPluginMode, store_setSelectedLocationIds as setSelectedLocationIds, store_setWorkArea as setWorkArea, syncSelections$1 as syncSelections, store_tagIdsToNames as tagIdsToNames, store_toggleTagSelections as toggleTagSelections, store_undo as undo, store_updateFilterSelection as updateFilterSelection, store_updateLocations as updateLocations, store_updateMapMeta as updateMapMeta, store_updateTags as updateTags, store_useMapState as useMapState, store_waitForInflightPersist as waitForInflightPersist };
+  export { store_addLocations as addLocations, store_addSelections as addSelections, store_addTagToLocations as addTagToLocations, store_applyFieldOp as applyFieldOp, store_applySelectionUpdate as applySelectionUpdate, store_cancelAutosave as cancelAutosave, store_checkoutCommit as checkoutCommit, store_closeDuplicates as closeDuplicates, closeMap$1 as closeMap, store_commitMap as commitMap, store_countBy as countBy, store_countIn as countIn, store_coverage as coverage, store_createTags as createTags, store_currentSelection as currentSelection, store_deleteField as deleteField, store_deleteTags as deleteTags, store_discardOpenMap as discardOpenMap, store_duplicateLocation as duplicateLocation, store_emitBitmask as emitBitmask, store_exitPluginMode as exitPluginMode, store_fetchBounds as fetchBounds, store_fetchColumns as fetchColumns, store_fetchLocations as fetchLocations, store_fieldValues as fieldValues, store_flushSave as flushSave, store_getActiveSelections as getActiveSelections, store_getMapState as getMapState, store_getSelectedTagIds as getSelectedTagIds, store_getSelectedTagIdsDeep as getSelectedTagIdsDeep, store_getSelectedTagIdsDeepSet as getSelectedTagIdsDeepSet, store_getTag as getTag, store_getVisibleTags as getVisibleTags, store_holdAutosave as holdAutosave, store_initStore as initStore, store_mapOpen as mapOpen, store_mergeDuplicates as mergeDuplicates, store_mutate as mutate, store_openDuplicateLocation as openDuplicateLocation, openMap$1 as openMap, store_openStagedLocation as openStagedLocation, store_partition as partition, store_patchMapMeta as patchMapMeta, store_previewDuplicateGroups as previewDuplicateGroups, store_previewVirtualLocation as previewVirtualLocation, store_pruneDuplicates as pruneDuplicates, store_redo as redo, store_removeDuplicate as removeDuplicate, store_removeLocations as removeLocations, store_removeSelections as removeSelections, store_removeTagFromAllLocations as removeTagFromAllLocations, store_removeTagFromLocations as removeTagFromLocations, store_renameField as renameField, store_reorderTags as reorderTags, store_resetSelections as resetSelections, store_resolveIds as resolveIds, store_resolveLocation as resolveLocation, store_sampleFrom as sampleFrom, store_scheduleAutoCommit as scheduleAutoCommit, store_scheduleSave as scheduleSave, store_selectRandomFromSelection as selectRandomFromSelection, store_selectSpacedFromSelection as selectSpacedFromSelection, store_setActiveLocation as setActiveLocation, store_setMapExtraFields as setMapExtraFields, store_setPluginMode as setPluginMode, store_setSelectedLocationIds as setSelectedLocationIds, store_setWorkArea as setWorkArea, syncSelections$1 as syncSelections, store_syncTagFilterMode as syncTagFilterMode, store_tagIdsToNames as tagIdsToNames, store_toggleTagSelections as toggleTagSelections, store_undo as undo, store_updateFilterSelection as updateFilterSelection, store_updateLocations as updateLocations, store_updateMapMeta as updateMapMeta, store_updateTags as updateTags, store_useMapState as useMapState, store_waitForInflightPersist as waitForInflightPersist };
   export type { store_MapState as MapState };
 }
 
@@ -3689,6 +3716,8 @@ declare const LANGUAGES: {
     /** @unstable */
     readonly "zh-Hans": "简体中文";
     /** @unstable */
+    readonly "zh-Hant": "繁體中文";
+    /** @unstable */
     readonly "en-XA": "Pseudolocale";
 };
 /** @unstable */
@@ -4007,6 +4036,8 @@ declare const DEFAULTS: {
     previewAspectRatio: PreviewAspectRatio;
     /** @unstable */
     tagSuggestionLimit: number;
+    /** Duration (ms) for Tag selection fitBounds animation; 0 = instant. Global. @unstable */
+    tagFitDurationMs: number;
     /** Copy-to-map hotkeys that work in every map (assigned in the copy-to-map dialog);
      *  a map's own binding on the same key shadows them. @unstable */
     globalCopyBindings: MapKeyBinding[];
@@ -4125,6 +4156,8 @@ declare const APP_SETTINGS: PersistedStore<{
     subdivisionDetail: SubdivisionDetail;
     previewAspectRatio: PreviewAspectRatio;
     tagSuggestionLimit: number;
+    /** Duration (ms) for Tag selection fitBounds animation; 0 = instant. Global. */
+    tagFitDurationMs: number;
     /** Copy-to-map hotkeys that work in every map (assigned in the copy-to-map dialog);
      *  a map's own binding on the same key shadows them. */
     globalCopyBindings: MapKeyBinding[];
@@ -5847,6 +5880,7 @@ export interface MapHostContract<K extends MapHostKind = MapHostKind> {
     }): void;
     fitBounds(bounds: Bounds, padding?: number, opts?: {
         snap?: boolean;
+        duration?: number;
     }): void;
     on<K extends keyof MapHostEvents>(event: K, fn: (arg: MapHostEvents[K]) => void): () => void;
     once<K extends keyof MapHostEvents>(event: K, fn: (arg: MapHostEvents[K]) => void): () => void;
@@ -5874,7 +5908,10 @@ declare function getMapHost(): MapHost | null;
  * Wait for the main editor map to be ready.
  */
 declare function waitForMapHost(): Promise<MapHost>;
-declare function fitMapToBounds(bounds: Bounds | null, padding?: number, minExtent?: number): void;
+declare function fitMapToBounds(bounds: Bounds | null, padding?: number, minExtent?: number, opts?: {
+    duration?: number;
+    snap?: boolean;
+}): void;
 export type ClickInterceptor = (lat: number, lng: number, shiftKey: boolean) => boolean;
 declare function addClickInterceptor(fn: ClickInterceptor): () => void;
 declare function tryInterceptClick(lat: number, lng: number, shiftKey?: boolean): boolean;
@@ -6261,4 +6298,4 @@ declare global {
 }
 
 export type { BUILTIN_FIELDS, CLEARABLE_BUILTINS, DEFAULT_DUPLICATE_SCORE, KNOWN_FIELDS, LocationFlag, MMA, MMA as MMAApi, PROJECTIONS, PanoType, SCRATCH_MAP_ID, VIRTUAL_FLAGS, ValidationState, commands$1 as commands, events };
-export type { AnonIssueRef, AttachmentRef, BatchMode, CameraType, CellRemoval, Columns, CommitDelta, CommitDiff, CommitInfo, ComparisonType, Conflict, ConflictKind, CopyToMapResult, DataLocation, DatePart, DbStats, DeviceCodeInfo, EditorImportPreview, EditorImportResult, ExportOpts, ExportProgress, ExternalMutation, ExtraFieldDef, ExtraFieldType, FieldCount, FieldOp, FieldOpResult, FilterOp, FirstSyncMode, GeoResult, GgUser, GhUser, ImportPreviewEntry, ImportProgress, ImportedMapInfo, IssueComment, IssueRef, IssueState, IssueThread, KeySpec, Location, LocationPatch, LocationPatch_Deserialize, MapExtra, MapKeyAction, MapKeyBinding, MapMeta, MapMetaPatch, MapMetaPatch_Deserialize, MapSettings, MergeWinner, MutationResult, NormalizedSyncLocation, NumericBinning, PartitionBucket, PluginBuild, PluginBuild_Deserialize, PluginManifest, PluginManifest_Deserialize, PluginSidecar, PluginSidecar_Deserialize, PolygonGeometry, PresenceActivity, ProcedureHost, ProcedureProgress, ProcedureRequest, ProcedureResponse, ProcedureResult, ProviderDecl, PullCreate, PullUpdate, RateCost, RateSpec, RemoteMappingRow, RenderDelta, RenderEntry, RenderPatchEntry, RenderRequest, ResolutionSide, ResultEntry, RetrySpec, ReviewCreate, ReviewSession, ReviewUpdate, Rows, RowsRun, SaveResult, SavedSelection, SavedSelectionInfo, ScoreBounds, SeenEntry, SeenFilter, SeenMapInfo, SeenWriteEntry, SelPaint, Selection, SelectionInput, SelectionSync, Selector, SideCounts, SidecarDone, SidecarLine, SidecarLog, SidecarProgress, Sink, SpacedPickResult, StoreStatus, StoreWarning, SummaryResult, SyncPatch, SyncReconcileResult, Tag, TagPatch, Update, UpdateAvailable, UpdateProgress, ValiCountryStatus, ValiLocation, ValiLocation_Deserialize, ValiProgress, VirtualTag };
+export type { AnonIssueRef, AttachmentRef, AutoTagApplyResult, AutoTagSuggestion, BatchMode, CameraType, CellRemoval, Columns, CommitDelta, CommitDiff, CommitInfo, ComparisonType, Conflict, ConflictKind, CopyToMapResult, DataLocation, DatePart, DbStats, DeviceCodeInfo, EditorImportPreview, EditorImportResult, ExportOpts, ExportProgress, ExternalMutation, ExtraFieldDef, ExtraFieldType, FieldCount, FieldOp, FieldOpResult, FilterOp, FirstSyncMode, GeoResult, GgUser, GhUser, ImportPreviewEntry, ImportProgress, ImportedMapInfo, IssueComment, IssueRef, IssueState, IssueThread, KeySpec, Location, LocationPatch, LocationPatch_Deserialize, MapExtra, MapKeyAction, MapKeyBinding, MapMeta, MapMetaPatch, MapMetaPatch_Deserialize, MapSettings, MergeWinner, MutationResult, NormalizedSyncLocation, NumericBinning, PartitionBucket, PluginBuild, PluginBuild_Deserialize, PluginManifest, PluginManifest_Deserialize, PluginSidecar, PluginSidecar_Deserialize, PolygonGeometry, PresenceActivity, ProcedureHost, ProcedureProgress, ProcedureRequest, ProcedureResponse, ProcedureResult, ProviderDecl, PullCreate, PullUpdate, RateCost, RateSpec, RemoteMappingRow, RenderDelta, RenderEntry, RenderPatchEntry, RenderRequest, ResolutionSide, ResultEntry, RetrySpec, ReviewCreate, ReviewSession, ReviewUpdate, Rows, RowsRun, SaveResult, SavedSelection, SavedSelectionInfo, ScoreBounds, SeenEntry, SeenFilter, SeenMapInfo, SeenWriteEntry, SelPaint, Selection, SelectionInput, SelectionSync, Selector, SideCounts, SidecarDone, SidecarLine, SidecarLog, SidecarProgress, Sink, SpacedPickResult, StoreStatus, StoreWarning, SummaryResult, SyncPatch, SyncReconcileResult, Tag, TagPatch, Update, UpdateAvailable, UpdateProgress, ValiCountryStatus, ValiLocation, ValiLocation_Deserialize, ValiProgress, VirtualTag };

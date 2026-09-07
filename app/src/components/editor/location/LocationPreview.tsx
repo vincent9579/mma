@@ -33,6 +33,8 @@ import {
 	getVisibleTags,
 } from "@/store/useMapStore";
 import { sortTagsByMode, tagColorFor, appendTagName } from "@/lib/util/util";
+import { cmd } from "@/lib/commands";
+import { useMapSetting } from "@/store/useMapSetting";
 import { TagPill, TagPillButton } from "@/components/primitives/TagPill";
 import { displayTagName } from "@/store/selections";
 import { ReviewBar } from "@/components/editor/location/ReviewBar";
@@ -208,6 +210,98 @@ const TagEditor = memo(function TagEditor({
 
 const pinned = (flags: number, on: boolean) =>
 	on ? flags | LocationFlag.LoadAsPanoId : flags & ~LocationFlag.LoadAsPanoId;
+
+const AutoTagSuggestions = memo(function AutoTagSuggestions({
+	locationId,
+	extra: _extra,
+	pendingTags,
+	onAdopt,
+}: {
+	locationId: number;
+	extra: Record<string, unknown> | null | undefined;
+	pendingTags: string[];
+	onAdopt: (name: string) => void;
+}) {
+	const [suggested, setSuggested] = useState<{ tagType: string; value: string; alreadyPresent: boolean }[]>([]);
+	const [autoTagEnabled] = useMapSetting("autoTagSuggestions", true);
+	const pendingLower = useMemo(() => new Set(pendingTags.map((n) => n.toLowerCase())), [pendingTags]);
+	const visible = useMemo(
+		() => suggested.filter((s) => !pendingLower.has(s.value.toLowerCase()) && !s.alreadyPresent),
+		[suggested, pendingLower],
+	);
+	const triedEnrichRef = useRef<number | null>(null);
+	useEffect(() => {
+		if (!autoTagEnabled || locationId == null || locationId < 0) {
+			setSuggested([]);
+			return;
+		}
+		if (triedEnrichRef.current === locationId) {
+			// already tried enrich for this id, don't loop
+			return;
+		}
+		let cancelled = false;
+		void (async () => {
+			try {
+				let res = await cmd.storeGenerateAutoTags(locationId);
+				if (cancelled) return;
+				// auto-enrich fallback: extra empty -> try fetch sv metadata and patch, then retry (once per id)
+				const curExtra = (getMapState().activeLocation?.extra ?? _extra) as Record<string, unknown> | null | undefined;
+				if (res.length === 0 && (!curExtra || Object.keys(curExtra).length === 0) && triedEnrichRef.current !== locationId) {
+					triedEnrichRef.current = locationId;
+					try {
+						const { svMetaProvider } = await import("@/lib/sv/enrich");
+						const { runProviders } = await import("@/lib/data/procedures");
+						const loc = getMapState().activeLocation;
+						if (loc && loc.id === locationId) {
+							const { rows } = await runProviders([{ provider: svMetaProvider }], [loc as unknown as import("@/bindings.gen").Location]);
+							const enriched = rows[0] as unknown as { extra?: Record<string, unknown> };
+							if (enriched?.extra && Object.keys(enriched.extra).length > 0) {
+								await updateLocations([{ id: locationId, patch: { extra: enriched.extra } }]);
+								res = await cmd.storeGenerateAutoTags(locationId);
+								if (cancelled) return;
+							}
+						}
+					} catch {}
+				}
+				if (!cancelled) setSuggested(res);
+			} catch {
+				if (!cancelled) setSuggested([]);
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [locationId, autoTagEnabled]);
+	if (!autoTagEnabled || visible.length === 0) return null;
+	return (
+		<div style={{ paddingTop: "0.5rem" }}>
+			<div style={{ fontSize: "0.85em", opacity: 0.7, marginBottom: "0.25rem" }}>{t("Suggestions")}</div>
+			<ul className="tag-list">
+				{visible.map((s) => (
+					<TagPill
+						as="li"
+						key={`${s.tagType}:${s.value}`}
+						small
+						color={tagColorFor(s.value, getVisibleTags() as unknown as Tag[])}
+						label={s.value}
+						className="tag--suggested"
+						style={{ borderStyle: "dashed" } as React.CSSProperties}
+						button={
+							<TagPillButton
+								variant="add"
+								onClick={async () => {
+									const tags = await createTags([s.value]);
+									if (tags.length > 0) onAdopt(tags[0].name);
+									else onAdopt(s.value);
+								}}
+							/>
+						}
+					/>
+				))}
+			</ul>
+		</div>
+	);
+});
 
 export function LocationPreview() {
 	const location = useMapState((s) => s.activeLocation);
@@ -640,6 +734,12 @@ export function LocationPreview() {
 							pendingTags={pendingTags}
 							onChangeTags={setPendingTags}
 							isImport={isImportPreview(location)}
+						/>
+						<AutoTagSuggestions
+							locationId={location.id}
+							extra={location.extra as Record<string, unknown> | null}
+							pendingTags={pendingTags}
+							onAdopt={(name) => setPendingTags((prev) => appendTagName(prev, name, getVisibleTags()))}
 						/>
 					</div>
 					<PluginLocationPanels />
